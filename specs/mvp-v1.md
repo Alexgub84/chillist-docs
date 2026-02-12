@@ -127,7 +127,7 @@
 
 ## 6. API (REST) — Endpoints
 
-> Full contract: [api/openapi.json](../api/openapi.json)
+> Full contract: `chillist-be/docs/openapi.json` (backend owns it, frontend fetches via `npm run api:fetch`)
 
 Base URL: `/` (versioning can be added later: `/v1`)
 

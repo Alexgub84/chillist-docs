@@ -98,7 +98,12 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
 ## Dev Lessons Log
 
-After fixing any bug, configuration mistake, or non-obvious problem, add an entry to the repo's dev-lessons file with:
+After fixing any bug, configuration mistake, or non-obvious problem, add an entry to the relevant dev-lessons file in chillist-docs:
+
+- Frontend lessons: `../chillist-docs/dev-lessons/frontend.md`
+- Backend lessons: `../chillist-docs/dev-lessons/backend.md`
+
+Entry format:
 
 ```markdown
 ### [Category] Short Title
