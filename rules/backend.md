@@ -40,10 +40,39 @@ No additional setup needed — start implementing.
 - Don't hardcode localhost in OpenAPI servers — removed entirely
 - Only type responses that clients actually parse; error responses often just need a status code check
 
+## Version Bumping
+
+Bump the version in `package.json` on every issue/PR:
+
+- **Patch** (1.0.x): Bug fixes, small changes, no API impact
+- **Minor** (1.x.0): New features, new routes, schema changes, DB migrations
+- **Major** (x.0.0): Breaking changes that require FE coordination
+
+## API Breaking Change Check
+
+Before committing any change that touches routes, request/response schemas, or DB schema:
+
+1. **Detect breaking changes** — Compare old vs new behavior:
+   - Removed or renamed endpoints
+   - New required fields in request body (was optional or didn't exist)
+   - Removed fields from response
+   - Changed response shape (e.g., flat object to nested, array to object)
+   - Changed field types or enum values
+2. **If breaking** — Keep the old route working alongside the new one:
+   - The old request format must still be accepted (detect format and handle both code paths)
+   - The old response shape should remain functional for existing FE code
+   - Add `@deprecated` note in the route's OpenAPI summary
+   - Create a GitHub issue to remove the deprecated route: `gh issue create --label "cleanup" --title "Remove deprecated <route> after FE update" --body "<details>"`
+   - Add `fe-update-required` label to the PR
+   - Once FE is updated and deployed, close the cleanup issue and remove the old code path
+3. **If non-breaking** (additive fields, new optional params, new endpoints) — No action needed, proceed normally
+4. **Always** run `npm run openapi:generate` after API changes and commit updated `docs/openapi.json`
+
 ## Finalization
 
 1. Run validation: `npm run typecheck && npm run lint && npm run test:run`
 2. Fix any failures automatically
 3. If API routes or schemas changed, run `npm run openapi:generate` and commit updated `docs/openapi.json`
-4. Ask for user confirmation
-5. Follow the common [Git Workflow](common.md#git-workflow) (commit, push, PR)
+4. Run the API Breaking Change Check above
+5. Ask for user confirmation
+6. Follow the common [Git Workflow](common.md#git-workflow) (commit, push, PR)
