@@ -17,7 +17,7 @@
 | Status filtering | Done | Filter items by status on plan screen |
 | Category grouping | Done | Items grouped by equipment/food |
 | Share link | Not started | Public link per plan |
-| Assignments | Not started | Item → participant assignment |
+| Assignments | Partial | DB table exists (`item_assignments`), API routes not implemented |
 | Weather | Not started | Optional forecast for plan location |
 | Auth | Not started | MVP uses CORS + API key; no user login |
 
@@ -27,7 +27,7 @@
 |-------|---------|--------|
 | FE Framework | React + Vite | React 19 + Vite 7 |
 | FE Routing | React Router | TanStack Router (file-based, lazy routes) |
-| FE Data | React Query + Context | TanStack React Query + openapi-fetch |
+| FE Data | React Query + Context | TanStack React Query + custom fetch with Zod validation (`api.ts`) + openapi-fetch (`api-client.ts`) |
 | FE Styling | Tailwind CSS | Tailwind CSS v4 (Vite plugin, no config file) |
 | FE Forms | — | React Hook Form + Zod resolvers |
 | FE Testing | — | Vitest + React Testing Library + Playwright E2E |
@@ -65,7 +65,7 @@
   - **EquipmentItem** | **FoodItem** (discriminated by `category`)
   - Fields: `itemId`, `planId`, `name`, `category` ("equipment" | "food"), `quantity`, `unit` ("pcs" | "kg" | "g" | "lb" | "oz" | "l" | "ml" | "pack" | "set"), `status` ("pending" | "purchased" | "packed" | "canceled"), optional `notes`, optional `assignedParticipantId`
   - Timestamps: `createdAt`, `updatedAt`
-- **ItemAssignment** (not yet implemented)
+- **ItemAssignment** (DB table exists, API routes not yet implemented)
   - `assignmentId`, `planId`, `itemId`, `participantId`, optional: `quantityAssigned`, `notes`, `isConfirmed`
   - Timestamps: `createdAt`, `updatedAt`
 - **Weather** (not yet implemented)
@@ -177,23 +177,16 @@ Base URL: `/` (versioning can be added later: `/v1`)
 
 ---
 
-## 9. Deployment
+## 9. Deployment & Security
 
-- **FE:** Cloudflare Pages. GitHub Actions runs lint → typecheck → unit tests → E2E → build → deploy on push to `main`.
-- **BE:** Railway. GitHub Actions runs lint → typecheck → tests → build. Auto-deploy: `staging` branch → staging service, `main` → production service.
-- **Database:** Railway-managed PostgreSQL. Drizzle migrations via `npm run db:migrate`.
-
----
-
-## 10. Security (Current)
-
-- **CORS:** Backend restricts origins to `FRONTEND_URL` in production.
-- **API Key:** `x-api-key` header required on all routes except `/health`. Visible in DevTools — protects against bots, not determined attackers.
-- **Future:** Supabase Auth or custom JWT when real user data is involved.
+- **FE:** Cloudflare Pages via GitHub Actions. See [Frontend Guide](../guides/frontend.md#cicd-github-actions--cloudflare-pages).
+- **BE:** Railway via GitHub Actions. See [Backend Guide](../guides/backend.md#deployment-railway).
+- **Database:** Railway-managed PostgreSQL with Drizzle migrations.
+- **Security (MVP):** CORS + API key header. No user auth. See [Backend Guide — Security](../guides/backend.md#security).
 
 ---
 
-## 11. Roadmap (Post-MVP)
+## 10. Roadmap (Post-MVP)
 
 1. **Share link** — public/unlisted plan access via URL.
 2. **Assignments** — item → participant with partial quantities.
@@ -207,7 +200,7 @@ Base URL: `/` (versioning can be added later: `/v1`)
 
 ---
 
-## 12. Definition of Done (MVP)
+## 11. Definition of Done (MVP)
 
 - [x] Plans CRUD working end-to-end.
 - [x] Participants CRUD working end-to-end.
@@ -216,5 +209,5 @@ Base URL: `/` (versioning can be added later: `/v1`)
 - [x] OpenAPI spec generated and shared between repos.
 - [x] CI/CD pipelines for both repos.
 - [ ] Share link — public plan access.
-- [ ] Assignments — item → participant.
+- [ ] Assignments — API routes for item → participant (DB table exists).
 - [ ] At least 1 real trip tested by team with 3+ participants.

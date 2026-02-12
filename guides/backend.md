@@ -11,8 +11,10 @@ Setup, development, deployment, and security guide for `chillist-be`.
 - Zod (validation via fastify-type-provider-zod)
 - Drizzle ORM (PostgreSQL)
 - PostgreSQL (Railway-managed in production)
+- Swagger UI (`@fastify/swagger` + `@fastify/swagger-ui` — API docs at `/docs` in dev)
 - Vitest (unit + integration + E2E)
 - Testcontainers (PostgreSQL in tests)
+- Pino (logging, with pino-pretty for dev)
 - ESLint + Prettier
 - Husky (pre-commit hooks)
 
@@ -68,15 +70,14 @@ The server runs on `http://localhost:3333` by default. Swagger UI at `/docs`.
 | `npm run lint` | ESLint check |
 | `npm run lint:fix` | ESLint auto-fix |
 | `npm run format` | Prettier format |
+| `npm run format:check` | Check Prettier formatting (CI) |
 | `npm run test` | Typecheck + lint + run tests (watch) |
 | `npm run test:run` | Typecheck + lint + run tests once |
 | `npm run test:unit` | Unit tests only |
 | `npm run test:integration` | Integration tests only (requires Docker) |
 | `npm run test:e2e` | E2E tests only (requires Docker) |
-| `npm run test:coverage` | Tests with coverage |
 | `npm run db:generate` | Generate Drizzle migration files |
 | `npm run db:migrate` | Run pending migrations |
-| `npm run db:push` | Push schema directly (dev only) |
 | `npm run db:studio` | Open Drizzle Studio |
 | `npm run db:seed` | Seed database with sample data |
 | `npm run db:seed:prod` | Seed production database via Railway |
@@ -124,8 +125,7 @@ Always commit `docs/openapi.json` after route or schema changes. The frontend fe
 ### Architecture
 
 ```
-feature/* → PR → staging branch → Railway staging
-staging → PR → main branch → Railway production
+feature/* → PR → main (CI must pass) → Railway production
 ```
 
 ### Branch strategy
@@ -133,46 +133,66 @@ staging → PR → main branch → Railway production
 | Branch | Purpose | Protection |
 |--------|---------|------------|
 | `feature/*` | Development work | None |
-| `staging` | Pre-production | PR required, CI must pass |
+| `staging` | Pre-production testing | PR required, CI must pass |
 | `main` | Production | PR required, CI must pass |
 
-### Railway services
-
-**Staging:**
-
-```
-PORT=3333
-HOST=0.0.0.0
-NODE_ENV=staging
-LOG_LEVEL=debug
-```
-
-**Production:**
+### Railway env vars (production)
 
 ```
 PORT=3333
 HOST=0.0.0.0
 NODE_ENV=production
 LOG_LEVEL=info
+DATABASE_URL=<railway-postgres-url>
 FRONTEND_URL=<your-frontend-url>
 API_KEY=<generated-key>
 ```
 
 ### CI/CD (GitHub Actions)
 
-On push to `main` or `staging`:
+Three workflow files:
 
-1. Lint
-2. Type check
-3. Run tests
-4. Build
-5. Deploy to Railway (staging or production based on branch)
+**`ci.yml`** — runs on push/PR to `main` and `staging`:
+
+1. Start PostgreSQL 16 service
+2. Install dependencies
+3. Run database migrations (`db:migrate`)
+4. Run full test suite (`test:run` — includes typecheck + lint + vitest)
+5. Build (`tsc`)
+6. Validate OpenAPI spec (`openapi:validate`)
+7. On PRs: check if `docs/openapi.json` changed — if yes, require `fe-notified` label before merge
+
+**`deploy.yml`** — runs on push to `main` only:
+
+1. Install Railway CLI
+2. Deploy to Railway (`railway up --service $RAILWAY_SERVICE_ID`)
+
+**`branch-protection.yml`** — runs on PRs to `main` and `staging`:
+
+- Validates branch merge rules (informational)
 
 ### Required GitHub secrets
 
 | Name | Type | Description |
 |------|------|-------------|
 | `RAILWAY_TOKEN` | Secret | Railway API token |
+| `RAILWAY_SERVICE_ID` | Secret | Railway service identifier |
+
+## Pre-Commit Hooks (Husky)
+
+Every commit triggers:
+
+1. `npm run typecheck` — fails on TypeScript errors
+2. ESLint + Prettier on staged `.ts` files (`lint-staged`)
+3. `npm run test:run` — typecheck + lint + tests in CI mode
+
+### Recommended manual checks before commit
+
+```bash
+npm run typecheck
+npm run lint:fix
+npm run test:run
+```
 
 ## Security
 

@@ -4,18 +4,15 @@ Rules specific to the `chillist-fe` repository. Use alongside [common rules](com
 
 ---
 
-## Starting Work
+## Before Coding (after common Starting Work steps)
 
-1. Fetch the GitHub issue assigned to this task: `gh issue view <number>`
-2. Confirm with user which issue we're working on
-3. Assign yourself and add "in progress" label
-4. Create a feature branch from up-to-date main: `git checkout main && git pull origin main && git checkout -b <branch>`
-5. Sync the OpenAPI spec and generated types: `npm run api:sync`
-6. Implement the feature/fix per the issue description
+- Sync the OpenAPI spec and generated types: `npm run api:sync`
 
 ## Code Standards (FE-Specific)
 
 - Use `clsx` for all dynamic or conditional `className` values — never use template literals or string concatenation for classNames
+- Every API mutation function (`create*`, `update*`) must validate input with `.parse()` before sending — catch bad data client-side, not on the server
+- If multiple API functions follow the same pattern, audit them all for consistency when fixing one
 
 ## Route Files (TanStack Router)
 
@@ -64,10 +61,17 @@ For every path in `openapi.json`, verify the mock server (`api/server.ts`):
 - Required fields in OpenAPI → NOT `.optional()` in Zod
 - Fields NOT in an OpenAPI request body → NOT accepted by the mock server's Zod schema
 
-## Finalization (FE-Specific)
+## Testing
+
+- Test assertions must verify value **format correctness** (e.g. ISO 8601 dates end with `Z`), not just structural presence
+- **E2E (Playwright):**
+  - Don't test loading states — they are transient and flaky with fast API responses
+  - Test final outcomes: wait for content or errors to appear, not spinners
+  - Use specific URL patterns in `page.route()` (e.g. `**/localhost:3333/plans`) — broad patterns can intercept page navigation
+
+## Finalization
 
 1. Run validation: `npm run typecheck && npm run lint && npm run test:run`
 2. Fix any failures automatically
 3. Ask for user confirmation
-4. Create commit on the feature branch and push to origin
-5. Create PR linked to the issue
+4. Follow the common [Git Workflow](common.md#git-workflow) (commit, push, PR)

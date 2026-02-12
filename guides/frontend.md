@@ -13,8 +13,11 @@ Setup, development, and deployment guide for `chillist-fe`.
 - TanStack Router (file-based routing)
 - TanStack React Query
 - React Hook Form + Zod resolvers
-- openapi-fetch (typed API client from OpenAPI spec)
+- openapi-fetch + custom fetch layer with Zod validation (dual API layer)
+- Headless UI (`@headlessui/react` — accessible UI primitives)
 - react-hot-toast (notifications)
+- clsx (conditional classNames)
+- uuid (ID generation)
 - Vitest + React Testing Library (unit)
 - Playwright (E2E)
 - ESLint + Prettier
@@ -74,21 +77,33 @@ npm run dev
 | `npm run test:run` | Run unit tests once (CI mode) |
 | `npm run mock:server` | Start mock API server with watch |
 | `npm run mock:server:ci` | Start mock API server without watch (CI) |
-| `npm run mock:watch` | Watch mock data files for validation |
 | `npm run api:fetch` | Fetch OpenAPI spec from backend repo |
 | `npm run api:types` | Generate TypeScript types from OpenAPI spec |
 | `npm run api:sync` | Fetch spec + regenerate types |
 | `npm run e2e` | Run Playwright E2E tests |
 | `npm run e2e:ui` | Run E2E tests with Playwright UI |
+| `npm run e2e:headed` | Run E2E tests in headed browser mode |
 | `npm run routes` | Regenerate TanStack Router route tree |
 
 ## Mock Data Toolkit
 
 The mock server (`api/server.ts`) exposes a Fastify server backed by `api/mock-data.json`. All write operations persist to the JSON file so you iterate with realistic data.
 
-Available mock routes mirror the real backend (see [API spec](../api/openapi.json)).
+The mock server implements all real backend endpoints plus a few extras for frontend convenience:
 
-## API Type Generation (OpenAPI)
+- `PATCH /plans/:planId` — plan updates (not yet in real backend)
+- `GET /items/:itemId` — single item fetch (not yet in real backend)
+
+When the real backend adds these endpoints, the mock server will already be aligned.
+
+## API Layer
+
+The frontend has two API layers:
+
+1. **`src/core/api.ts`** (primary) — custom `request()` helper with Zod validation on responses. All mutation/query functions live here (`fetchPlans`, `createItem`, `updateItem`, etc.)
+2. **`src/core/api-client.ts`** (secondary) — `openapi-fetch` typed client generated from the OpenAPI spec. Used for `fetchPlansFromOpenAPI()` and `checkHealth()`.
+
+### Type Generation (OpenAPI)
 
 The backend owns the OpenAPI spec. The frontend fetches and generates types from it.
 

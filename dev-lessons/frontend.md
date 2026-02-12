@@ -62,10 +62,3 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 2. Use specific route patterns — when mocking API calls with `page.route()`, use specific URL patterns (e.g., `**/localhost:3333/plans`) to avoid intercepting page navigation
 3. Test final outcomes, not intermediate states — wait for content/errors to appear, not loading spinners
 
----
-
-## Toast Notifications Pattern
-
-**Context**: The app uses `react-hot-toast` for non-blocking feedback. The Toaster is in the root layout, so any screen can show toasts.
-
-**How to show error messages**: In mutation handlers (e.g. create/update item), wrap the call in try/catch and use `getApiErrorMessage()` from `src/core/error-utils.ts` to get user-friendly `{ title, message }`, then call `toast.error(\`${title}: ${message}\`)`. This keeps error copy consistent and avoids exposing raw API messages.

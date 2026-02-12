@@ -10,8 +10,16 @@ Shared workflow rules for both frontend and backend repos.
 - Every feature, enhancement, or task must have a corresponding GitHub issue before work begins
 - Every bug must be filed as a GitHub issue before fixing
 - Do NOT start coding without an issue to reference
-- If working on a bug and no issue exists yet, create one first:
-  `gh issue create --title "<title>" --label "bug" --body "<description>"`
+
+## Starting Work
+
+1. If working on a bug and no issue exists yet, create one first:
+   `gh issue create --title "<title>" --label "bug" --body "<description>"`
+2. Fetch the GitHub issue assigned to this task: `gh issue view <number>`
+3. Confirm with user which issue we're working on
+4. Assign yourself and add "in progress" label
+5. Create a feature branch from up-to-date main: `git checkout main && git pull origin main && git checkout -b <branch>`
+6. See [Frontend Rules](frontend.md) or [Backend Rules](backend.md) for repo-specific setup steps before coding
 
 ## Planning Mode (Mandatory First Step)
 
@@ -31,13 +39,17 @@ Shared workflow rules for both frontend and backend repos.
 - No comments in code (exception: complex "why" logic that is non-obvious)
 - No lazy coding: never use `// ... rest of code` or placeholders. Always output the full correct block
 - Read the target file's existing imports, types, and indentation style before generating code
-- Pin dependency versions exactly (no `^` or `~` ranges)
+- Pin dependency versions exactly (no `^` or `~` ranges) to prevent supply chain attacks
+
+## File Permissions
+
+- Allowed to update `.env` file when adding/modifying environment variables
+- Always update `.env.example` when adding new env vars (without actual values)
 
 ## Security (OWASP Top 10)
 
 - **NEVER** output API keys, passwords, or tokens. Warn immediately if hardcoded secrets are found
 - Assume all input is malicious — use Zod for strict typing and parameterized queries for SQL
-- Pin dependency versions to prevent supply chain attacks
 
 ## Debugging
 
@@ -76,16 +88,17 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 - `test:` — Adding or updating tests
 - `chore:` — Maintenance tasks
 
-## Finalization
+## Bug Workflow
 
-1. Run validation (build, lint, test)
-2. Fix any failures automatically — do not ask for permission to fix
-3. Ask for user confirmation
-4. Follow the Git Workflow sequence (commit, push, PR)
+1. If a bug fix has no existing GitHub issue, create one before committing:
+   `gh issue create --label bug --title "<short description>" --body "<details>"`
+   Include: what went wrong, root cause, and what was fixed
+2. If an existing issue covers the bug, use that issue number
+3. The PR must include `Closes #XX` to auto-close the bug issue on merge
 
 ## Dev Lessons Log
 
-After fixing any bug, configuration mistake, or non-obvious problem, add an entry to `DEV-LESSONS.md` (or `dev-lessons.md`) with:
+After fixing any bug, configuration mistake, or non-obvious problem, add an entry to the repo's dev-lessons file with:
 
 ```markdown
 ### [Category] Short Title
