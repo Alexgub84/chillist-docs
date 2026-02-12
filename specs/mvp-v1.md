@@ -1,0 +1,220 @@
+# Chillist — MVP Specification (v1.0)
+
+> **Purpose:** Define a minimal, shippable product for organizing small trips/events with shared checklists. Optimized for rapid build, live testing, and FE/BE division of work.
+
+---
+
+## Implementation Status
+
+> Last updated: 2026-02-12
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Plans CRUD | Done | Full REST API + FE screens |
+| Participants CRUD | Done | Scoped to plans, role-based |
+| Items CRUD | Done | Equipment/food categories, inline editing |
+| Item status flow | Done | pending → purchased → packed → canceled |
+| Status filtering | Done | Filter items by status on plan screen |
+| Category grouping | Done | Items grouped by equipment/food |
+| Share link | Not started | Public link per plan |
+| Assignments | Not started | Item → participant assignment |
+| Weather | Not started | Optional forecast for plan location |
+| Auth | Not started | MVP uses CORS + API key; no user login |
+
+### Stack (Actual vs Planned)
+
+| Layer | Planned | Actual |
+|-------|---------|--------|
+| FE Framework | React + Vite | React 19 + Vite 7 |
+| FE Routing | React Router | TanStack Router (file-based, lazy routes) |
+| FE Data | React Query + Context | TanStack React Query + openapi-fetch |
+| FE Styling | Tailwind CSS | Tailwind CSS v4 (Vite plugin, no config file) |
+| FE Forms | — | React Hook Form + Zod resolvers |
+| FE Testing | — | Vitest + React Testing Library + Playwright E2E |
+| FE Deploy | Vercel / Cloudflare Pages | Cloudflare Pages (GitHub Actions) |
+| BE Framework | Fastify (TypeScript, ESM) | Fastify 5 (TypeScript, ESM) |
+| BE Validation | Zod (v1.1) | Zod from day one (fastify-type-provider-zod) |
+| BE Database | In-memory → DynamoDB | PostgreSQL (Drizzle ORM) |
+| BE Deploy | Railway / Vercel / Fly.io | Railway (staging + production) |
+| API Contract | — | OpenAPI 3.1 (auto-generated from Fastify schemas) |
+
+---
+
+## 1. Product Overview
+
+- **One place** to create a plan (trip, dinner, picnic), invite participants, and track items to bring/buy.
+- **Two item groups:** Equipment & Food.
+- **Simple assignments:** Each item can be assigned to a participant (full or partial responsibility).
+- **Shareable** plan link for participants to view/update statuses (MVP: public; optional name-only session).
+
+**Non-goals (MVP):** Payments, complex permissions, offline sync, push notifications, calendar sync, advanced meals/portions engine.
+
+---
+
+## 2. Core Entities
+
+- **Participant**
+  - `participantId`, `displayName`, `name`, `lastName`, `role` ("owner" | "participant" | "viewer"), optional: `avatarUrl`, `contactEmail`, `contactPhone`
+  - Scoped to a plan via `planId`
+  - Timestamps: `createdAt`, `updatedAt`
+- **Plan**
+  - `planId`, `title`, optional: `description`, `location` (name/country/region/city/lat/lon/timezone), `startDate`, `endDate`, `tags[]`
+  - `ownerParticipantId`, `status` ("draft" | "active" | "archived"), `visibility` ("public" | "unlisted" | "private")
+  - Timestamps: `createdAt`, `updatedAt`
+- **Items**
+  - **EquipmentItem** | **FoodItem** (discriminated by `category`)
+  - Fields: `itemId`, `planId`, `name`, `category` ("equipment" | "food"), `quantity`, `unit` ("pcs" | "kg" | "g" | "lb" | "oz" | "l" | "ml" | "pack" | "set"), `status` ("pending" | "purchased" | "packed" | "canceled"), optional `notes`, optional `assignedParticipantId`
+  - Timestamps: `createdAt`, `updatedAt`
+- **ItemAssignment** (not yet implemented)
+  - `assignmentId`, `planId`, `itemId`, `participantId`, optional: `quantityAssigned`, `notes`, `isConfirmed`
+  - Timestamps: `createdAt`, `updatedAt`
+- **Weather** (not yet implemented)
+  - `WeatherBundle` (current + daily forecast) fetched for plan.location; non-blocking.
+
+---
+
+## 3. User Stories (MVP)
+
+1. As an **owner**, I can create a plan with a title and dates.
+2. As an **owner**, I can add participants (names only are enough for MVP).
+3. As an **owner/participant**, I can add items (equipment/food), set quantities and units.
+4. As a **participant**, I can assign an item to myself or be assigned by the owner.
+5. As a **participant**, I can update item status (pending → purchased → packed).
+6. As anyone with the **share link**, I can view the plan's items and see who brings what.
+7. Optional: As a **viewer**, I can see read-only details.
+
+---
+
+## 4. Feature Scope
+
+### 4.1 Plans
+- CRUD plans.
+- Plan screen shows participants, items grouped by category, and completion stats.
+
+### 4.2 Participants
+- Add/remove participants to a plan.
+- Role: "owner" (full edit), "participant" (update items & self-assign), "viewer" (read-only).
+
+### 4.3 Items
+- Add item (name, category, quantity, unit, notes, status).
+- Group by category; filter by status; simple text search.
+- Inline editing for quantity, unit, and status fields.
+- Equipment items always use "pcs" as the unit. Food items require a unit.
+- Bulk: change status to "packed" or "purchased" for selected items (optional nice-to-have).
+
+### 4.4 Assignments
+- Assign item to participant; optional partial quantity (e.g., water 10× → Alex 6, Sasha 4).
+- Show responsibility per person.
+
+### 4.5 Weather (optional, non-blocking)
+- Fetch and show a 3–5 day forecast for the plan location.
+
+---
+
+## 5. Non-Functional Requirements
+
+- **MVP Platform:** Web app (desktop, tablet, mobile responsive).
+- **FE Stack:** React 19 + Vite + Tailwind CSS v4; TanStack React Query; TanStack Router (file-based).
+- **BE Stack:** Node.js 20+ + Fastify 5 (TypeScript, ESM), PostgreSQL (Drizzle ORM).
+- **API Contract:** OpenAPI 3.1 auto-generated from Fastify Zod schemas. Backend owns the spec.
+- **Deployment:**
+  - FE: Cloudflare Pages via GitHub Actions.
+  - BE: Railway (staging + production environments).
+- **Quality:** ESLint + Prettier, TypeScript strict, Husky pre-commit hooks, Vitest + Playwright.
+- **Security (MVP):** CORS restriction + API key header. No user auth yet.
+
+---
+
+## 6. API (REST) — Endpoints
+
+> Full contract: [api/openapi.json](../api/openapi.json)
+
+Base URL: `/` (versioning can be added later: `/v1`)
+
+### Health
+- `GET /health` → `{ status: "healthy", database: "connected" }`
+
+### Plans
+- `GET /plans` → `Plan[]`
+- `POST /plans` → `201 Plan`
+- `GET /plans/:planId` → `PlanWithItems` (plan + items array)
+- `DELETE /plans/:planId` → `{ ok: true }`
+
+### Participants
+- `GET /plans/:planId/participants` → `Participant[]`
+- `POST /plans/:planId/participants` → `201 Participant`
+- `GET /participants/:participantId` → `Participant`
+- `PATCH /participants/:participantId` → `Participant`
+- `DELETE /participants/:participantId` → `{ ok: true }`
+
+### Items
+- `GET /plans/:planId/items` → `Item[]`
+- `POST /plans/:planId/items` → `201 Item`
+- `PATCH /items/:itemId` → `Item`
+- `DELETE /items/:itemId` → `{ ok: true }`
+
+**Status codes:** `200` OK, `201` Created, `400` Invalid, `404` Not Found, `500` Internal Error, `503` Unavailable.
+
+**Error format:** `{ message: string, code?: string }`
+
+---
+
+## 7. UX Flow (Happy Path)
+
+1. Create Plan → Add Title/Date.
+2. Add Participants (names only) → owner marked automatically.
+3. Add Items (equipment/food) → set quantities.
+4. Assign items to people (optional) → share link.
+5. Participants update statuses as they buy/pack.
+
+---
+
+## 8. Sharing & Access (MVP)
+
+- **Public link** per plan (not yet implemented).
+- Optional: name-only session (store name in cookie; show who updated what).
+- No hard auth in MVP; later versions add login and granular permissions.
+
+---
+
+## 9. Deployment
+
+- **FE:** Cloudflare Pages. GitHub Actions runs lint → typecheck → unit tests → E2E → build → deploy on push to `main`.
+- **BE:** Railway. GitHub Actions runs lint → typecheck → tests → build. Auto-deploy: `staging` branch → staging service, `main` → production service.
+- **Database:** Railway-managed PostgreSQL. Drizzle migrations via `npm run db:migrate`.
+
+---
+
+## 10. Security (Current)
+
+- **CORS:** Backend restricts origins to `FRONTEND_URL` in production.
+- **API Key:** `x-api-key` header required on all routes except `/health`. Visible in DevTools — protects against bots, not determined attackers.
+- **Future:** Supabase Auth or custom JWT when real user data is involved.
+
+---
+
+## 11. Roadmap (Post-MVP)
+
+1. **Share link** — public/unlisted plan access via URL.
+2. **Assignments** — item → participant with partial quantities.
+3. **Personalized views** — filter per participant.
+4. **Meals → auto food list** (portions per person; day-by-day plan).
+5. **Weather integration** with alerts (wind, rain).
+6. **Swipe UI** on mobile for quick status change.
+7. **Save participant presets** (what each person usually brings).
+8. **Proper auth** (Supabase or custom JWT).
+9. **WhatsApp/Telegram integration** for updates and quick check-offs via bot.
+
+---
+
+## 12. Definition of Done (MVP)
+
+- [x] Plans CRUD working end-to-end.
+- [x] Participants CRUD working end-to-end.
+- [x] Items CRUD working end-to-end (with inline editing).
+- [x] Deployed FE (Cloudflare Pages) + BE (Railway).
+- [x] OpenAPI spec generated and shared between repos.
+- [x] CI/CD pipelines for both repos.
+- [ ] Share link — public plan access.
+- [ ] Assignments — item → participant.
+- [ ] At least 1 real trip tested by team with 3+ participants.
