@@ -68,6 +68,64 @@ Before committing any change that touches routes, request/response schemas, or D
 3. **If non-breaking** (additive fields, new optional params, new endpoints) — No action needed, proceed normally
 4. **Always** run `npm run openapi:generate` after API changes and commit updated `docs/openapi.json`
 
+## Error Logging
+
+Use Fastify's built-in Pino logger (`request.log` or `fastify.log`). Every log statement must include relevant contextual data for debugging.
+
+1. Always pass the error object as `err` (Pino serializes stack trace + message)
+2. Include all relevant entity IDs for correlation (planId, itemId, etc.)
+3. Write a human-readable message as the second argument describing what failed
+4. Info logs for successful operations must include result metadata (count, ID)
+
+```typescript
+// BAD - no context, impossible to debug
+request.log.error('Something went wrong')
+request.log.error({ err: error }, 'Error')
+
+// GOOD - full context: error object, entity IDs, readable message
+request.log.error({ err: error, planId }, 'Failed to retrieve plan items')
+request.log.error({ err: error, planId, itemId }, 'Failed to update item status')
+
+// BAD - missing result metadata
+request.log.info('Items retrieved')
+
+// GOOD - includes entity ID and result count
+request.log.info({ planId, count: items.length }, 'Plan items retrieved')
+request.log.info({ itemId, planId }, 'Item created')
+```
+
+## Testing Conventions
+
+### Combine Similar Tests
+
+Use `it.each` to combine tests that follow the same pattern. Every case must still be covered.
+
+```typescript
+// BAD: repetitive tests with identical structure
+it('returns 400 when name is missing', async () => { ... })
+it('returns 400 when category is missing', async () => { ... })
+
+// GOOD: combined with it.each, all cases still covered
+it.each([
+  ['name', { category: 'equipment', quantity: 1, status: 'pending' }],
+  ['category', { name: 'Tent', quantity: 1, status: 'pending' }],
+])('returns 400 when %s is missing', async (_field, payload) => {
+  const response = await app.inject({ method: 'POST', url, payload })
+  expect(response.statusCode).toBe(400)
+})
+```
+
+### Avoid Redundant Tests
+
+Do not write a separate test if its assertions are already fully covered by another test. For example, a "returns correct structure" test is redundant if the main happy-path test already asserts every property.
+
+### When NOT to Combine
+
+Keep tests separate when:
+- They have meaningfully different setup or mock configurations
+- Combining would make the test name unclear or the failure message unhelpful
+- The logic being tested is fundamentally different (e.g., happy path vs error path)
+
 ## Finalization
 
 1. Run validation: `npm run typecheck && npm run lint && npm run test:run`
