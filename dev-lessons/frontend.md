@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Types] tsc --noEmit Can Miss Errors the IDE Catches (TanStack Router)
+**Date:** 2026-02-15
+**Problem:** `npm run typecheck` passed with exit 0, but the IDE flagged 3 type errors in `plan.$planId.lazy.tsx` — a `Promise<void>` mismatch and `useNavigate` search callback inference failures.
+**Solution:** Fixed by typing `useNavigate({ from: '/plan/$planId' })`, using direct search objects instead of callbacks, and wrapping `mutateAsync` to return `void`.
+**Prevention:** After editing route files, always check IDE linter diagnostics (`ReadLints`) in addition to running `tsc`. TanStack Router's type inference depends on the generated route tree, which the dev server keeps fresh but `tsc` may run against a stale version.
+
+---
+
 ## 2026-02-12: OpenAPI Spec Drift — Frontend Edited the Contract Directly
 
 **Problem**: Backend query failed with `column plans_items.assigned_participant_id does not exist`. The backend Drizzle ORM schema referenced a column that was never added to the database.
