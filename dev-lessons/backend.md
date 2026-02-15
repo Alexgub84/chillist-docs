@@ -6,6 +6,16 @@ A log of bugs fixed and problems solved in `chillist-be`.
 
 <!-- Add new entries at the top -->
 
+## 2026-02-12: Always Create Feature Branch Before Making Changes
+
+**Problem:** Started implementing code changes directly on the current branch without first creating a feature branch from main, violating the git workflow defined in `chillist-docs/rules/common.md`.
+
+**Solution:** Must follow the git workflow: stash changes, checkout main, pull latest, create feature branch, pop stash, then commit.
+
+**Prevention:** Before any code changes, always check git status and create a feature branch. Read `chillist-docs/rules/common.md` at the start of every session.
+
+---
+
 ## 2026-02-11: API Key onRequest Hook Must Skip OPTIONS Preflight
 
 **Problem:** The `onRequest` API key check ran on OPTIONS preflight requests. Browsers cannot send custom headers on preflight, so OPTIONS always got 401 — causing `@fastify/cors` and the hook to both call `reply.send()`, which Fastify 5 rejects as `FST_ERR_REP_ALREADY_SENT`.
