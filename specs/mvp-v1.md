@@ -138,6 +138,7 @@ Base URL: `/` (versioning can be added later: `/v1`)
 - `GET /plans` → `Plan[]`
 - `POST /plans` → `201 Plan`
 - `GET /plans/:planId` → `PlanWithItems` (plan + items array)
+- `PATCH /plans/:planId` → `Plan` (updated plan)
 - `DELETE /plans/:planId` → `{ ok: true }`
 
 ### Participants
