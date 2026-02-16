@@ -6,7 +6,7 @@
 
 ## Implementation Status
 
-> Last updated: 2026-02-12
+> Last updated: 2026-02-15
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -16,10 +16,10 @@
 | Item status flow | Done | pending → purchased → packed → canceled |
 | Status filtering | Done | Filter items by status on plan screen |
 | Category grouping | Done | Items grouped by equipment/food |
-| Share link | Not started | Public link per plan |
+| Share link | Done | Invite token per participant, public `GET /plans/:planId/invite/:inviteToken` endpoint |
 | Assignments | Partial | DB table exists (`item_assignments`), API routes not implemented |
 | Weather | Not started | Optional forecast for plan location |
-| Auth | Not started | MVP uses CORS + API key; no user login |
+| Auth | In progress | Phase 1 (invite tokens) done. Phase 2 (Supabase JWT) next. |
 
 ### Stack (Actual vs Planned)
 

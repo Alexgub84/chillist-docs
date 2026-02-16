@@ -6,6 +6,15 @@ A log of bugs fixed and problems solved in `chillist-be`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Write Tests Alongside New Routes, Not After
+
+**Date:** 2026-02-15
+**Problem:** New invite routes were implemented and validated (typecheck + lint + existing tests pass) without writing any new tests. "All tests pass" only proved nothing was broken — not that the new endpoints work.
+**Solution:** Added 15 integration tests for invite endpoints. Added a Testing section to backend rules requiring tests before finalization.
+**Prevention:** Every new route or behavior change gets a matching test file written as part of implementation, not as a separate step. The finalization checklist now starts with "write tests" before "run tests."
+
+---
+
 ## 2026-02-12: Always Create Feature Branch Before Making Changes
 
 **Problem:** Started implementing code changes directly on the current branch without first creating a feature branch from main, violating the git workflow defined in `chillist-docs/rules/common.md`.

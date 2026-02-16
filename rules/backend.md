@@ -94,7 +94,14 @@ request.log.info({ planId, count: items.length }, 'Plan items retrieved')
 request.log.info({ itemId, planId }, 'Item created')
 ```
 
-## Testing Conventions
+## Testing
+
+- Every new route file must have a matching integration test file in `tests/integration/`
+- Every new endpoint or behavior change must have test coverage **before** finalization
+- Follow existing patterns: use `buildApp({ db })` with testcontainer, `seedTest*` helpers, `app.inject()` for requests
+- Tests to write for new routes: happy path, validation errors (400), not found (404), cross-resource isolation, and any security/filtering behavior
+- "All existing tests pass" is not sufficient — new code requires new tests
+- Update `tests/helpers/db.ts` seed helpers when schema columns are added
 
 ### Combine Similar Tests
 
@@ -128,9 +135,10 @@ Keep tests separate when:
 
 ## Finalization
 
-1. Run validation: `npm run typecheck && npm run lint && npm run test:run`
-2. Fix any failures automatically
-3. If API routes or schemas changed, run `npm run openapi:generate` and commit updated `docs/openapi.json`
-4. Run the API Breaking Change Check above
-5. Ask for user confirmation
-6. Follow the common [Git Workflow](common.md#git-workflow) (commit, push, PR)
+1. Write tests for any new or changed functionality (see Testing section above)
+2. Run validation: `npm run typecheck && npm run lint && npm run test:run`
+3. Fix any failures automatically
+4. If API routes or schemas changed, run `npm run openapi:generate` and commit updated `docs/openapi.json`
+5. Run the API Breaking Change Check above
+6. Ask for user confirmation
+7. Follow the common [Git Workflow](common.md#git-workflow) (commit, push, PR)
