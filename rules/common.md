@@ -77,6 +77,14 @@ When committing, follow this sequence:
 8. Create a PR immediately after push using `gh pr create`
    - Include `Closes #XX` in the PR body if there is a related issue
 
+## Version Bumps
+
+- Bump the `version` in `package.json` on every commit using [semver](https://semver.org):
+  - `patch` (1.0.X) — bug fixes, small changes, refactors
+  - `minor` (1.X.0) — new features, new UI behaviors
+  - `major` (X.0.0) — breaking changes
+- Include the version bump in the same commit as the code change, not as a separate commit
+
 ## Commit Messages
 
 Follow [Conventional Commits](https://www.conventionalcommits.org/):
