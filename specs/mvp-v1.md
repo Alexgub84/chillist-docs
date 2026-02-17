@@ -6,7 +6,7 @@
 
 ## Implementation Status
 
-> Last updated: 2026-02-15
+> Last updated: 2026-02-17
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -16,10 +16,11 @@
 | Item status flow | Done | pending → purchased → packed → canceled |
 | Status filtering | Done | Filter items by status on plan screen |
 | Category grouping | Done | Items grouped by equipment/food |
+| SEO & sharing metadata | Done | OG tags, Twitter Card, favicon, web manifest, logo in header |
 | Share link | Done | Invite token per participant, public `GET /plans/:planId/invite/:inviteToken` endpoint |
 | Assignments | Partial | DB table exists (`item_assignments`), API routes not implemented |
 | Weather | Not started | Optional forecast for plan location |
-| Auth | In progress | Phase 1 (invite tokens) done. Phase 2 (Supabase JWT) next. |
+| Auth | In progress | Phase 1 (invite tokens) done. Phase 2 (Supabase JWT verification on BE) done. FE sign-up/sign-in next. |
 
 ### Stack (Actual vs Planned)
 
@@ -68,6 +69,10 @@
 - **ItemAssignment** (DB table exists, API routes not yet implemented)
   - `assignmentId`, `planId`, `itemId`, `participantId`, optional: `quantityAssigned`, `notes`, `isConfirmed`
   - Timestamps: `createdAt`, `updatedAt`
+- **User** (managed by Supabase Auth, not stored in our DB)
+  - `id` (UUID, from Supabase `auth.users`), `email`, `role` ("authenticated"), `user_metadata` (display name, avatar from Google OAuth)
+  - Identity lives in Supabase. BE verifies JWTs via JWKS. FE reads user profile from Supabase session.
+  - No `users`/`profiles` table in our DB yet. Will add when needed (Step 3: Permissions) to link users to plans/participants.
 - **Weather** (not yet implemented)
   - `WeatherBundle` (current + daily forecast) fetched for plan.location; non-blocking.
 
@@ -100,6 +105,7 @@
 - Group by category; filter by status; simple text search.
 - Inline editing for quantity, unit, and status fields.
 - Equipment items always use "pcs" as the unit. Food items require a unit.
+- Checklist mode: in Buying List / Packing List filtered views, items show a checkbox instead of the status dropdown. Checking an item triggers strikethrough + fade animation then advances the status (pending → purchased, purchased → packed). Details are read-only in this mode.
 - Bulk: change status to "packed" or "purchased" for selected items (optional nice-to-have).
 
 ### 4.4 Assignments
@@ -121,7 +127,7 @@
   - FE: Cloudflare Pages via GitHub Actions.
   - BE: Railway (staging + production environments).
 - **Quality:** ESLint + Prettier, TypeScript strict, Husky pre-commit hooks, Vitest + Playwright.
-- **Security (MVP):** CORS restriction + API key header. No user auth yet.
+- **Security:** CORS restriction + API key (legacy) + Supabase JWT verification via JWKS. See [Backend Guide — Security](../guides/backend.md#security).
 
 ---
 
@@ -154,7 +160,10 @@ Base URL: `/` (versioning can be added later: `/v1`)
 - `PATCH /items/:itemId` → `Item`
 - `DELETE /items/:itemId` → `{ ok: true }`
 
-**Status codes:** `200` OK, `201` Created, `400` Invalid, `404` Not Found, `500` Internal Error, `503` Unavailable.
+### Auth
+- `GET /auth/me` → `{ user: { id, email, role } }` (JWT required — returns 401 without valid token)
+
+**Status codes:** `200` OK, `201` Created, `400` Invalid, `401` Unauthorized, `404` Not Found, `500` Internal Error, `503` Unavailable.
 
 **Error format:** `{ message: string, code?: string }`
 
@@ -170,11 +179,12 @@ Base URL: `/` (versioning can be added later: `/v1`)
 
 ---
 
-## 8. Sharing & Access (MVP)
+## 8. Sharing & Access
 
-- **Public link** per plan (not yet implemented).
-- Optional: name-only session (store name in cookie; show who updated what).
-- No hard auth in MVP; later versions add login and granular permissions.
+- **Share links** (done): Each participant has a unique `inviteToken`. Public `GET /plans/:planId/invite/:inviteToken` returns plan data with PII stripped.
+- **Supabase JWT auth** (in progress): FE signs up/in via Supabase directly. BE verifies JWTs via JWKS. `GET /auth/me` proves the auth chain works.
+- **Plans remain public** for now. No route-level permission enforcement until Step 3 (Permissions + Privacy).
+- **Future:** Route-level permissions, plan ownership linked to Supabase user, visibility enforcement (public/unlisted/private).
 
 ---
 
@@ -183,21 +193,23 @@ Base URL: `/` (versioning can be added later: `/v1`)
 - **FE:** Cloudflare Pages via GitHub Actions. See [Frontend Guide](../guides/frontend.md#cicd-github-actions--cloudflare-pages).
 - **BE:** Railway via GitHub Actions. See [Backend Guide](../guides/backend.md#deployment-railway).
 - **Database:** Railway-managed PostgreSQL with Drizzle migrations.
-- **Security (MVP):** CORS + API key header. No user auth. See [Backend Guide — Security](../guides/backend.md#security).
+- **Security:** CORS + API key (legacy fallback) + Supabase JWT verification via JWKS (asymmetric keys, no secrets stored). See [Backend Guide — Security](../guides/backend.md#security).
 
 ---
 
 ## 10. Roadmap (Post-MVP)
 
-1. **Share link** — public/unlisted plan access via URL.
-2. **Assignments** — item → participant with partial quantities.
-3. **Personalized views** — filter per participant.
-4. **Meals → auto food list** (portions per person; day-by-day plan).
-5. **Weather integration** with alerts (wind, rain).
-6. **Swipe UI** on mobile for quick status change.
-7. **Save participant presets** (what each person usually brings).
-8. **Proper auth** (Supabase or custom JWT).
-9. **WhatsApp/Telegram integration** for updates and quick check-offs via bot.
+1. ~~**Share link**~~ — Done (invite tokens).
+2. ~~**Proper auth**~~ — In progress (Supabase JWT on BE done, FE sign-up/sign-in next).
+3. **User profiles table** — link Supabase users to plans/participants in our DB.
+4. **Route-level permissions** — enforce who can view/edit which plans based on JWT identity.
+5. **Assignments** — item → participant with partial quantities.
+6. **Personalized views** — filter per participant.
+7. **Meals → auto food list** (portions per person; day-by-day plan).
+8. **Weather integration** with alerts (wind, rain).
+9. **Swipe UI** on mobile for quick status change.
+10. **Save participant presets** (what each person usually brings).
+11. **WhatsApp/Telegram integration** for updates and quick check-offs via bot.
 
 ---
 

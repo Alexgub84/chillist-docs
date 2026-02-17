@@ -28,10 +28,21 @@ No additional setup needed — start implementing.
 - Whenever adding a route with a non-simple HTTP method (PATCH, DELETE, PUT), verify the CORS config allows it
 - Don't include environment-specific URLs in the OpenAPI spec — let clients configure their own base URL
 
-## API Key Middleware
+## Auth Middleware
 
-- Any `onRequest` middleware that checks headers (auth, API key) must explicitly skip `OPTIONS` preflight requests
-- Browsers cannot send custom headers on preflight, so OPTIONS must be exempt
+- JWT verification via JWKS (Supabase asymmetric keys, `jose` library). No secrets stored on the BE.
+- `request.user` is populated on every request when a valid `Authorization: Bearer <jwt>` header is present. Contains `{ id, email, role }`.
+- Route-level auth: only routes that explicitly check `request.user` are protected (currently only `GET /auth/me`). All other routes remain public until Step 3.
+- API key still works as fallback for non-auth routes. Skips OPTIONS, `/health`, invite routes, and `/auth/*` routes.
+- Any `onRequest` middleware that checks headers (auth, API key) must explicitly skip `OPTIONS` preflight requests — browsers cannot send custom headers on preflight.
+
+## Auth Architecture
+
+- FE calls Supabase directly for sign-up/sign-in — the BE does NOT proxy auth requests or have a Supabase client.
+- BE only verifies JWTs via the Supabase JWKS endpoint (`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`).
+- `GET /auth/me` is the proof-of-auth endpoint: requires JWT, returns user identity.
+- Plans routes remain public until Step 3 (Permissions + Privacy).
+- Auth plugin supports DI for testing: inject a fake JWKS via `BuildAppOptions.auth` to avoid real Supabase calls in integration tests.
 
 ## OpenAPI Spec
 

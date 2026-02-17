@@ -6,6 +6,22 @@ A log of bugs fixed and problems solved in `chillist-be`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Use JWKS (Asymmetric Keys) for Supabase JWT Verification
+**Date:** 2026-02-17
+**Problem:** Legacy Supabase JWT secret (HS256 shared secret) requires storing a secret on the BE. Supabase strongly discourages this — secrets can leak, are hard to rotate, and require coordination to revoke.
+**Solution:** Use Supabase's JWKS endpoint (`/auth/v1/.well-known/jwks.json`) with asymmetric keys (ES256). The `jose` library's `createRemoteJWKSet()` fetches and caches public keys automatically. No secrets stored on the BE.
+**Prevention:** Always use `createRemoteJWKSet()` for Supabase JWT verification. Never store JWT secrets in env vars. If the Supabase dashboard shows JWK format keys (not a plain string), you're on the new asymmetric system — use JWKS.
+
+---
+
+### [Arch] FE Calls Supabase Directly for Auth (Not Proxied Through BE)
+**Date:** 2026-02-17
+**Problem:** Considered building `POST /auth/signup` and `POST /auth/signin` endpoints on the BE to proxy auth through the backend.
+**Solution:** FE calls Supabase directly for sign-up/sign-in. The BE only verifies JWTs. This is simpler, supports Google OAuth (browser redirects), and lets the Supabase client handle token refresh and email confirmation automatically.
+**Prevention:** Do not add Supabase client (`@supabase/supabase-js`) to the BE. The BE only needs `jose` for JWT verification via JWKS.
+
+---
+
 ### [Arch] Write Tests Alongside New Routes, Not After
 
 **Date:** 2026-02-15

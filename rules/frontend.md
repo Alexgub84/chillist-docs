@@ -82,6 +82,15 @@ For every path in `openapi.json`, verify the mock server (`api/server.ts`):
   - Test final outcomes: wait for content or errors to appear, not spinners
   - Use specific URL patterns in `page.route()` (e.g. `**/localhost:3333/plans`) — broad patterns can intercept page navigation
 
+## Auth and User Data
+
+- The Supabase client (`@supabase/supabase-js`) is the source of truth for auth state. Do NOT duplicate session data in separate state stores.
+- Use `supabase.auth.onAuthStateChange()` to react to session changes (login, logout, token refresh). Update app-level auth context from this listener.
+- Always read the access token from `supabase.auth.getSession()` right before making BE API calls. Do NOT cache tokens in variables or state — they expire and auto-refresh.
+- Pre-fill owner info from `session.user` (email, `user_metadata.full_name`) when creating plans via `POST /plans/with-owner`.
+- Do NOT make authorization decisions client-side. The BE enforces access via JWT verification. Client-side checks are for UX only (e.g., hiding an "Edit" button), not security.
+- Never log access tokens or refresh tokens to the browser console in production.
+
 ## Finalization
 
 1. Run validation: `npm run typecheck && npm run lint && npm run test:unit`

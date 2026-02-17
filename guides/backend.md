@@ -43,6 +43,7 @@ Key variables:
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:postgres@localhost:5432/chillist` |
 | `FRONTEND_URL` | Allowed CORS origin | `http://localhost:5173` |
 | `API_KEY` | API key for request auth | (empty for dev) |
+| `SUPABASE_URL` | Supabase project URL for JWKS-based JWT verification | (optional in dev) |
 
 ### Database setup
 
@@ -146,6 +147,7 @@ LOG_LEVEL=info
 DATABASE_URL=<railway-postgres-url>
 FRONTEND_URL=<your-frontend-url>
 API_KEY=<generated-key>
+SUPABASE_URL=<your-supabase-project-url>
 ```
 
 ### CI/CD (GitHub Actions)
@@ -196,28 +198,28 @@ npm run test:run
 
 ## Security
 
-### Current (MVP)
+### CORS
 
-- **CORS:** `@fastify/cors` restricts origins to `FRONTEND_URL` in production. Explicitly allows GET, HEAD, POST, PATCH, DELETE, OPTIONS.
-- **API Key:** `onRequest` hook checks `x-api-key` header on all routes except `/health` and `OPTIONS` preflight.
-- **Limitations:** API key visible in browser DevTools. Protects against bots, not determined attackers. No user-level permissions.
+`@fastify/cors` restricts origins to `FRONTEND_URL` in production. Explicitly allows GET, HEAD, POST, PATCH, DELETE, OPTIONS.
 
-### Future: Proper Authentication
+### API Key (legacy fallback)
 
-**Option A: Supabase Auth (Recommended)**
-- Supabase handles user signup/login
-- Backend verifies Supabase JWT tokens
-- Row-level security in database
+`onRequest` hook checks `x-api-key` header on non-auth routes. Skips OPTIONS preflight, `/health`, invite routes, and `/auth/*` routes. Will be removed after FE fully migrates to JWT.
 
-**Option B: Custom JWT Auth**
-- Implement signup/login endpoints
-- Issue and verify JWT tokens
-- Add user ownership to plans
+### Supabase JWT Auth (current)
 
-**Upgrade when:**
-- Storing personal user data
-- Handling payments
-- Public launch with real users
+- **Architecture:** FE signs up/in directly with Supabase. BE only verifies JWTs — no Supabase client on the BE.
+- **JWKS verification:** `jose` library fetches public keys from `${SUPABASE_URL}/auth/v1/.well-known/jwks.json` (asymmetric ES256 keys). No secrets stored on the BE.
+- **`request.user`:** Decorated on every request when a valid `Authorization: Bearer <jwt>` header is present. Contains `{ id, email, role }` from JWT claims.
+- **Protected routes:** Only `GET /auth/me` requires a valid JWT (returns 401 without one). All other routes (plans, items, participants, invite) remain public.
+- **Auth plugin DI:** Tests inject a fake JWKS via `BuildAppOptions.auth` — no real Supabase calls in integration tests.
+
+### What's next (Step 3: Permissions)
+
+- Add `profiles` table linked to Supabase user IDs
+- Enforce plan ownership via JWT `request.user.id`
+- Route-level permission checks (owner vs participant vs viewer)
+- Visibility enforcement (public/unlisted/private plans)
 
 ## Cost Estimate
 

@@ -45,6 +45,8 @@ Key variables:
 | `MOCK_SERVER_PORT` | Port for dev mock server | `3333` |
 | `VITE_API_URL` | API base URL for the frontend | `http://localhost:3333` |
 | `VITE_API_KEY` | API key for production auth | (empty for dev) |
+| `VITE_SUPABASE_URL` | Supabase project URL | (required for auth) |
+| `VITE_SUPABASE_ANON_KEY` | Supabase publishable key (safe for browser) | (required for auth) |
 
 ## Running Locally
 
@@ -114,6 +116,88 @@ npm run api:types         # generate types only (when spec is already local)
 ```
 
 Regenerate types whenever the backend API changes.
+
+## Supabase Auth
+
+The FE handles sign-up/sign-in directly with Supabase — the BE only verifies JWTs.
+
+### Setup
+
+Install `@supabase/supabase-js` and create a client instance (e.g., `src/lib/supabase.ts`):
+
+```typescript
+import { createClient } from '@supabase/supabase-js'
+
+export const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+)
+```
+
+### Sign-up / Sign-in
+
+- Email + password: `supabase.auth.signUp({ email, password })` / `supabase.auth.signInWithPassword({ email, password })`
+- Google OAuth: `supabase.auth.signInWithOAuth({ provider: 'google' })`
+- Sign out: `supabase.auth.signOut()`
+
+### Session management
+
+- Get current session: `supabase.auth.getSession()`
+- Listen for changes: `supabase.auth.onAuthStateChange((event, session) => { ... })`
+- Token refresh is handled automatically by the Supabase client
+
+### Sending JWT to the backend
+
+After sign-in, send the access token on all BE API calls:
+
+```typescript
+const { data: { session } } = await supabase.auth.getSession()
+
+fetch(`${API_URL}/auth/me`, {
+  headers: {
+    'Authorization': `Bearer ${session?.access_token}`,
+  },
+})
+```
+
+### Verification endpoint
+
+`GET /auth/me` on the BE requires a valid JWT and returns `{ user: { id, email, role } }`. Use this to verify the auth chain works end-to-end after sign-in.
+
+## User Profile Data (FE Storage)
+
+### What the Supabase session provides
+
+After sign-in, the Supabase client provides a `session` object with user profile data. These fields are safe to use in the FE:
+
+| Field | Description | Safe to display? |
+|-------|-------------|-----------------|
+| `session.user.id` | Supabase user UUID | Yes |
+| `session.user.email` | User's email address | Yes |
+| `session.user.user_metadata.full_name` | Display name (from Google or custom) | Yes |
+| `session.user.user_metadata.avatar_url` | Profile photo URL (from Google) | Yes |
+| `session.access_token` | JWT for BE API calls | Never display; managed by Supabase client |
+
+### Storage rules
+
+- **User ID, email, display name, avatar URL** — safe for React state/context and UI display.
+- **Access token** — managed automatically by the Supabase client (stored in localStorage by default). Do NOT store, copy, or log it manually.
+- **Refresh token** — handled internally by the Supabase client. NEVER expose, store separately, or send to the BE.
+- **Service role key** — NEVER exists in the FE. Only the anon/publishable key is used.
+
+### Security rules
+
+- NEVER trust client-side user data for authorization decisions. The BE enforces access via JWT verification.
+- NEVER log tokens to the console in production.
+- The `VITE_SUPABASE_ANON_KEY` is public by design (Supabase calls it "publishable"). It is safe to expose in the browser.
+
+### How this connects to plan creation
+
+- When creating a plan, the FE reads `session.user` for the owner's identity.
+- Pre-fill owner name from `user_metadata.full_name` and email from `session.user.email` when calling `POST /plans/with-owner`.
+- The JWT is sent via `Authorization: Bearer` header on the API call.
+- Later (Step 3: Permissions), the BE will extract `request.user.id` from the JWT to link the plan to the authenticated user in the database.
+- Until Step 3, the owner participant is still created from the request body payload (no enforced link to the Supabase user yet).
 
 ## Toast Notifications
 
@@ -200,3 +284,5 @@ On push to `main` or PR against `main`:
 | `VITE_API_KEY` | Secret | Production API key |
 | `VITE_API_URL` | Variable | Production backend URL |
 | `CLOUDFLARE_PROJECT_NAME` | Variable | Cloudflare Pages project name |
+| `VITE_SUPABASE_URL` | Variable | Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | Variable | Supabase publishable/anon key |
