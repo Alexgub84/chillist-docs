@@ -46,6 +46,23 @@ Shared workflow rules for both frontend and backend repos.
 - Allowed to update `.env` file when adding/modifying environment variables
 - Always update `.env.example` when adding new env vars (without actual values)
 
+## Environment Variables
+
+`.env.example` is the single source of truth for env vars. It must only contain **active, uncommented** vars — never commented-out legacy entries.
+
+**Before pushing**, when an env var was added or removed, verify all 6 locations are in sync:
+
+1. **`.env.example`** — var present with descriptive comment (no actual secrets)
+2. **`.env`** — actual value set locally
+3. **GitHub repo settings** — added as a variable (public values) or secret (sensitive values)
+4. **Workflow files** (`.github/workflows/*.yml`) — referenced with correct source (`vars.*` for variables, `secrets.*` for secrets)
+5. **Deploy validation step** — included **only if the app fails without it** (throws an error, not falls back to a default)
+6. **Guides doc** — GitHub secrets/vars table updated
+
+When removing an env var: reverse all 6 steps.
+
+**Do NOT** add env vars to deploy validation if the code falls back to a default (e.g., `import.meta.env.X || ''`). Only validate vars the app **requires** to start.
+
 ## Security (OWASP Top 10)
 
 - **NEVER** output API keys, passwords, or tokens. Warn immediately if hardcoded secrets are found

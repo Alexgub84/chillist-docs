@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Infra] Deploy validation included legacy VITE_API_KEY — no env var source of truth
+**Date:** 2026-02-18
+**Problem:** Deploy validation step failed with `Missing required environment variables: VITE_API_KEY VITE_SUPABASE_ANON_KEY`. `VITE_API_KEY` was copied from the old build step into validation without checking if it was required or even existed in GitHub secrets. The code falls back to `''` — it's optional. `VITE_SUPABASE_ANON_KEY` hadn't been added as a GitHub repo variable yet. A commented-out entry in `.env.example` (`# VITE_API_KEY=...`) created the false signal that the var was needed.
+**Solution:** Removed `VITE_API_KEY` from validation and build steps. Removed commented-out entry from `.env.example`. Added env var checklist to common rules: before pushing, verify all 6 locations are in sync (`.env.example`, `.env`, GitHub settings, workflow files, validation step, guides doc).
+**Prevention:** `.env.example` only contains active uncommented vars — no legacy entries. Deploy validation only checks vars the app requires (throws without). Follow the 6-point env var checklist in common rules before every push that touches env vars.
+
+---
+
 ### [Infra] Deploy job must validate all required env vars before building
 **Date:** 2026-02-18
 **Problem:** The deploy job in `deploy.yml` would silently produce a broken build if any GitHub secret/variable was missing (e.g., `VITE_SUPABASE_URL` not set). The build would succeed but the deployed app would crash at runtime.
