@@ -73,6 +73,7 @@ For every path in `openapi.json`, verify the mock server (`api/server.ts`):
 
 - All tests live under `tests/` with sub-folders: `tests/unit/`, `tests/integration/`, `tests/e2e/`
 - Test assertions must verify value **format correctness** (e.g. ISO 8601 dates end with `Z`), not just structural presence
+- **Cross-boundary rule:** When a feature flow involves more than one component/layer (e.g. auth form → context → API → server → UI), unit tests alone are NOT sufficient. You MUST also add an integration or E2E test that verifies the full flow end-to-end. Unit tests prove each piece works alone; integration tests prove they work together. Never use independent hardcoded values across unit tests for data that should be consistent (e.g. the same email appearing in the Header and the toast).
 - **E2E (Playwright):**
   - Use `page.route()` for all API mocking — no external mock server dependency
   - Use the shared fixtures in `tests/e2e/fixtures.ts` (`buildPlan`, `mockPlanRoutes`, etc.) to set up mock data

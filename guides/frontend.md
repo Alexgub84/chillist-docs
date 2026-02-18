@@ -140,6 +140,18 @@ export const supabase = createClient(
 - Google OAuth: `supabase.auth.signInWithOAuth({ provider: 'google' })`
 - Sign out: `supabase.auth.signOut()`
 
+### Profile completion (post sign-up)
+
+After sign-up (both email and Google OAuth), the user is redirected to `/complete-profile` where they can optionally add first name, last name, and phone. Data is saved to Supabase `user_metadata` via:
+
+```typescript
+await supabase.auth.updateUser({
+  data: { first_name: '...', last_name: '...', phone: '...' }
+})
+```
+
+`updateUser` merges into existing metadata (preserves Google's `full_name`, `avatar_url`). For Google users, the form pre-fills first/last name from `full_name`. The page is skippable — users can go straight to `/plans`.
+
 ### Session management
 
 - Get current session: `supabase.auth.getSession()`
@@ -264,14 +276,25 @@ npm run test:run
 
 ## CI/CD (GitHub Actions → Cloudflare Pages)
 
-On push to `main` or PR against `main`:
+Two separate workflow files:
+
+### `ci.yml` — runs on PRs against `main`
 
 1. Install dependencies
 2. Fetch OpenAPI spec from backend
 3. Lint
 4. Type check
 5. Unit tests
-6. Install Playwright + run E2E tests (against mock server)
+6. Install Chromium + run E2E tests (Chrome only, 2 workers)
+
+### `deploy.yml` — runs on push to `main`
+
+1. Install dependencies
+2. Fetch OpenAPI spec from backend
+3. Lint
+4. Type check
+5. Unit tests
+6. Install all browsers + run E2E tests (Chrome, Firefox, Mobile Safari, 2 workers)
 7. Build (with production `VITE_API_URL` and `VITE_API_KEY`)
 8. Deploy to Cloudflare Pages
 

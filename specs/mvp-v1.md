@@ -20,7 +20,7 @@
 | Share link | Done | Invite token per participant, public `GET /plans/:planId/invite/:inviteToken` endpoint |
 | Assignments | Partial | DB table exists (`item_assignments`), API routes not implemented |
 | Weather | Not started | Optional forecast for plan location |
-| Auth | In progress | Phase 1 (invite tokens) done. Phase 2 (Supabase JWT verification on BE) done. FE sign-up/sign-in next. |
+| Auth | In progress | Phase 1 (invite tokens) done. Phase 2 (BE JWT via JWKS) done. Phase 3 (FE sign-up/sign-in/OAuth + JWT injection) done. Google OAuth on sign-in and sign-up. Profile completion page (`/complete-profile`) after sign-up (optional name, last name, phone saved to Supabase `user_metadata`). E2E tests deferred (#67). |
 
 ### Stack (Actual vs Planned)
 
@@ -182,7 +182,7 @@ Base URL: `/` (versioning can be added later: `/v1`)
 ## 8. Sharing & Access
 
 - **Share links** (done): Each participant has a unique `inviteToken`. Public `GET /plans/:planId/invite/:inviteToken` returns plan data with PII stripped.
-- **Supabase JWT auth** (in progress): FE signs up/in via Supabase directly. BE verifies JWTs via JWKS. `GET /auth/me` proves the auth chain works.
+- **Supabase JWT auth** (in progress): FE signs up/in via Supabase directly (email+password or Google OAuth). BE verifies JWTs via JWKS. `GET /auth/me` proves the auth chain works.
 - **Plans remain public** for now. No route-level permission enforcement until Step 3 (Permissions + Privacy).
 - **Future:** Route-level permissions, plan ownership linked to Supabase user, visibility enforcement (public/unlisted/private).
 
