@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Test] Headless UI Combobox option click fails on Mobile Safari in Playwright — "element is not stable"
+**Date:** 2026-02-18
+**Problem:** E2E test `Item CRUD › adds items via UI` failed consistently on Mobile Safari (WebKit) in CI. Playwright reported `TimeoutError: locator.click: element is not stable` when clicking a `ComboboxOption` inside a Headless UI dropdown with `transition` + `anchor="bottom start"` (Floating UI). Chrome and Firefox passed. All 3 retries failed identically.
+**Solution:** Split the click into two steps: first `await expect(option).toBeVisible()` to confirm the option rendered, then `await option.click({ force: true })` to bypass the stability check. The element was found and correct — only the stability detection was broken due to Floating UI anchor repositioning on WebKit.
+**Prevention:** When using Headless UI Combobox/Listbox with `transition` + `anchor` props, use `force: true` on option clicks in Playwright E2E tests after asserting visibility. This is a known Playwright/WebKit issue with floating positioned elements that continuously recalculate position.
+
+---
+
 ### [Infra] Deploy validation included legacy VITE_API_KEY — no env var source of truth
 **Date:** 2026-02-18
 **Problem:** Deploy validation step failed with `Missing required environment variables: VITE_API_KEY VITE_SUPABASE_ANON_KEY`. `VITE_API_KEY` was copied from the old build step into validation without checking if it was required or even existed in GitHub secrets. The code falls back to `''` — it's optional. `VITE_SUPABASE_ANON_KEY` hadn't been added as a GitHub repo variable yet. A commented-out entry in `.env.example` (`# VITE_API_KEY=...`) created the false signal that the var was needed.
