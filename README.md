@@ -15,6 +15,7 @@ Central documentation repository for the Chillist project — a trip/event plann
 ### Specs
 
 - [MVP Specification v1](specs/mvp-v1.md) — full product spec with current implementation status
+- [User & Participant Management](specs/user-management.md) — auth, profiles, access control, PII filtering
 
 ### Rules (Cursor Workflow)
 
