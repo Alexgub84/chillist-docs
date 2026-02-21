@@ -87,6 +87,7 @@ npm run dev
 | `npm run e2e:ui` | Run E2E tests with Playwright UI |
 | `npm run e2e:headed` | Run E2E tests in headed browser mode |
 | `npm run routes` | Regenerate TanStack Router route tree |
+| `npm run screenshots` | Capture home page step screenshots (EN + HE) |
 
 ## Mock Data Toolkit
 
@@ -301,6 +302,34 @@ When Hebrew is active, `<html dir="rtl" lang="he">` is set automatically by the 
 ### Language toggle
 
 A toggle button in the Header switches between languages. It shows "עב" when English is active (meaning "switch to Hebrew") and "EN" when Hebrew is active.
+
+## Home Page Screenshots
+
+The home page (`src/routes/index.lazy.tsx`) includes a "How it works" section with mobile app screenshots. These are captured automatically via Playwright.
+
+### Files
+
+| File | Description |
+|------|-------------|
+| `public/hero.jpg` | Static campfire photo (Unsplash, free license) — not auto-generated |
+| `public/step-1.png` | Create Plan form (EN) |
+| `public/step-2.png` | Items list, All tab (EN) |
+| `public/step-3.png` | Buying List filter (EN) |
+| `public/step-1-he.png` | Create Plan form (HE, RTL) |
+| `public/step-2-he.png` | Items list, All tab (HE, RTL) |
+| `public/step-3-he.png` | Buying List filter (HE, RTL) |
+
+### Regenerating screenshots
+
+Prerequisites: mock server (`npm run mock:server`) and dev server (`npm run dev`) must be running, with at least one plan with items in `api/mock-data.json`.
+
+```bash
+npm run screenshots
+```
+
+The script (`scripts/take-screenshots.ts`) uses an iPhone 13 viewport. The home page component picks the correct image set based on the active language via `useLanguage()`.
+
+Re-run after: UI changes to forms/items, layout/styling changes, translation updates, or mock data changes.
 
 ## Common Items Data (`src/data/common-items.json`)
 
