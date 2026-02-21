@@ -6,11 +6,12 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
-### [Logic] react-hook-form register + setValue desync on select fields
-**Date:** 2026-02-21
-**Problem:** Unit dropdown in ItemForm became unresponsive after autocomplete auto-filled the unit via `setValue('unit', ...)`. The user could not change the unit to a different value. Reproducible on production but not always on local dev.
-**Solution:** Converted the unit `<select>` from `register('unit')` (uncontrolled) to `Controller` (controlled). With Controller, React manages the value via `field.value`, so programmatic changes (`setValue`) and user changes (dropdown selection) both flow through the same controlled path.
-**Prevention:** When a form field is both user-editable AND programmatically set via `setValue`, always use `Controller` instead of `register`. The `register` pattern manages values via DOM refs (uncontrolled), which can desync from react-hook-form's internal state after programmatic updates.
+### [Logic] react-hook-form Controller on native select breaks in production builds
+**Date:** 2026-02-22
+**Problem:** Unit `<select>` in the edit item modal was unclickable on production (Cloudflare Pages) — no reaction on mobile or desktop. Other selects (category, status, assignment) worked fine. The unit field appeared visually smaller than other inputs. Worked normally on local dev server. Affected both English and Hebrew plans.
+**Root cause:** The unit select was the ONLY field using `Controller` (controlled component with explicit `value` prop). All other selects used `register` (uncontrolled). The `Controller` approach renders `<select value={field.value}>` which changes how React manages the element. In production builds (bundled + minified), this caused the select to become non-interactive — likely a React 19 production mode interaction with controlled native selects inside Headless UI Dialog modals.
+**Solution:** Reverted the unit `<select>` from `Controller` back to `register` — matching the pattern of all other working selects in the same form. `register` + `setValue` works correctly for the category field (which also uses autocomplete auto-fill), so it works for unit too. Also removed leftover debug `console.log` statements.
+**Prevention:** For native HTML `<select>` elements in react-hook-form, prefer `register` over `Controller`. Only use `Controller` for custom components (like Headless UI Listbox, Combobox, Autocomplete) that don't expose a standard onChange/ref interface. If a native select needs programmatic updates via `setValue`, `register` handles it correctly — `setValue` updates both the internal state and the DOM element via the ref.
 
 ---
 
