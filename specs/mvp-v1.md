@@ -6,7 +6,7 @@
 
 ## Implementation Status
 
-> Last updated: 2026-02-17
+> Last updated: 2026-02-21
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -21,6 +21,7 @@
 | Assignments | Partial | DB table exists (`item_assignments`), API routes not implemented |
 | Weather | Not started | Optional forecast for plan location |
 | Auth | In progress | Phase 1 (invite tokens) done. Phase 2 (BE JWT via JWKS) done. Phase 3 (FE sign-up/sign-in/OAuth + JWT injection) done. Google OAuth on sign-in and sign-up. Profile completion page (`/complete-profile`) after sign-up (optional name, last name, phone saved to Supabase `user_metadata`). E2E tests deferred (#67). |
+| i18n (Hebrew + English) | Done | i18next + react-i18next. All UI text translated. Language toggle in header. RTL support for Hebrew. Language persisted to localStorage. Unit + E2E tests. |
 
 ### Stack (Actual vs Planned)
 

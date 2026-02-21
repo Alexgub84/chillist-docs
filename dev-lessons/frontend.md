@@ -6,6 +6,38 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] i18n — API enum values must be translated at display time, not stored translated
+**Date:** 2026-02-21
+**Problem:** Plan status (`active`/`draft`), visibility (`public`/`private`), participant roles (`owner`/`viewer`), item status (`pending`/`packed`), and item units (`pcs`/`kg`) were displayed as raw English strings from the API. The labels were translated in form dropdowns (via `labelKey` in constants) but not in read-only displays.
+**Solution:** Use `t('planStatus.${status}')`, `t('roles.${role}')`, `t('units.${unit}')` etc. at every display point. Data stays English in the DB and API — only the UI label is translated. Also replaced the hardcoded `const NA = 'N/A'` with `t('plan.na')`.
+**Prevention:** When displaying any enum/system value from the API, always wrap it in a translation call. Never render raw API enum values directly — use the pattern `t('namespace.${value}')` with matching keys in both locale files.
+
+---
+
+### [Arch] i18n — module-level constants with labels need translation-aware pattern
+**Date:** 2026-02-21
+**Problem:** Several components had module-level constants containing user-facing labels (e.g., `statusConfig`, `LIST_TABS`, `CATEGORY_LABELS`). React hooks like `useTranslation()` can't be called at module level, so these labels couldn't be translated directly.
+**Solution:** Two patterns: (1) Move the config inside the component function where the hook is available (e.g., `statusConfig` in PlansList). (2) Store translation keys instead of labels in the constant, then resolve them with `t()` inside the component (e.g., `labelKey: 'filters.buyingList'` in StatusFilter).
+**Prevention:** When creating constants with user-facing strings, use translation keys from the start. Never put display text in module-level constants — always use i18n keys that get resolved inside a component.
+
+---
+
+### [Test] i18n breaks tests that query hardcoded strings — mock useLanguage globally
+**Date:** 2026-02-21
+**Problem:** After adding i18n, Header tests crashed with `useLanguage must be used within a LanguageProvider`. Components using the language context need the provider in tests.
+**Solution:** Added a global mock for `useLanguage` in `tests/setup.ts` that returns English defaults. Individual tests can override with `vi.unmock()` when they need to test language switching.
+**Prevention:** When adding a new context that's used in widely-tested components, add the global mock to `tests/setup.ts` immediately — don't wait for tests to break.
+
+---
+
+### [Infra] Google OAuth on prod — full Supabase + Google Cloud setup checklist was missing
+**Date:** 2026-02-18
+**Problem:** Google OAuth sign-up on production failed with three successive errors: (1) `"Unsupported provider: provider is not enabled"` — Email and Google providers not enabled in Supabase, (2) `redirect_uri_mismatch` — Supabase callback URL not added to Google Cloud Console's authorized redirect URIs, (3) redirect to localhost after OAuth — Supabase Site URL still set to `http://localhost:5173`.
+**Solution:** Completed the full Supabase + Google Cloud setup: enabled Email and Google providers in Supabase, created Google Cloud OAuth credentials (Client ID + Secret), added Supabase callback URL to Google's authorized redirect URIs, and set Supabase Site URL + Redirect URLs to the production domain.
+**Prevention:** When enabling OAuth for a new environment, follow the complete checklist added to the frontend guide (Supabase Auth > Google OAuth Production Setup). Never assume Supabase defaults are production-ready — Site URL, providers, and redirect URIs all need explicit configuration per environment.
+
+---
+
 ### [Test] Headless UI Combobox option click fails on Mobile Safari in Playwright — "element is not stable"
 **Date:** 2026-02-18
 **Problem:** E2E test `Item CRUD › adds items via UI` failed consistently on Mobile Safari (WebKit) in CI. Playwright reported `TimeoutError: locator.click: element is not stable` when clicking a `ComboboxOption` inside a Headless UI dropdown with `transition` + `anchor="bottom start"` (Floating UI). Chrome and Firefox passed. All 3 retries failed identically.

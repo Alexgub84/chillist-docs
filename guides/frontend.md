@@ -18,6 +18,7 @@ Setup, development, and deployment guide for `chillist-fe`.
 - react-hot-toast (notifications)
 - clsx (conditional classNames)
 - uuid (ID generation)
+- i18next + react-i18next (internationalization — English + Hebrew)
 - Vitest + React Testing Library (unit)
 - Playwright (E2E)
 - ESLint + Prettier
@@ -134,6 +135,35 @@ export const supabase = createClient(
 )
 ```
 
+### Google OAuth Production Setup
+
+Complete this checklist when enabling Google OAuth for a new Supabase environment (dev/staging/prod):
+
+**Supabase Dashboard:**
+
+1. **Authentication > Providers > Email** — toggle ON, enable "Allow new users to sign up"
+2. **Authentication > Providers > Google** — toggle ON, paste Client ID + Client Secret (from Google Cloud Console)
+3. **Authentication > URL Configuration > Site URL** — set to the production frontend URL (e.g., `https://chillist.pages.dev`). Supabase redirects here after OAuth — if left as `localhost`, prod users get redirected to localhost
+4. **Authentication > URL Configuration > Redirect URLs** — add:
+   - `https://your-prod-domain.pages.dev/complete-profile` (prod)
+   - `http://localhost:5173/complete-profile` (local dev)
+
+**Google Cloud Console:**
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) > **APIs & Services** > **Credentials**
+2. Create **OAuth 2.0 Client ID** (type: **Web application**)
+3. Under **Authorized redirect URIs**, add the Supabase callback URL (copy from Supabase Dashboard > Auth > Google provider): `https://XXXXXXXX.supabase.co/auth/v1/callback`
+4. Copy the **Client ID** and **Client Secret** into Supabase (step 2 above)
+5. Configure **OAuth consent screen** — start with "Testing" mode (only manually added test users can sign in). Submit for Google verification when ready for public access.
+
+**Common errors if setup is incomplete:**
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `Unsupported provider: provider is not enabled` | Provider not toggled ON in Supabase | Enable Email/Google in Supabase > Auth > Providers |
+| `redirect_uri_mismatch` | Supabase callback URL missing from Google Cloud | Add callback URL to Google OAuth credential's redirect URIs |
+| Redirects to localhost after OAuth | Supabase Site URL set to localhost | Change Site URL to production domain in Supabase > Auth > URL Configuration |
+
 ### Sign-up / Sign-in
 
 - Email + password: `supabase.auth.signUp({ email, password })` / `supabase.auth.signInWithPassword({ email, password })`
@@ -243,6 +273,81 @@ try {
 
 - Position: `top-right`
 - Duration: 4s (default), 5s (errors)
+
+## i18n (Internationalization)
+
+The app supports English (default) and Hebrew with full RTL support.
+
+### Architecture
+
+- **Library:** `i18next` + `react-i18next`
+- **Config:** `src/i18n/index.ts` — initializes i18next with bundled resources
+- **Translations:** `src/i18n/locales/en.json` and `src/i18n/locales/he.json`
+- **Context:** `LanguageProvider` in `src/contexts/LanguageProvider.tsx` — manages language state, RTL direction, and localStorage persistence
+- **Hook:** `useLanguage()` — returns `{ language, setLanguage }`
+- **Storage:** `localStorage('chillist-lang')` via the `useLocalStorage` hook
+
+### Adding a new translatable string
+
+1. Add the key + English value to `src/i18n/locales/en.json`
+2. Add the same key + Hebrew value to `src/i18n/locales/he.json`
+3. In the component, use `const { t } = useTranslation()` and `t('your.key')`
+4. For non-component code (e.g., callbacks), use `import i18n from '../i18n'` and `i18n.t('your.key')`
+
+### RTL support
+
+When Hebrew is active, `<html dir="rtl" lang="he">` is set automatically by the `LanguageProvider`. Use Tailwind logical properties (`ms-*`, `me-*`, `ps-*`, `pe-*`, `start-*`, `end-*`) instead of directional ones (`ml-*`, `mr-*`, `left-*`, `right-*`).
+
+### Language toggle
+
+A toggle button in the Header switches between languages. It shows "עב" when English is active (meaning "switch to Hebrew") and "EN" when Hebrew is active.
+
+## Common Items Data (`src/data/common-items.json`)
+
+A static JSON file with 700+ pre-defined items (equipment and food) used for autocomplete suggestions when adding items to a plan. The autocomplete matches against item names, aliases, and tags.
+
+### Schema
+
+Each item has these fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Stable unique kebab-case identifier (e.g. `sleeping-bag`) |
+| `name` | `string` | Canonical display name (e.g. `Sleeping Bag`) |
+| `category` | `"equipment" \| "food"` | Item category |
+| `unit` | `string` | Default unit (`pcs`, `pack`, `set`, `kg`, `g`, `lb`, `oz`, `l`, `ml`) |
+| `aliases` | `string[]` | Alternative names users might type (plurals, regional variants, brand-as-generic) |
+| `tags` | `string[]` | Intent-based search keywords (not naming variations) |
+
+### Tag vocabulary
+
+Equipment tags: `shelter`, `sleep`, `cooking`, `lighting`, `water`, `hygiene`, `first-aid`, `power`, `kids`, `baby`, `pets`, `car`, `clothing`, `games`, `beach`, `winter`, `tools`, `navigation`, `storage`
+
+Food tags: `drink`, `snack`, `breakfast`, `fruit`, `vegetables`, `protein`, `pantry`, `condiments`, `frozen`, `kids`, `baby`, `pets`
+
+### How to add or update items
+
+1. Edit `src/data/common-items.json` directly
+2. Follow these rules:
+   - `id`: lowercase the name, replace spaces/punctuation with hyphens, remove leading/trailing hyphens. Must be unique.
+   - `category`: only `equipment` or `food`. Non-food supplies (foil, paper plates, plastic cups, disposable cutlery, etc.) are `equipment`, not `food`.
+   - `aliases`: add plurals, common alternative words (Flashlight → Torch), regional variants (Chips → Crisps), brand-as-generic (Hydration Pack → Camelback). Keep short — no full sentences.
+   - `tags`: use only the vocabulary above. Tags are for intent-based search, not naming variations. An item can have multiple tags or zero tags.
+   - Deduplication: if two items are the same real thing, keep one as canonical and put the other name(s) in `aliases`. Do not have two entries for the same item.
+3. Validate before committing:
+   - All `id` values are unique
+   - No empty strings in `aliases` or `tags`
+   - No duplicate aliases within the same item
+   - `category` is only `equipment` or `food`
+   - `unit` is from the allowed list
+
+### How the app uses it
+
+`ItemForm.tsx` imports the JSON and builds:
+
+- **Autocomplete suggestions** — canonical `name` values shown in the dropdown
+- **Search index** — matches user input against `name`, `aliases`, and `tags` (e.g. typing "torch" surfaces "Flashlight", typing "shelter" surfaces "Tent")
+- **Category/unit autofill** — selecting an item auto-fills the category and unit fields
 
 ## Tailwind CSS v4
 

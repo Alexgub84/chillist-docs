@@ -92,6 +92,18 @@ For every path in `openapi.json`, verify the mock server (`api/server.ts`):
 - Do NOT make authorization decisions client-side. The BE enforces access via JWT verification. Client-side checks are for UX only (e.g., hiding an "Edit" button), not security.
 - Never log access tokens or refresh tokens to the browser console in production.
 
+## i18n (Internationalization)
+
+- All user-facing strings must use `t()` from `useTranslation()` (react-i18next) — never hardcode text in JSX
+- Translation files: `src/i18n/locales/en.json` (English) and `src/i18n/locales/he.json` (Hebrew)
+- When adding a new string: add the key + value to **both** locale files in the same PR
+- For module-level constants that contain labels (e.g., status configs, tab labels), either move them inside the component or use translation keys instead of literal strings
+- Use `i18n.t()` (imported from `src/i18n`) for non-component code (e.g., toast messages in AuthProvider)
+- Use Tailwind logical properties (`ms-*`, `me-*`, `ps-*`, `pe-*`, `start-*`, `end-*`, `text-start`, `text-end`) instead of directional ones (`ml-*`, `mr-*`, etc.) so layouts work in both LTR and RTL
+- API enum values (status, visibility, roles, units, categories) must be translated at display time with `t('namespace.${value}')` — never render raw API strings directly
+- Language context: `useLanguage()` hook provides `language` and `setLanguage`. `LanguageProvider` wraps the app in `__root.tsx`
+- Language is persisted to `localStorage('chillist-lang')`
+
 ## Finalization
 
 1. Run validation: `npm run typecheck && npm run lint && npm run test:unit`
