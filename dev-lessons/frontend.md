@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Logic] react-hook-form register + setValue desync on select fields
+**Date:** 2026-02-21
+**Problem:** Unit dropdown in ItemForm became unresponsive after autocomplete auto-filled the unit via `setValue('unit', ...)`. The user could not change the unit to a different value. Reproducible on production but not always on local dev.
+**Solution:** Converted the unit `<select>` from `register('unit')` (uncontrolled) to `Controller` (controlled). With Controller, React manages the value via `field.value`, so programmatic changes (`setValue`) and user changes (dropdown selection) both flow through the same controlled path.
+**Prevention:** When a form field is both user-editable AND programmatically set via `setValue`, always use `Controller` instead of `register`. The `register` pattern manages values via DOM refs (uncontrolled), which can desync from react-hook-form's internal state after programmatic updates.
+
+---
+
 ### [Test] i18n E2E test fails on Mobile Safari — lang-toggle hidden behind hamburger menu
 **Date:** 2026-02-21
 **Problem:** The i18n E2E test (`i18n.spec.ts`) passed on Desktop Chrome and Firefox but failed on Mobile Safari in CI. The `lang-toggle` button lives inside the desktop nav (`hidden sm:flex`), which is `display: none` on viewports below 640px. The mobile language toggle has a different `data-testid` (`lang-toggle-mobile`) and is inside the hamburger menu. The test was only verified locally on desktop browsers before pushing.
