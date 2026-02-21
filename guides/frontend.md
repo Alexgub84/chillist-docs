@@ -173,7 +173,7 @@ Complete this checklist when enabling Google OAuth for a new Supabase environmen
 
 ### Profile completion (post sign-up)
 
-After sign-up (both email and Google OAuth), the user is redirected to `/complete-profile` where they can optionally add first name, last name, and phone. Data is saved to Supabase `user_metadata` via:
+After sign-up (both email and Google OAuth), the user is redirected to `/complete-profile` where they can optionally edit first name, last name, phone, and email. Profile data is saved to Supabase `user_metadata` via:
 
 ```typescript
 await supabase.auth.updateUser({
@@ -181,7 +181,9 @@ await supabase.auth.updateUser({
 })
 ```
 
-`updateUser` merges into existing metadata (preserves Google's `full_name`, `avatar_url`). For Google users, the form pre-fills first/last name from `full_name`. The page is skippable — users can go straight to `/plans`.
+Email changes are handled separately via `updateUser({ email: '...' })` which triggers Supabase's email verification flow — a confirmation link is sent to the new address.
+
+`updateUser` merges into existing metadata (preserves Google's `full_name`, `avatar_url`). For Google users, the form pre-fills first/last name from `full_name`. The email field is pre-filled from `user.email`. The page is skippable — users can go straight to `/plans`.
 
 ### Session management
 
