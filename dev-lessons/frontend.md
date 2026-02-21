@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Test] i18n E2E test fails on Mobile Safari — lang-toggle hidden behind hamburger menu
+**Date:** 2026-02-21
+**Problem:** The i18n E2E test (`i18n.spec.ts`) passed on Desktop Chrome and Firefox but failed on Mobile Safari in CI. The `lang-toggle` button lives inside the desktop nav (`hidden sm:flex`), which is `display: none` on viewports below 640px. The mobile language toggle has a different `data-testid` (`lang-toggle-mobile`) and is inside the hamburger menu. The test was only verified locally on desktop browsers before pushing.
+**Solution:** Used Playwright's built-in `isMobile` fixture to branch the test logic: on mobile, open the hamburger menu first and use `lang-toggle-mobile`; on desktop, use `lang-toggle` directly. Also gate nav link assertions behind `!isMobile` since they're hidden in the hamburger menu.
+**Prevention:** Always run `npx playwright test <file>` (all projects) before pushing E2E tests — never just a single browser. When a UI has responsive breakpoints with different interactive elements per viewport, the E2E test must handle both paths using `isMobile` or viewport detection.
+
+---
+
 ### [Arch] i18n — API enum values must be translated at display time, not stored translated
 **Date:** 2026-02-21
 **Problem:** Plan status (`active`/`draft`), visibility (`public`/`private`), participant roles (`owner`/`viewer`), item status (`pending`/`packed`), and item units (`pcs`/`kg`) were displayed as raw English strings from the API. The labels were translated in form dropdowns (via `labelKey` in constants) but not in read-only displays.

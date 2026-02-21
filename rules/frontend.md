@@ -82,6 +82,8 @@ For every path in `openapi.json`, verify the mock server (`api/server.ts`):
   - Don't test loading states — they are transient and flaky with fast API responses
   - Test final outcomes: wait for content or errors to appear, not spinners
   - Use specific URL patterns in `page.route()` (e.g. `**/localhost:3333/plans`) — broad patterns can intercept page navigation
+  - **Always run all browser projects** before pushing E2E changes: `npx playwright test <file>` (runs Chrome, Firefox, and Mobile Safari). Never verify on a single browser only
+  - **Responsive UI tests** must use Playwright's `isMobile` fixture to handle mobile vs desktop paths (e.g., hamburger menu vs desktop nav). Elements hidden behind responsive breakpoints (`hidden sm:flex`) are invisible on mobile viewports
 
 ## Auth and User Data
 
