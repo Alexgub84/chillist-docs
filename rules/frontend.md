@@ -59,6 +59,16 @@ For every path in `openapi.json`, verify the mock server (`api/server.ts`):
 - **Response shape** — returned JSON matches the OpenAPI response schema
 - **Path parameters** — validated the same way (e.g. `format: "uuid"`)
 
+### Enum Alignment (CRITICAL — prevents "works locally, breaks in prod")
+
+When adding or modifying any enum value (units, statuses, categories, roles, visibility):
+
+1. **First** run `npm run api:fetch` to get the latest OpenAPI spec
+2. **Check** the enum values in the spec: search for the field name in `src/core/openapi.json`
+3. **Match exactly** — the FE Zod enum, constants, translations, and mock server must have the **same values** as the backend spec. No more, no less.
+4. **NEVER** add enum values to the FE that don't exist in the backend spec. If you need a new value, implement it in the backend first.
+5. The mock server must be **as strict as** the real backend — never more lenient. A lenient mock hides bugs that only appear in production.
+
 ### Field-Level Checklist
 
 - `format: "date-time"` → `z.string().datetime()` everywhere
@@ -68,6 +78,7 @@ For every path in `openapi.json`, verify the mock server (`api/server.ts`):
 - `format: "uuid"` → IDs in mock data and e2e fixtures must be valid UUIDs (use `randomUUID()`)
 - Required fields in OpenAPI → NOT `.optional()` in Zod, and present in e2e fixture builders
 - Fields NOT in an OpenAPI request body → NOT accepted by the mock server's Zod schema
+- **Enum values** in OpenAPI → the exact same set in FE Zod schemas, constants, mock server, and translations. No extra values, no missing values.
 
 ## Testing
 

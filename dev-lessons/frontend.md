@@ -6,11 +6,16 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
-### [Logic] FE unit enum included values not accepted by backend — caused 400 on item edit
+### [Arch] FE enum drifted from backend — worked locally, broke production (400 on item edit)
 **Date:** 2026-02-22
-**Problem:** Editing items (or creating items with certain units) in production returned "Invalid Request" (400). The frontend `unitSchema` included `'m'` (meter) and `'cm'` (centimeter) which were NOT in the backend's OpenAPI spec enum (`pcs`, `kg`, `g`, `lb`, `oz`, `l`, `ml`, `pack`, `set`). The FE Zod validation passed, but the backend rejected the values. The error toast showed a generic message, hiding the actual backend validation error.
-**Solution:** Removed `m` and `cm` from the FE unit schema, constants, unit groups, translations (both EN and HE), and mock server. Also improved the 400 error toast to include the actual backend error message instead of a generic fallback.
-**Prevention:** When adding new enum values to the FE, always check the backend OpenAPI spec first. The backend owns the spec — never add enum values that don't exist there. Run `npm run api:sync` and verify the generated types match your Zod schemas. Also, error toasts for 400s should surface the backend's specific validation message to aid debugging.
+**Problem:** Editing items in production returned "Invalid Request" (400). Worked perfectly on local dev. The frontend `unitSchema` included `'m'` (meter) and `'cm'` (centimeter) which were NOT in the backend's OpenAPI spec enum (`pcs`, `kg`, `g`, `lb`, `oz`, `l`, `ml`, `pack`, `set`). The mock server (`api/server.ts`) had the same extra values, so local dev never caught the mismatch. Only the real backend (production) rejected them. The error toast showed a generic message, hiding the actual backend validation error.
+**Root cause:** A "works locally, breaks in prod" gap. The mock server and FE schemas were kept in sync with *each other* but not with the *backend*. When `m`/`cm` were added to the FE, they were also added to the mock server — so local testing passed. But neither was checked against the backend's OpenAPI spec. The mock server was *too lenient*, masking the real backend's stricter validation. This is the same class of bug as the 2026-02-12 OpenAPI spec drift — the FE added values the backend doesn't support.
+**Solution:** Removed `m` and `cm` from all 6 FE layers (Zod schema, constants, unit groups, EN translations, HE translations, mock server). Improved 400 error toast to include the actual backend message instead of a generic fallback.
+**Prevention:**
+1. **NEVER** add enum values, fields, or constraints to the FE or mock server that don't exist in the backend OpenAPI spec. The backend is the single source of truth.
+2. When adding or changing any enum (units, statuses, categories, roles, visibility), run `npm run api:fetch` first and cross-check the spec's enum values before writing any FE code.
+3. The mock server must be **as strict as** the real backend — never more lenient. A lenient mock hides bugs that only surface in production.
+4. Error toasts for 400 responses must surface the backend's specific message (not a generic fallback) so the root cause is immediately visible.
 
 ---
 
