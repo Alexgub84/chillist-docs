@@ -48,6 +48,7 @@ Key variables:
 | `VITE_API_KEY` | API key for production auth | (empty for dev) |
 | `VITE_SUPABASE_URL` | Supabase project URL | (required for auth) |
 | `VITE_SUPABASE_ANON_KEY` | Supabase publishable key (safe for browser) | (required for auth) |
+| `VITE_GOOGLE_MAPS_API_KEY` | Google Maps API key (optional — enables location autocomplete + map) | (empty) |
 
 ## Running Locally
 
@@ -243,6 +244,44 @@ After sign-in, the Supabase client provides a `session` object with user profile
 - The JWT is sent via `Authorization: Bearer` header on the API call.
 - Later (Step 3: Permissions), the BE will extract `request.user.id` from the JWT to link the plan to the authenticated user in the database.
 - Until Step 3, the owner participant is still created from the request body payload (no enforced link to the Supabase user yet).
+
+## Google Maps (Location Picker + Map Display)
+
+The app uses Google Maps for smart location autocomplete when creating plans and for displaying an interactive map on the plan detail page. This feature is **optional** — if `VITE_GOOGLE_MAPS_API_KEY` is not set, the location fields fall back to manual text inputs with no map.
+
+### Setup
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com) > **APIs & Services** > **Credentials**
+2. Create an **API key**
+3. Enable the following APIs under **APIs & Services > Library**:
+   - **Maps JavaScript API**
+   - **Places API**
+4. Set the API key in `.env`:
+   ```
+   VITE_GOOGLE_MAPS_API_KEY=your-api-key
+   ```
+
+### API Key Restrictions (important)
+
+In **Google Cloud Console > Credentials > your API key**:
+
+1. **Application restrictions** — select **HTTP referrers (websites)**
+2. **Website restrictions** — add all domains that will use the key:
+   - `http://localhost:5173/*` (local dev)
+   - `https://your-prod-domain.pages.dev/*` (production)
+   - Any staging/preview domains
+
+**When you change the production domain, you MUST update the allowed referrers in Google Cloud Console.** Otherwise the Maps API will return `RefererNotAllowedMapError` and the map/autocomplete will break on the new domain.
+
+### How it works
+
+- **Plan form** (`PlanForm.tsx`): A Google Places Autocomplete search input is shown above the manual location fields. When the user selects a place, all fields (name, city, country, region, latitude, longitude) are auto-filled. The manual fields remain editable. A mini map preview appears when coordinates are set.
+- **Plan detail** (`Plan.tsx`): If the plan's location has latitude/longitude, an interactive map with a pin is displayed alongside the text description. On mobile the map is full-width above the text; on desktop they sit side by side.
+- **No API key?** Both components render nothing — the manual text fields in the form still work, and the plan detail shows the text description only.
+
+### Library
+
+Uses `@vis.gl/react-google-maps` (official Google Maps React wrapper). Each component that needs the map wraps itself with `<APIProvider>` locally — no global provider in the root route.
 
 ## Toast Notifications
 
@@ -445,3 +484,4 @@ Two separate workflow files:
 | `CLOUDFLARE_PROJECT_NAME` | Variable | Cloudflare Pages project name |
 | `VITE_SUPABASE_URL` | Variable | Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | Variable | Supabase publishable/anon key |
+| `VITE_GOOGLE_MAPS_API_KEY` | Variable | Google Maps API key (optional) |
