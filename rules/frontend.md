@@ -59,15 +59,24 @@ For every path in `openapi.json`, verify the mock server (`api/server.ts`):
 - **Response shape** — returned JSON matches the OpenAPI response schema
 - **Path parameters** — validated the same way (e.g. `format: "uuid"`)
 
-### Enum Alignment (CRITICAL — prevents "works locally, breaks in prod")
+### Enum Alignment (CRITICAL — the backend owns all enum values)
 
-When adding or modifying any enum value (units, statuses, categories, roles, visibility):
+The backend is the **single source of truth** for all enum values. The FE **consumes** them via `npm run api:sync` → `src/core/api.generated.ts`. FE Zod schemas use `as const satisfies readonly BEType[]` to stay type-safe against the generated types.
 
-1. **First** run `npm run api:fetch` to get the latest OpenAPI spec
-2. **Check** the enum values in the spec: search for the field name in `src/core/openapi.json`
-3. **Match exactly** — the FE Zod enum, constants, translations, and mock server must have the **same values** as the backend spec. No more, no less.
-4. **NEVER** add enum values to the FE that don't exist in the backend spec. If you need a new value, implement it in the backend first.
-5. The mock server must be **as strict as** the real backend — never more lenient. A lenient mock hides bugs that only appear in production.
+**When asked to add or change an enum value** (unit, status, category, role, visibility):
+1. **STOP** — do NOT add it to the FE. Tell the user it must be added to the **backend** first.
+2. After the BE is updated, run `npm run api:sync` to pull the new spec and regenerate types.
+3. Then update the FE Zod schema array, constants, translations (both locales), and mock server.
+4. TypeScript will catch any FE values that don't exist in the generated types (via `satisfies`).
+
+**Architecture:**
+- `src/core/api.generated.ts` — auto-generated from backend OpenAPI spec (NEVER edit)
+- `src/core/schemas/*.ts` — hand-written Zod schemas, but enum arrays use `satisfies readonly BEType[]` to stay in sync
+- `src/core/constants/*.ts` — UI options derived from the same enum values
+- `src/i18n/locales/*.json` — translation keys for every enum value (both EN and HE)
+- `api/server.ts` — mock server must use the **same** enum values as the real backend
+
+**The mock server must be as strict as the real backend** — never more lenient. A lenient mock hides bugs that only appear in production.
 
 ### Field-Level Checklist
 

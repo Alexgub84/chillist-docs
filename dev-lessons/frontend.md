@@ -6,16 +6,19 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
-### [Arch] FE enum drifted from backend — worked locally, broke production (400 on item edit)
+### [Arch] NEVER hand-write values the backend owns — use generated types as source of truth
 **Date:** 2026-02-22
-**Problem:** Editing items in production returned "Invalid Request" (400). Worked perfectly on local dev. The frontend `unitSchema` included `'m'` (meter) and `'cm'` (centimeter) which were NOT in the backend's OpenAPI spec enum (`pcs`, `kg`, `g`, `lb`, `oz`, `l`, `ml`, `pack`, `set`). The mock server (`api/server.ts`) had the same extra values, so local dev never caught the mismatch. Only the real backend (production) rejected them. The error toast showed a generic message, hiding the actual backend validation error.
-**Root cause:** A "works locally, breaks in prod" gap. The mock server and FE schemas were kept in sync with *each other* but not with the *backend*. When `m`/`cm` were added to the FE, they were also added to the mock server — so local testing passed. But neither was checked against the backend's OpenAPI spec. The mock server was *too lenient*, masking the real backend's stricter validation. This is the same class of bug as the 2026-02-12 OpenAPI spec drift — the FE added values the backend doesn't support.
-**Solution:** Removed `m` and `cm` from all 6 FE layers (Zod schema, constants, unit groups, EN translations, HE translations, mock server). Improved 400 error toast to include the actual backend message instead of a generic fallback.
+**Problem:** Editing items in production returned "Invalid Request" (400). Worked perfectly locally. The FE hand-wrote `unitSchema = z.enum(['pcs', ..., 'm', 'cm'])` with `m` and `cm` — values the backend doesn't have. The mock server copied the same wrong values, so local dev passed. Only production (real backend) rejected them. This bug was attempted to be fixed 4 times before the root cause was identified.
+**Root cause:** The FE **hand-maintained** Zod enums for values that are **already defined by the backend** and **already auto-generated** into `src/core/api.generated.ts` via `npm run api:types`. Two parallel sources of truth existed: the hand-written Zod schemas and the generated types — and they drifted. The whole point of OpenAPI + type generation is that the backend owns these values. When asked to add `m`/`cm`, the correct response was "this must be added to the backend first" — not silently adding it to the FE.
+**Solution:**
+1. Removed `m`/`cm` from all FE layers (Zod schema, constants, unit groups, translations, mock server)
+2. Wired all FE Zod enum arrays to the generated BE types via `as const satisfies readonly BEType[]` — TypeScript now errors if the FE adds a value the BE doesn't have
+3. Improved 400 error toast to surface the actual backend message
 **Prevention:**
-1. **NEVER** add enum values, fields, or constraints to the FE or mock server that don't exist in the backend OpenAPI spec. The backend is the single source of truth.
-2. When adding or changing any enum (units, statuses, categories, roles, visibility), run `npm run api:fetch` first and cross-check the spec's enum values before writing any FE code.
-3. The mock server must be **as strict as** the real backend — never more lenient. A lenient mock hides bugs that only surface in production.
-4. Error toasts for 400 responses must surface the backend's specific message (not a generic fallback) so the root cause is immediately visible.
+1. **NEVER** hand-write enum values that the backend owns. The generated types in `api.generated.ts` are the source of truth. FE Zod schemas must use `satisfies` against the generated types.
+2. When asked to add a new enum value (unit, status, category, role, visibility): **STOP** — tell the user it must be added to the backend first. Then run `npm run api:sync` to pull the change, and only then update the FE.
+3. The mock server must mirror the real backend's constraints exactly — never be more lenient.
+4. Error toasts for 400s must show the actual backend message, not a generic fallback.
 
 ---
 
