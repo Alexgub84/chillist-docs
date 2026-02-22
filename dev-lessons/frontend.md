@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Logic] FE unit enum included values not accepted by backend — caused 400 on item edit
+**Date:** 2026-02-22
+**Problem:** Editing items (or creating items with certain units) in production returned "Invalid Request" (400). The frontend `unitSchema` included `'m'` (meter) and `'cm'` (centimeter) which were NOT in the backend's OpenAPI spec enum (`pcs`, `kg`, `g`, `lb`, `oz`, `l`, `ml`, `pack`, `set`). The FE Zod validation passed, but the backend rejected the values. The error toast showed a generic message, hiding the actual backend validation error.
+**Solution:** Removed `m` and `cm` from the FE unit schema, constants, unit groups, translations (both EN and HE), and mock server. Also improved the 400 error toast to include the actual backend error message instead of a generic fallback.
+**Prevention:** When adding new enum values to the FE, always check the backend OpenAPI spec first. The backend owns the spec — never add enum values that don't exist there. Run `npm run api:sync` and verify the generated types match your Zod schemas. Also, error toasts for 400s should surface the backend's specific validation message to aid debugging.
+
+---
+
 ### [Logic] react-hook-form Controller on native select breaks in production builds
 **Date:** 2026-02-22
 **Problem:** Unit `<select>` in the edit item modal was unclickable on production (Cloudflare Pages) — no reaction on mobile or desktop. Other selects (category, status, assignment) worked fine. The unit field appeared visually smaller than other inputs. Worked normally on local dev server. Affected both English and Hebrew plans.
