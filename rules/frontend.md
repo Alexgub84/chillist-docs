@@ -61,22 +61,21 @@ For every path in `openapi.json`, verify the mock server (`api/server.ts`):
 
 ### Enum Alignment (CRITICAL — the backend owns all enum values)
 
-The backend is the **single source of truth** for all enum values. The FE **consumes** them via `npm run api:sync` → `src/core/api.generated.ts`. FE Zod schemas use `as const satisfies readonly BEType[]` to stay type-safe against the generated types.
+The backend is the **single source of truth** for all enum values (units, statuses, categories, roles, visibility). The FE derives them from the generated types and adds display concerns (translations, groups, colors).
 
-**When asked to add or change an enum value** (unit, status, category, role, visibility):
-1. **STOP** — do NOT add it to the FE. Tell the user it must be added to the **backend** first.
-2. After the BE is updated, run `npm run api:sync` to pull the new spec and regenerate types.
-3. Then update the FE Zod schema array, constants, translations (both locales), and mock server.
-4. TypeScript will catch any FE values that don't exist in the generated types (via `satisfies`).
+**When asked to add or change an enum value**: **STOP** — it must be added to the **backend** first. Then `npm run api:sync`, then update the FE layers.
 
-**Architecture:**
-- `src/core/api.generated.ts` — auto-generated from backend OpenAPI spec (NEVER edit)
-- `src/core/schemas/*.ts` — hand-written Zod schemas, but enum arrays use `satisfies readonly BEType[]` to stay in sync
-- `src/core/constants/*.ts` — UI options derived from the same enum values
-- `src/i18n/locales/*.json` — translation keys for every enum value (both EN and HE)
-- `api/server.ts` — mock server must use the **same** enum values as the real backend
+**How it's wired:**
 
-**The mock server must be as strict as the real backend** — never more lenient. A lenient mock hides bugs that only appear in production.
+| Layer | What | How it stays in sync |
+|---|---|---|
+| `src/core/api.generated.ts` | Generated types from OpenAPI | `npm run api:sync` (NEVER edit manually) |
+| `src/core/schemas/*.ts` | Zod enums | `as const satisfies readonly BEType[]` — TS error if FE has values BE doesn't |
+| `src/core/constants/*.ts` | UI display config (groups, colors) | FE-owned, uses Zod `Unit`/`ItemStatus` types |
+| `src/i18n/locales/*.json` | Translations (EN + HE) | `enum-translations.test.ts` fails if any value is missing |
+| `api/server.ts` | Mock server | Must mirror BE enum values exactly — never more lenient |
+
+**Translation coverage test** (`tests/unit/core/enum-translations.test.ts`): verifies every Zod enum value has a key in both `en.json` and `he.json`. If the BE adds a value and the FE adds it to the Zod array but forgets translations, the test fails.
 
 ### Field-Level Checklist
 
