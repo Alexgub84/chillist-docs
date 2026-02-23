@@ -10,9 +10,9 @@
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Plans CRUD | Done | Full REST API + FE screens |
+| Plans CRUD | Done | Full REST API + FE screens, plans list with upcoming/past time filter |
 | Participants CRUD | Done | Scoped to plans, role-based |
-| Items CRUD | Done | Equipment/food categories, inline editing |
+| Items CRUD | Done | Equipment/food categories, inline editing, modal for create & edit, floating "Add Item" button |
 | Item status flow | Done | pending → purchased → packed → canceled |
 | Status filtering | Done | Filter items by status on plan screen |
 | Category grouping | Done | Items grouped by equipment/food |
@@ -99,15 +99,17 @@
 ### 4.1 Plans
 - CRUD plans.
 - Plan screen shows participants, items grouped by category, and completion stats.
+- Plans list has time filter tabs (All / Upcoming / Past) with counts. Defaults to "Upcoming". Plans with no date are treated as upcoming.
 
 ### 4.2 Participants
 - Add/remove participants to a plan.
 - Role: "owner" (full edit), "participant" (update items & self-assign), "viewer" (read-only).
 
 ### 4.3 Items
-- Add item (name, category, quantity, unit, notes, status).
+- Add item (name, category, quantity, unit, notes, status). Both create and edit open in a modal. "Add Item" button floats at the bottom of the viewport (fixed position) on both mobile and desktop.
 - Group by category; filter by status; simple text search.
 - Inline editing for quantity, unit, and status fields.
+- Cancel button on each item card to quickly set status to "canceled".
 - Equipment items always use "pcs" as the unit. Food items require a unit.
 - Checklist mode: in Buying List / Packing List filtered views, items show a checkbox instead of the status dropdown. Checking an item triggers strikethrough + fade animation then advances the status (pending → purchased, purchased → packed). Details are read-only in this mode.
 - Bulk: change status to "packed" or "purchased" for selected items (optional nice-to-have).

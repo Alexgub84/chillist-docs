@@ -14,6 +14,12 @@ Rules specific to the `chillist-fe` repository. Use alongside [common rules](com
 - Every API mutation function (`create*`, `update*`) must validate input with `.parse()` before sending — catch bad data client-side, not on the server
 - If multiple API functions follow the same pattern, audit them all for consistency when fixing one
 
+## Component Architecture
+
+- **Self-contained features get their own component.** When a feature has its own data fetching, loading/error states, or distinct UI (e.g., weather forecast, map, share panel), extract it into a dedicated component. The parent route/page should only pass minimal props (e.g., coordinates, an ID) — not orchestrate the feature's data or state.
+- **Every new component must have unit tests.** At minimum, test: renders correctly with valid data, handles loading state, handles error state, and renders nothing / fallback when data is unavailable.
+- Prefer small, focused components over large monolithic ones — easier to read, test, and reuse.
+
 ## Route Files (TanStack Router)
 
 - Default to **lazy routes** (`createLazyFileRoute` + `.lazy.tsx` suffix) for code-splitting

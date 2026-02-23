@@ -283,6 +283,30 @@ In **Google Cloud Console > Credentials > your API key**:
 
 Uses `@vis.gl/react-google-maps` (official Google Maps React wrapper). Each component that needs the map wraps itself with `<APIProvider>` locally — no global provider in the root route.
 
+## Weather Forecast
+
+The plan detail page shows a 7-day weather forecast when the plan has a location with latitude/longitude coordinates.
+
+### How it works
+
+- **API:** [Open-Meteo](https://open-meteo.com/) — free, no API key required. Called directly from the frontend (same pattern as Google Maps).
+- **Data flow:** `useForecast` hook → `fetchForecast` (Open-Meteo API) → `Forecast` component
+- **Fetch behavior:** `staleTime: 0` — refetches on every page mount. Non-blocking: if the API fails or location has no coordinates, the forecast section simply doesn't render.
+- **WMO weather codes** are mapped to emoji icons and translated descriptions (EN + HE).
+
+### Files
+
+| File | Description |
+|------|-------------|
+| `src/core/schemas/weather.ts` | Zod schemas for forecast data |
+| `src/core/weather-api.ts` | Open-Meteo fetch + response transform |
+| `src/hooks/useForecast.ts` | React Query hook (staleTime: 0, non-blocking) |
+| `src/components/Forecast.tsx` | Horizontal scrollable day cards UI |
+
+### No location?
+
+If the plan has no location or no lat/lon coordinates, the forecast hook is disabled (`enabled: false`) and no API call is made.
+
 ## Toast Notifications
 
 Uses [react-hot-toast](https://github.com/timolins/react-hot-toast). The `<Toaster>` is in the root layout (`src/routes/__root.tsx`).
