@@ -216,6 +216,10 @@ npm run test:run
 - **Rate limiting:** `@fastify/rate-limit` active — 100 req/min global, 10 req/min on `/auth/*` endpoints.
 - **Security headers:** `@fastify/helmet` active — standard HTTP security headers (CSP disabled in dev for Swagger UI).
 - **Auth plugin DI:** Tests inject a fake JWKS via `BuildAppOptions.auth` — no real Supabase calls in integration tests.
+- **Admin role:** Users with `app_metadata.role === 'admin'` in the JWT bypass all plan access checks. They can view/edit/delete any plan and see all plans in `GET /plans`. To assign admin to a user in Supabase:
+  - **Dashboard:** Authentication > Users > Edit user > App Metadata: `{"role": "admin"}`
+  - **SQL:** `UPDATE auth.users SET raw_app_meta_data = raw_app_meta_data || '{"role": "admin"}'::jsonb WHERE email = 'your-admin@email.com';`
+  - The user's next JWT (on login/refresh) will include `app_metadata: { role: "admin" }`.
 
 ### What's next (user management — #73)
 

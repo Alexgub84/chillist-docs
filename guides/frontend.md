@@ -481,29 +481,22 @@ Every commit triggers:
 3. `npm run test:unit` — unit tests in CI mode
 4. `npx playwright test --project="Desktop Chrome"` — E2E tests (Chrome only, with `VITE_AUTH_MOCK=true`)
 
+Run all browsers manually before pushing: `npm run e2e`. CI runs only Chrome.
+
 ## CI/CD (GitHub Actions → Cloudflare Pages)
 
 Two separate workflow files:
 
 ### `ci.yml` — runs on PRs against `main`
 
-Two parallel jobs:
+Single job (Chrome only):
 
-**`test` (required — gates merge):**
 1. Install dependencies
 2. Fetch OpenAPI spec from backend
 3. Lint
 4. Type check
 5. Unit tests
-6. Install Chromium + run E2E tests (Desktop Chrome only, 2 workers)
-
-**`test-safari` (non-blocking — `continue-on-error: true`):**
-1. Install dependencies
-2. Fetch OpenAPI spec from backend
-3. Install WebKit + Firefox + run E2E tests (Desktop Safari, Mobile Safari, Desktop Firefox)
-4. Always uploads Playwright report artifact (pass or fail)
-
-Safari/Firefox failures appear as warnings on the PR but do not block merge. This avoids Linux-WebKit flakiness blocking the pipeline while still providing cross-browser visibility.
+6. Install Chromium + run E2E tests (Desktop Chrome only)
 
 ### `deploy.yml` — runs on push to `main`
 
@@ -518,15 +511,9 @@ Single job (no E2E — CI already validated on the PR):
 7. Build (with production env vars)
 8. Deploy to Cloudflare Pages
 
-### Testing Safari locally (Linux-WebKit parity)
+### Testing all browsers / Safari (Linux-WebKit parity)
 
-Playwright's WebKit on macOS differs from CI's Linux-WebKit. To reproduce CI failures locally:
-
-```bash
-npm run e2e:docker
-```
-
-This runs all E2E tests inside the official Playwright Docker image (Ubuntu + Linux-WebKit), matching the CI environment exactly. Update the Docker image tag in `package.json` when upgrading `@playwright/test`.
+Before pushing, run all browsers: `npm run e2e`. For Linux-WebKit parity: `npm run e2e:docker`. Keep the Docker image tag in `package.json` in sync with `@playwright/test`.
 
 ### Required GitHub secrets/vars
 

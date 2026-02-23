@@ -31,7 +31,7 @@ No additional setup needed — start implementing.
 ## Auth Middleware
 
 - JWT verification via JWKS (Supabase asymmetric keys, `jose` library). No secrets stored on the BE.
-- `request.user` is populated on every request when a valid `Authorization: Bearer <jwt>` header is present. Contains `{ id, email, role }`.
+- `request.user` is populated on every request when a valid `Authorization: Bearer <jwt>` header is present. Contains `{ id, email, role }`. Role comes from JWT `app_metadata.role` (e.g. `admin`) or `role` claim (default `authenticated`). Admin users bypass plan access checks.
 - Protected routes (require JWT, return 401 without): `GET /auth/me`, `GET /auth/profile`, `PATCH /auth/profile`.
 - Rate limiting: `@fastify/rate-limit` active globally (100 req/min per IP), stricter on auth endpoints (10 req/min).
 - Security headers: `@fastify/helmet` active on all responses.
