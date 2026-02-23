@@ -6,6 +6,22 @@ A log of bugs fixed and problems solved in `chillist-be`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Silent JWT Failure Creates Ownerless Private Plans
+**Date:** 2026-02-24
+**Problem:** The auth plugin catches JWT verification errors at `debug` level (invisible in production where `LOG_LEVEL=info`). When verification fails, `request.user` stays null and route handlers silently create resources without user association. Combined with FE defaulting visibility to `private`, plans become permanently inaccessible — private plan with no `createdByUserId` means `checkPlanAccess()` denies everyone.
+**Solution:** (1) Upgrade JWT failure logging from `debug` to `warn` so failures are visible in production. (2) Add fail-fast guard on write endpoints: if `Authorization: Bearer` header is present but `request.user` is null, return 401 instead of proceeding with null identity.
+**Prevention:** Never silently swallow auth failures. Any catch block in auth middleware should log at `warn` level minimum. Endpoints that depend on user identity should explicitly check for the "token sent but verification failed" case rather than treating it the same as "no token sent."
+
+---
+
+### [Arch] Log Levels Matter — `debug` Is Invisible in Production
+**Date:** 2026-02-24
+**Problem:** JWT verification failures were logged at `debug` level. Production `LOG_LEVEL` defaults to `info`, so these errors were completely invisible in Railway logs. The bug went undetected because there was no signal.
+**Solution:** Changed JWT failure logging to `warn`. Rule: anything that changes request behavior (e.g., user becomes unauthenticated) must be logged at `warn` or higher.
+**Prevention:** Before logging at `debug`, ask: "If this happens in production, would I want to see it?" If yes, use `warn`. Reserve `debug` for verbose tracing only useful during local development.
+
+---
+
 ### [Arch] Update API Spec Before Implementing — Prevents FE/BE Mismatch
 **Date:** 2026-02-24
 **Problem:** The user-management spec had outdated sections (guests described as "cannot edit anything," profile auto-provisioning referencing a `profiles` table that was removed months ago, endpoints with no request/response details). If the FE had built against this spec, it would have been wrong. Discovered during access control work when reviewing what guests should be able to do.

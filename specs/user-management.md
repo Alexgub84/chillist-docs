@@ -65,11 +65,13 @@ All tables (including new tables) stay in the existing Railway PostgreSQL instan
 - PII protection comes from authorization logic in route handlers, not from which PostgreSQL instance hosts the data
 - No migration effort, no deployment changes, no Supabase DB vendor lock-in
 
-### 2.4 Plan Creation: Open to All (For Now)
+### 2.4 Plan Creation: Open But Fail-Fast on Bad JWT
 
-Anyone can create plans, with or without a JWT. This preserves current behavior. If the creator is logged in, their `userId` is recorded on the plan. If not, the plan has no linked user.
+Anyone can create plans without a JWT (plan gets `visibility: public`, `createdByUserId: null`). If a valid JWT is present, the plan gets `visibility: unlisted` (default) and `createdByUserId` set to the user's Supabase UUID.
 
-This may change in the future (require auth for plan creation), but is not part of this spec.
+**Fail-fast rule:** If an `Authorization: Bearer` header IS present but JWT verification fails, the BE returns **401** immediately — it does NOT silently create an ownerless plan. This prevents the FE from getting a 201 success for a plan that will be inaccessible (private plan with no owner = 404 for everyone).
+
+This fail-fast guard applies to all write endpoints: `POST /plans/with-owner`, `PATCH /plans/:planId`, `DELETE /plans/:planId`.
 
 ### 2.5 PII Stripping: Always on the BE
 
@@ -488,7 +490,7 @@ Registered user opens a plan they're linked to
 | Status | Meaning | FE action |
 |--------|---------|-----------|
 | 400 | Validation error (bad input) | Show message to user |
-| 401 | Not authenticated (missing/invalid/expired token) | Redirect to sign-in or re-verify |
+| 401 | Not authenticated (missing/invalid/expired token). Also returned on write endpoints (`POST /plans/with-owner`, `PATCH/DELETE /plans/:planId`) when JWT header is present but verification failed — prevents creating broken resources. | Redirect to sign-in, refresh Supabase token, or re-verify |
 | 404 | Not found OR not authorized (same response to prevent leaking existence) | Show "not found" screen |
 | 429 | Rate limited | Show "too many requests, try again later" |
 | 500 | Server error | Show generic error |
@@ -531,7 +533,7 @@ Registered user opens a plan they're linked to
 |----------|--------|
 | `GET /health` | Public, no auth |
 | `GET /auth/me` | Already requires JWT |
-| `POST /plans` / `POST /plans/with-owner` | Open to all (decision: plan creation stays public) |
+| `POST /plans` / `POST /plans/with-owner` | Open without JWT. **If JWT header is present but invalid, returns 401** (fail-fast — prevents ownerless plans). See Section 2.4. |
 
 ### 7.4 New Endpoint Details
 
@@ -776,7 +778,14 @@ Adapted from original spec:
 - `GET /plans/:planId/participants` enforces plan access via `checkPlanAccess()`
 - `GET /plans/:planId/items` enforces plan access via `checkPlanAccess()`
 - 12 additional integration tests (list filtering, sub-resource access/denial)
+- Invite route item filtering: only returns items assigned to the invited participant + unassigned items
 - Version 1.8.0
+
+**Step C — JWT fail-fast + logging: Done (PR #84)**
+
+- JWT verification failure log level upgraded from `debug` to `warn` in `src/plugins/auth.ts` — failures now visible in production logs
+- Fail-fast guard on write endpoints (`POST /plans/with-owner`, `PATCH /plans/:planId`, `DELETE /plans/:planId`): if `Authorization: Bearer` header is present but `request.user` is null, return 401 instead of creating broken resources
+- 5 integration tests: invalid JWT on create/patch/delete returns 401, no JWT creates public plan, valid JWT creates unlisted plan with owner
 
 ### Phase 3: WhatsApp Verification + Guest Sessions
 
