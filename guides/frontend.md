@@ -120,6 +120,17 @@ npm run api:types         # generate types only (when spec is already local)
 
 Regenerate types whenever the backend API changes.
 
+### `api:fetch` authentication
+
+`scripts/fetch-openapi.sh` downloads the spec from `chillist-be` (private repo). Auth token resolution:
+
+1. **`API_SPEC_TOKEN`** — used if set (CI and local)
+2. **`GITHUB_TOKEN`** — fallback, only when NOT in CI (local dev convenience)
+3. **No auth** — fallback if neither is set (works only if the repo is public)
+
+- **Locally:** Works via your shell's `GITHUB_TOKEN` (PAT) or `API_SPEC_TOKEN`
+- **In CI:** The workflow passes `API_SPEC_TOKEN` from a GitHub secret (a fine-grained PAT scoped to `chillist-be` read-only). The built-in `GITHUB_TOKEN` is NOT used because it is scoped to the current repo only and cannot access other private repos.
+
 ## Supabase Auth
 
 The FE handles sign-up/sign-in directly with Supabase — the BE only verifies JWTs.
@@ -501,6 +512,7 @@ Two separate workflow files:
 
 | Name | Type | Description |
 |------|------|-------------|
+| `API_SPEC_TOKEN` | Secret | Fine-grained PAT with read access to `chillist-be` (used by `api:fetch` in CI to download OpenAPI spec from private repo) |
 | `CLOUDFLARE_API_TOKEN` | Secret | Cloudflare API token |
 | `CLOUDFLARE_ACCOUNT_ID` | Secret | Cloudflare account ID |
 | `VITE_API_KEY` | Secret | Production API key |
