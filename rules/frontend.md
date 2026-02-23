@@ -119,6 +119,13 @@ The backend is the **single source of truth** for all enum values (units, status
 - Do NOT make authorization decisions client-side. The BE enforces access via JWT verification. Client-side checks are for UX only (e.g., hiding an "Edit" button), not security.
 - Never log access tokens or refresh tokens to the browser console in production.
 
+### JWT 401 Retry and Auth Error Modal
+
+- On 401 from the BE, the API layer (`src/core/api.ts` `request()`) must call `supabase.auth.refreshSession()` and retry the request **once** with the new token before failing.
+- On final 401 (after retry fails or refresh fails), show the `AuthErrorModal` — a modal dialog prompting the user to sign in or dismiss. Never use a transient toast for auth failures; the modal forces the user to acknowledge the problem.
+- The auth error bus (`src/core/auth-error.ts`) bridges the non-React API layer and the React modal. Use `emitAuthError()` in API code, subscribe via `onAuthError()` in React (`AuthProvider`).
+- Both API layers (`api.ts` primary and `api-client.ts` openapi-fetch) must inject the JWT `Authorization: Bearer` header on every request when the user is signed in.
+
 ## i18n (Internationalization)
 
 - All user-facing strings must use `t()` from `useTranslation()` (react-i18next) — never hardcode text in JSX

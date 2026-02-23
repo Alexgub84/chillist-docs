@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] JWT 401 had no retry or recovery — expired tokens caused hard failures
+**Date:** 2026-02-23
+**Problem:** When a Supabase access token expired between requests, the API call returned 401 and showed a generic toast that disappeared after a few seconds. No token refresh, no retry, no clear recovery path. The secondary `api-client.ts` (openapi-fetch) didn't inject JWT at all.
+**Solution:** (1) Added 401 retry to `request()` in `api.ts` — on 401, calls `supabase.auth.refreshSession()` and retries once. (2) On final 401, emits via `src/core/auth-error.ts` event bus which triggers `AuthErrorModal` with Sign In / Dismiss buttons. (3) Added JWT injection to `api-client.ts` via `authFetch` wrapper. (4) Improved `ErrorPage` to show plan-specific 404 message for access control errors.
+**Prevention:** Every API layer must inject JWT and handle 401 with refresh+retry. Auth failures surface via `AuthErrorModal`, never a toast. See `rules/frontend.md` > "JWT 401 Retry and Auth Error Modal".
+
+---
+
 ### [Test] E2E test broke after adding preferences modal — test didn't account for new post-creation step
 **Date:** 2026-02-23
 **Problem:** E2E test "creates a plan with owner and navigates to detail page" failed in CI. After clicking "Create Plan", the test expected immediate navigation to `/plan/:id`, but the page stayed on `/create-plan`. The participant preferences feature added a modal that appears after plan creation, requiring the user to either fill preferences or skip before navigation happens.
