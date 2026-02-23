@@ -479,9 +479,9 @@ Every commit triggers:
 1. `npm run typecheck` — fails on TypeScript errors
 2. ESLint + Prettier on staged files (`lint-staged`)
 3. `npm run test:unit` — unit tests in CI mode
-4. `npx playwright test --project="Desktop Chrome"` — E2E tests (Chrome only, with `VITE_AUTH_MOCK=true`)
+4. `npx playwright test` — E2E tests (all 4 browsers, with `VITE_AUTH_MOCK=true`)
 
-Run all browsers manually before pushing: `npm run e2e`. CI runs only Chrome.
+CI runs Chrome only. Ensure all browsers installed: `npx playwright install`.
 
 ## CI/CD (GitHub Actions → Cloudflare Pages)
 
