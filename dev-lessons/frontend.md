@@ -6,6 +6,15 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Infra] api:fetch fails in GitHub Actions — GITHUB_TOKEN is scoped to current repo only
+**Date:** 2026-02-23
+**Problem:** `npm run api:fetch` failed with exit code 22 in GitHub Actions. The curl command used `$GITHUB_TOKEN` to fetch `openapi.json` from the private `chillist-be` repo via `raw.githubusercontent.com`. Locally it worked because `GITHUB_TOKEN` is a PAT with broad repo access.
+**Root cause:** In GitHub Actions, `GITHUB_TOKEN` is automatically set to a built-in installation token scoped to the **current repo only** (`chillist-fe`). It cannot access content from other private repos (`chillist-be`), so GitHub returned 403/404 and curl exited with code 22 (`-f` flag).
+**Solution:** Extracted curl logic into `scripts/fetch-openapi.sh` with conditional auth: (1) uses `API_SPEC_TOKEN` if set, (2) falls back to `GITHUB_TOKEN` only when NOT in CI (local dev), (3) falls back to no auth. In CI workflows, `API_SPEC_TOKEN` is passed from a GitHub secret — a fine-grained PAT scoped to read-only on `chillist-be`.
+**Prevention:** Never rely on the built-in `GITHUB_TOKEN` for cross-repo access in GitHub Actions. For private cross-repo file access, use a fine-grained PAT stored as a repo secret with a dedicated env var name (not `GITHUB_TOKEN`) to avoid collision with the built-in token.
+
+---
+
 ### [Deps] Google Maps API beta breaks native date/time pickers
 **Date:** 2026-02-23
 **Problem:** After migrating `LocationAutocomplete` to `PlaceAutocompleteElement` with `version="beta"` on `APIProvider`, native `<input type="date">` and `<input type="time">` pickers stopped opening. Worked on desktop after a CSS fix but still broke on mobile.
