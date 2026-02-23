@@ -6,6 +6,15 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Deps] Google Maps API beta breaks native date/time pickers
+**Date:** 2026-02-23
+**Problem:** After migrating `LocationAutocomplete` to `PlaceAutocompleteElement` with `version="beta"` on `APIProvider`, native `<input type="date">` and `<input type="time">` pickers stopped opening. Worked on desktop after a CSS fix but still broke on mobile.
+**Root cause:** Google Maps API (`version="beta"`) injects global CSS that strips `appearance` from form inputs, disabling native date/time picker controls. Combined with Tailwind v4 preflight setting `background-color: transparent` on all inputs, the native controls became invisible or non-functional. Mobile was hit harder because touch-based picker activation is more sensitive to `appearance` being stripped.
+**Solution:** Two-layer fix: (1) In `index.css`, added `appearance: auto !important` for `input[type='date']`, `input[type='time']`, `input[type='datetime-local']`, `input[type='month']`, `input[type='week']` to override any injected styles. (2) In `FormInput`, added `showPicker()` on click for picker-type inputs (forces the native picker to open programmatically), added `bg-white` to input styles, and added `cursor-pointer` for picker inputs. Wrapped `showPicker()` in try-catch since it throws outside user-gesture contexts.
+**Prevention:** When loading third-party APIs that inject global CSS (Google Maps, Stripe, etc.), always protect native form controls with `appearance: auto !important` in your base CSS. Use `showPicker()` on click for date/time inputs as a belt-and-suspenders approach. Test date/time pickers on both desktop and mobile after adding any new third-party script.
+
+---
+
 ### [Deps] Migrate from legacy google.maps.places.Autocomplete to PlaceAutocompleteElement
 **Date:** 2026-02-23
 **Problem:** Console warning: "As of March 1st, 2025, google.maps.places.Autocomplete is not available to new customers. Please use google.maps.places.PlaceAutocompleteElement instead."
