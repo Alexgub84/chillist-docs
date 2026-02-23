@@ -294,14 +294,14 @@ participants 1 ←──── * guest_sessions     (via guest_sessions.particip
 
 ### 5.1 Access Matrix
 
-| Accessor | Auth Method | Sees Plan + Items | Sees Participant PII | Can Add Items | Can Edit Items | Can Manage Participants |
-|----------|-----------|-------------------|---------------------|---------------|---------------|------------------------|
-| Owner (registered) | JWT | Yes | Yes | Yes | All items | Yes |
-| Owner (unregistered) | API key (legacy) | Yes | Yes | Yes | All items | Yes |
-| Participant (linked) | JWT | Yes | Yes | Yes | Own assigned only | No |
-| Guest (verified) | X-Guest-Token | Yes | displayName + role only | No | No | No |
-| Guest (unverified) | Invite token in URL | Plan title + owner displayName only | No | No | No | No |
-| Anonymous | None | No (401) | No | No | No | No |
+| Accessor | Auth Method | Sees Plan + Items | Sees Participant PII | Can Add Items | Can Edit Items | Can Self-Assign | Can Update Own Preferences | Can Manage Participants |
+|----------|-----------|-------------------|---------------------|---------------|---------------|----------------|---------------------------|------------------------|
+| Owner (registered) | JWT | Yes | Yes | Yes | All items | N/A | Yes | Yes |
+| Owner (unregistered) | API key (legacy) | Yes | Yes | Yes | All items | N/A | No | Yes |
+| Participant (linked) | JWT | Yes | Yes | Yes | Own assigned only | Yes | Yes | No |
+| Guest (verified) | X-Guest-Token | Own assigned + unassigned only | displayName + role only | No | Own assigned only (all fields) | Yes (assign + unassign) | Yes (anytime, not just onboarding) | No |
+| Guest (unverified) | Invite token in URL | Own assigned + unassigned only (PII stripped) | No | No | No | No | No | No |
+| Anonymous | None | No (401) | No | No | No | No | No | No |
 
 ### 5.2 PII Fields (Hidden from Guests)
 
@@ -379,13 +379,39 @@ On subsequent visits (after re-verification):
 
 Onboarding data is **per-plan** — a guest can have different group sizes and dietary needs for different trips. If the guest later registers as a user and claims their participant spot, this data is preserved and remains editable.
 
+**Preferences are editable anytime** — not just during initial onboarding. Verified guests can update their preferences (displayName, adultsCount, kidsCount, foodPreferences, allergies) on subsequent visits via `PATCH /guest/preferences`.
+
 ### 6.3 Guest Plan Access (Verified)
 
 ```
 Verified guest with active session:
   → FE calls: GET /guest/plan (X-Guest-Token header)
   → BE looks up guest_session, checks not expired
-  → BE returns: plan + items + sanitized participants (displayName + role only)
+  → BE returns: plan + filtered items + sanitized participants (displayName + role only)
+  → Items filtered: only items assigned to this participant + unassigned items
+  → Items assigned to other participants are hidden
+```
+
+### 6.3a Guest Item Interaction (Verified)
+
+```
+Verified guest can edit items assigned to them:
+  → FE calls: PATCH /guest/items/:itemId (X-Guest-Token header)
+  → BE validates: item exists, item is assigned to this guest's participant
+  → BE updates: all item fields (name, status, quantity, unit, notes)
+  → BE returns: updated item
+
+Verified guest can self-assign to an unassigned item:
+  → FE calls: POST /guest/items/:itemId/assign (X-Guest-Token header)
+  → BE validates: item exists, item has no assignedParticipantId (unassigned)
+  → BE updates: SET assignedParticipantId = guest's participantId
+  → BE returns: updated item
+
+Verified guest can self-unassign from an item:
+  → FE calls: POST /guest/items/:itemId/unassign (X-Guest-Token header)
+  → BE validates: item exists, item is assigned to this guest's participant
+  → BE updates: SET assignedParticipantId = null
+  → BE returns: updated item
 ```
 
 ### 6.4 Profile Auto-Provisioning (Registered User)
@@ -437,7 +463,11 @@ Registered user opens a plan they're linked to
 | POST | `/invite/:inviteToken/request-code` | None (rate-limited) | Send WhatsApp OTP to participant's phone |
 | POST | `/invite/:inviteToken/verify-code` | None (rate-limited) | Validate OTP, issue guest session token |
 | POST | `/guest/onboarding` | X-Guest-Token | Submit onboarding data (first time) |
-| GET | `/guest/plan` | X-Guest-Token | Get plan data (sanitized, guest view) |
+| PATCH | `/guest/preferences` | X-Guest-Token | Update own preferences anytime (displayName, adultsCount, kidsCount, foodPreferences, allergies) |
+| GET | `/guest/plan` | X-Guest-Token | Get plan data (sanitized, filtered items, guest view) |
+| PATCH | `/guest/items/:itemId` | X-Guest-Token | Edit an item assigned to this guest (all fields) |
+| POST | `/guest/items/:itemId/assign` | X-Guest-Token | Self-assign to an unassigned item |
+| POST | `/guest/items/:itemId/unassign` | X-Guest-Token | Self-unassign from an item |
 | GET | `/auth/profile` | JWT required | Get current user's profile |
 | PATCH | `/auth/profile` | JWT required | Update display name, avatar |
 | POST | `/plans/:planId/claim/:inviteToken` | JWT required | Link authenticated user to participant |
@@ -448,8 +478,8 @@ Registered user opens a plan they're linked to
 |----------|--------|
 | `GET /plans/:planId` | Check JWT → return full data if owner/linked participant; 401 if no auth |
 | `GET /plans/:planId/participants` | Check JWT → return full PII if owner/linked participant; 401 if no auth |
-| `GET /plans/:planId/invite/:inviteToken` | Now returns **minimal data only** (plan title, owner displayName) — acts as landing page before verification |
-| `PATCH /items/:itemId` | Check JWT → owner can edit any item; linked participant can only edit own assigned items |
+| `GET /plans/:planId/invite/:inviteToken` | Returns filtered items (own assigned + unassigned only) + stripped participants. After Phase 4: returns **minimal data only** (plan title, owner displayName) — acts as landing page before verification. |
+| `PATCH /items/:itemId` | Check JWT → owner can edit any item; linked participant can edit only own assigned. Verified guests use `PATCH /guest/items/:itemId` instead (same logic, different auth). |
 | `DELETE /items/:itemId` | Check JWT → owner only |
 | `POST /plans/:planId/items` | Check JWT → owner and linked participants can add |
 | `POST /plans/:planId/participants` | Check JWT → owner only |
@@ -486,10 +516,37 @@ Registered user opens a plan they're linked to
 - Action: Updates participant record, sets `onboardingCompleted = true`
 - Response: Updated participant (sanitized — own data only, no other participants' PII)
 
+**`PATCH /guest/preferences`**
+- Auth: `X-Guest-Token` header required
+- Body: `{ displayName?, adultsCount?, kidsCount?, foodPreferences?, allergies? }`
+- Action: Updates the guest's participant record with any provided fields
+- Response: Updated participant data (own data only)
+- Notes: Unlike onboarding, this does NOT set `onboardingCompleted` — it's a general-purpose update. All fields are optional.
+
 **`GET /guest/plan`**
 - Auth: `X-Guest-Token` header required
-- Action: Returns plan + items + sanitized participants (displayName + role only)
+- Action: Returns plan + filtered items + sanitized participants (displayName + role only)
+- Items filtered: only items assigned to this guest's participant + unassigned items. Items assigned to other participants are hidden.
 - Response: Same shape as current invite route response, but authenticated via guest session
+
+**`PATCH /guest/items/:itemId`**
+- Auth: `X-Guest-Token` header required
+- Body: `{ name?, category?, quantity?, unit?, status?, notes? }`
+- Action: Updates an item that is assigned to this guest's participant. All item fields are editable.
+- Validation: item must exist and `assignedParticipantId` must match the guest's `participantId`
+- Errors: 404 (item not found or not assigned to this guest), 400 (validation error)
+
+**`POST /guest/items/:itemId/assign`**
+- Auth: `X-Guest-Token` header required
+- Action: Sets `assignedParticipantId` to the guest's `participantId`
+- Validation: item must exist, `assignedParticipantId` must be null (unassigned)
+- Errors: 404 (item not found), 400 (item already assigned to someone)
+
+**`POST /guest/items/:itemId/unassign`**
+- Auth: `X-Guest-Token` header required
+- Action: Sets `assignedParticipantId` to null
+- Validation: item must exist, `assignedParticipantId` must match the guest's `participantId`
+- Errors: 404 (item not found or not assigned to this guest)
 
 ---
 
@@ -641,16 +698,20 @@ Adapted from original spec:
 
 **Risk:** Medium. Introduces external dependency (Twilio). Requires Twilio account setup and WhatsApp sandbox for dev.
 
-### Phase 4: Guest Onboarding
+### Phase 4: Guest Onboarding + Guest Interaction
 
-**Goal:** First-time verified guests fill in group details and dietary info.
+**Goal:** Verified guests can onboard, update preferences, view filtered plan data, edit own items, and self-assign/unassign.
 
-- Add `POST /guest/onboarding` endpoint (requires X-Guest-Token)
-- Add `GET /guest/plan` endpoint (requires X-Guest-Token, returns sanitized plan data)
+- Add `POST /guest/onboarding` endpoint (requires X-Guest-Token, first-time only)
+- Add `PATCH /guest/preferences` endpoint (requires X-Guest-Token, update preferences anytime)
+- Add `GET /guest/plan` endpoint (requires X-Guest-Token, returns sanitized plan data with items filtered to own assigned + unassigned)
+- Add `PATCH /guest/items/:itemId` endpoint (requires X-Guest-Token, edit own assigned items — all fields)
+- Add `POST /guest/items/:itemId/assign` endpoint (requires X-Guest-Token, self-assign to unassigned item)
+- Add `POST /guest/items/:itemId/unassign` endpoint (requires X-Guest-Token, self-unassign)
 - Modify `GET /plans/:planId/invite/:inviteToken` to return minimal data only (plan title, owner displayName — landing page before verification)
-- Write integration tests (onboarding submit, skip on repeat visit, plan access with/without session)
+- Write integration tests (onboarding, preferences update, plan access, item editing, self-assign/unassign, permission boundaries)
 
-**Risk:** Low. New endpoints only. Modifies one existing endpoint (invite route returns less data).
+**Risk:** Low-medium. New endpoints only. Modifies one existing endpoint (invite route returns less data). Item editing requires careful validation to prevent guests from editing other participants' items.
 
 ### Phase 5: Claim-Via-Invite (Registered Users)
 
@@ -675,14 +736,15 @@ Adapted from original spec:
 
 **Risk:** Medium. Changes existing behavior — routes that were public become restricted. Must keep API key fallback to avoid breaking existing FE until FE is updated.
 
-### Phase 7: Edit Permissions
+### Phase 7: Edit Permissions (JWT Users)
 
-**Goal:** Enforce who can edit what.
+**Goal:** Enforce who can edit what for JWT-authenticated users (owner + linked participants). Guest edit permissions are handled in Phase 4 via `/guest/*` routes.
 
 - `PATCH /items/:itemId`: owner can edit any; linked participant can edit only own assigned
 - `DELETE /items/:itemId`: owner only
 - `POST /plans/:planId/items`: owner + linked participants
 - Participant CRUD (`POST`, `PATCH`, `DELETE`): owner only
+- Linked participants can self-assign/unassign items (same logic as guest, but via JWT)
 - Write integration tests for each permission boundary
 
 **Risk:** Medium. Changes write behavior. Must coordinate with FE to handle 403 responses.
