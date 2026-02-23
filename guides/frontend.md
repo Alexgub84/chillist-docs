@@ -474,15 +474,8 @@ Every commit triggers:
 
 1. `npm run typecheck` — fails on TypeScript errors
 2. ESLint + Prettier on staged files (`lint-staged`)
-3. `npm run test:run` — unit tests in CI mode
-
-### Recommended manual checks before commit
-
-```bash
-npm run typecheck
-npm run lint:fix
-npm run test:run
-```
+3. `npm run test:unit` — unit tests in CI mode
+4. `npx playwright test --project="Desktop Chrome"` — E2E tests (Chrome only, with `VITE_AUTH_MOCK=true`)
 
 ## CI/CD (GitHub Actions → Cloudflare Pages)
 
