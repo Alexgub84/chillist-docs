@@ -1,7 +1,7 @@
 # User & Participant Management — Spec
 
-> **Status:** In Progress (through Phase 2.5)
-> **Last updated:** 2026-02-23
+> **Status:** In Progress (Phase 2.5 Step A done)
+> **Last updated:** 2026-02-24
 > **Depends on:** Supabase Auth (done), existing plans/participants/items schema
 
 ---
@@ -608,17 +608,22 @@ Adapted from original spec:
 
 ### Phase 2.5: Plan Ownership + Access Control 🔄
 
-**Status:** Next.
-
 **Goal:** Enforce `visibility` field on plans. Authenticated plan creation defaults to `unlisted`. Only owner/linked participants can read non-public plans.
 
+**Step A — Core access control: Done (PR #84)**
+
 - `POST /plans/with-owner` with JWT defaults `visibility` to `unlisted`
-- `checkPlanAccess()` utility: checks visibility + user relationship (owner or linked participant)
-- `GET /plans/:planId` enforces access control (404 for unauthorized access to non-public plans)
+- `checkPlanAccess()` utility in `src/utils/plan-access.ts`: checks visibility + user relationship (owner via `createdByUserId`, participant via `participants.userId`)
+- `GET /plans/:planId` enforces access control (returns 404 for unauthorized access to non-public plans — same response as nonexistent plan to prevent information leakage)
+- 17 integration tests: visibility defaults, owner/participant/viewer access, expired JWT, orphaned plans, response shape identity, invite route compatibility
+- Version 1.7.0
+
+**Step B — Extended protection: Next**
+
 - `GET /plans` filters by user's plans + public plans
 - `GET /plans/:planId/participants` and `GET /plans/:planId/items` enforce plan access
 - Invite route unchanged — still the guest access path with PII stripping
-- Integration tests for all access control scenarios
+- Additional integration tests
 
 ### Phase 3: WhatsApp Verification + Guest Sessions
 
@@ -707,7 +712,7 @@ Since all new columns are nullable (or have safe defaults) and all new tables ar
 1. ~~Deploy schema changes (Phase 1)~~ — Done (PR #76)
 2. ~~Deploy opportunistic user tracking (Phase 1.5)~~ — Done (PR #80)
 3. ~~Deploy profile endpoints + security hardening (Phase 2)~~ — Done (PR #81)
-4. Deploy plan ownership + access control (Phase 2.5) — **next**
+4. Deploy plan ownership + access control (Phase 2.5) — **Step A done (PR #84), Step B next**
 5. Deploy WhatsApp verification + guest sessions (Phase 3)
 6. Deploy guest onboarding (Phase 4)
 7. Deploy claim endpoint (Phase 5)

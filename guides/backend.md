@@ -223,9 +223,10 @@ Done:
 - ~~Opportunistic user tracking~~ (records `createdByUserId` and owner `userId` when JWT present)
 - ~~Profile endpoints~~ (`GET/PATCH /auth/profile` for user preferences)
 - ~~Rate limiting~~ (`@fastify/rate-limit`) and ~~security headers~~ (`@fastify/helmet`)
+- ~~Plan ownership Step A~~ (JWT-created plans default to `unlisted`, `GET /plans/:planId` enforces visibility via `checkPlanAccess()`, 17 tests, PR #84)
 
 Current:
-- Plan ownership + visibility-based access control (`checkPlanAccess()` utility, `unlisted` default for JWT-created plans)
+- Plan ownership Step B: `GET /plans` list filtering by user's plans + public, access checks on `GET /plans/:planId/participants` and `GET /plans/:planId/items`
 
 Future:
 - WhatsApp phone verification for guests (Twilio OTP)
