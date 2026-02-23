@@ -6,6 +6,30 @@ A log of bugs fixed and problems solved in `chillist-be`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Update API Spec Before Implementing — Prevents FE/BE Mismatch
+**Date:** 2026-02-24
+**Problem:** The user-management spec had outdated sections (guests described as "cannot edit anything," profile auto-provisioning referencing a `profiles` table that was removed months ago, endpoints with no request/response details). If the FE had built against this spec, it would have been wrong. Discovered during access control work when reviewing what guests should be able to do.
+**Solution:** Added "API Contract with FE" section to backend rules. Every endpoint must be documented in the spec with: method, path, URL params with types, auth headers, request body fields with types (required/optional/nullable), response JSON shape, error codes. Spec must be updated BEFORE implementing, not after.
+**Prevention:** Treat the user-management spec as the FE/BE contract. Never implement an endpoint without its full detail in the spec. Add spec update to the finalization checklist.
+
+---
+
+### [Arch] Per-Plan Preferences Must Live on Participant Record, Not Shared Profile
+**Date:** 2026-02-24
+**Problem:** The `guest_profiles` table and the `participants` table both had preference columns (`foodPreferences`, `allergies`, `adultsCount`, `kidsCount`). Unclear which was the source of truth. The spec said onboarding data goes to `guest_profiles`, but preferences should be per-plan (different trips = different dietary needs and group sizes).
+**Solution:** Per-plan preferences live on the `participants` table — each participant record stores preferences for that specific plan. The `user_details` table stores default preferences for signed-in users, which are pre-filled into participant records when joining a new plan. Guest endpoints update the participant record directly. Added Open Question #11 to review whether `guest_profiles` is still needed.
+**Prevention:** When storing user preferences, always decide upfront: is this per-plan or global? Per-plan data goes on the participant record. Global defaults go on `user_details`. Never duplicate the same fields across tables without documenting which is authoritative.
+
+---
+
+### [Arch] Invite Route Must Filter Items by Participant Assignment
+**Date:** 2026-02-24
+**Problem:** The invite route (`GET /plans/:planId/invite/:inviteToken`) returned ALL items for the plan, including items assigned to other participants. An invite user could see what everyone else was bringing, which leaks assignment data they shouldn't have access to.
+**Solution:** Filter items in the invite route response: only return items where `assignedParticipantId` matches the invited participant OR `assignedParticipantId` is null (unassigned). Items assigned to other participants are hidden.
+**Prevention:** When returning plan data to non-owner users, always filter items by the requester's participant relationship. Apply the same filtering pattern to `GET /guest/plan` (future) and any other guest-facing route.
+
+---
+
 ### [Arch] Plan Access Control — Return 404 Instead of 403 for Unauthorized Plans
 **Date:** 2026-02-23
 **Problem:** When enforcing visibility on `GET /plans/:planId`, returning 403 (Forbidden) leaks the existence of private plans to unauthorized users. An attacker could enumerate plan IDs and learn which ones exist.
