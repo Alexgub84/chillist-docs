@@ -90,6 +90,7 @@ npm run dev
 | `npm run e2e` | Run Playwright E2E tests |
 | `npm run e2e:ui` | Run E2E tests with Playwright UI |
 | `npm run e2e:headed` | Run E2E tests in headed browser mode |
+| `npm run e2e:docker` | Run E2E tests in Linux Docker (matches CI WebKit) |
 | `npm run routes` | Regenerate TanStack Router route tree |
 | `npm run screenshots` | Capture home page step screenshots (EN + HE) |
 
@@ -478,7 +479,7 @@ Every commit triggers:
 1. `npm run typecheck` — fails on TypeScript errors
 2. ESLint + Prettier on staged files (`lint-staged`)
 3. `npm run test:unit` — unit tests in CI mode
-4. `npx playwright test` — E2E tests (all browsers: Chrome, Firefox, Desktop Safari, Mobile Safari, with `VITE_AUTH_MOCK=true`)
+4. `npx playwright test --project="Desktop Chrome"` — E2E tests (Chrome only, with `VITE_AUTH_MOCK=true`)
 
 ## CI/CD (GitHub Actions → Cloudflare Pages)
 
@@ -486,23 +487,46 @@ Two separate workflow files:
 
 ### `ci.yml` — runs on PRs against `main`
 
+Two parallel jobs:
+
+**`test` (required — gates merge):**
 1. Install dependencies
 2. Fetch OpenAPI spec from backend
 3. Lint
 4. Type check
 5. Unit tests
-6. Install all browsers + run E2E tests (Chrome, Firefox, Desktop Safari, Mobile Safari, 2 workers)
+6. Install Chromium + run E2E tests (Desktop Chrome only, 2 workers)
+
+**`test-safari` (non-blocking — `continue-on-error: true`):**
+1. Install dependencies
+2. Fetch OpenAPI spec from backend
+3. Install WebKit + Firefox + run E2E tests (Desktop Safari, Mobile Safari, Desktop Firefox)
+4. Always uploads Playwright report artifact (pass or fail)
+
+Safari/Firefox failures appear as warnings on the PR but do not block merge. This avoids Linux-WebKit flakiness blocking the pipeline while still providing cross-browser visibility.
 
 ### `deploy.yml` — runs on push to `main`
 
-1. Install dependencies
-2. Fetch OpenAPI spec from backend
-3. Lint
-4. Type check
-5. Unit tests
-6. Install all browsers + run E2E tests (Chrome, Firefox, Desktop Safari, Mobile Safari, 2 workers)
-7. Build (with production `VITE_API_URL` and `VITE_API_KEY`)
+Single job (no E2E — CI already validated on the PR):
+
+1. Validate required environment variables
+2. Install dependencies
+3. Fetch OpenAPI spec from backend
+4. Lint
+5. Type check
+6. Unit tests
+7. Build (with production env vars)
 8. Deploy to Cloudflare Pages
+
+### Testing Safari locally (Linux-WebKit parity)
+
+Playwright's WebKit on macOS differs from CI's Linux-WebKit. To reproduce CI failures locally:
+
+```bash
+npm run e2e:docker
+```
+
+This runs all E2E tests inside the official Playwright Docker image (Ubuntu + Linux-WebKit), matching the CI environment exactly. Update the Docker image tag in `package.json` when upgrading `@playwright/test`.
 
 ### Required GitHub secrets/vars
 

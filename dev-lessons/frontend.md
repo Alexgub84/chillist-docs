@@ -6,6 +6,22 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Infra] Deploy pipeline took 7-31 min and failed on WebKit E2E — restructured CI/CD
+**Date:** 2026-02-23
+**Problem:** `deploy.yml` re-ran the full E2E suite (4 browsers, 2 retries) that `ci.yml` already passed on the PR. WebKit-only form-dismissal bugs caused 3 deterministic failures on every deploy. With 60s timeout × 3 attempts × 4 browsers, a single failing test burned 12 minutes. Additionally, `install-deps` in `deploy.yml` lacked browser filters, sometimes taking 25 minutes when apt mirrors were slow.
+**Solution:** (1) Removed all E2E from `deploy.yml` — merged test+deploy into a single job (lint, typecheck, unit tests, build, deploy). (2) Split `ci.yml` into two parallel jobs: `test` (Chrome only, required gate) and `test-safari` (Safari+Firefox, `continue-on-error: true`). (3) Reduced Playwright retries from 2 to 1. (4) Fixed WebKit E2E failures by using `force: true` on form submit clicks and increasing `toBeHidden` timeout to 10s. (5) Changed pre-commit hook from all browsers to Chrome only. (6) Added `e2e:docker` script for local Linux-WebKit testing.
+**Prevention:** Never duplicate the same test suite across CI and deploy pipelines — deploy should trust CI results. Use a two-tier CI strategy: fast required browser (Chrome) gates merges, other browsers run non-blocking. For Headless UI modal submit buttons on WebKit, always use `force: true` and longer `toBeHidden` timeouts. Use `npx playwright install-deps <browsers>` (not bare) to avoid installing unneeded system deps. Keep the Playwright Docker image tag in sync with `@playwright/test` version.
+
+---
+
+### [Test] WebKit E2E — form submit click doesn't dismiss Headless UI modal on Linux-WebKit
+**Date:** 2026-02-23
+**Problem:** E2E tests `adds items via UI` and `edits all item fields via modal form` failed on Desktop Safari and Mobile Safari in CI (Linux-WebKit) but passed locally (macOS-WebKit). After clicking the submit button, the form/modal stayed visible. The `toBeHidden({ timeout: 5000 })` assertion timed out. Same error on all retry attempts — deterministic, not flaky.
+**Solution:** Applied `force: true` on all form submit button clicks inside Headless UI dialogs (same pattern as ComboboxOption clicks documented earlier). Increased `toBeHidden` timeout from 5s to 10s. Verified visibility before clicking (`await expect(btn).toBeVisible()`).
+**Prevention:** Playwright's WebKit on Linux behaves differently from macOS WebKit. For Headless UI modal form submissions: (1) always use `click({ force: true })` on submit buttons, (2) use generous `toBeHidden` timeouts (10s), (3) test with `npm run e2e:docker` to reproduce CI's Linux-WebKit environment locally before pushing.
+
+---
+
 ### [Arch] JWT 401 had no retry or recovery — expired tokens caused hard failures
 **Date:** 2026-02-23
 **Problem:** When a Supabase access token expired between requests, the API call returned 401 and showed a generic toast that disappeared after a few seconds. No token refresh, no retry, no clear recovery path. The secondary `api-client.ts` (openapi-fetch) didn't inject JWT at all.

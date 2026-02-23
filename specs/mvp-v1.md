@@ -10,7 +10,7 @@
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Plans CRUD | Done | Full REST API + FE screens |
+| Plans CRUD | Done | Full REST API + FE screens. Delete plan UI with owner-only visibility + confirmation modal (issue #29). |
 | Participants CRUD | Done | Scoped to plans, role-based |
 | Items CRUD | Done | Equipment/food categories, inline editing |
 | Item status flow | Done | pending → purchased → packed → canceled |
