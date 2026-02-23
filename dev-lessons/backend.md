@@ -56,7 +56,7 @@ A log of bugs fixed and problems solved in `chillist-be`.
 
 ### [Arch] Access Control Changes Break Existing Tests That Skip Auth
 **Date:** 2026-02-23
-**Problem:** Adding visibility enforcement to `GET /plans/:planId` broke the user-tracking integration test and two unit tests. The user-tracking test created a plan with JWT (now defaults to `unlisted`) then did a GET without JWT — returned 404 instead of 200. The unit tests mocked `db.query.plans.findFirst` but `checkPlanAccess()` now calls `db.select().from().where()` first, which wasn't mocked.
+**Problem:** Adding visibility enforcement to `GET /plans/:planId` broke the user-tracking integration test and two unit tests. The user-tracking test created a plan with JWT (now defaults to `invite_only`) then did a GET without JWT — returned 404 instead of 200. The unit tests mocked `db.query.plans.findFirst` but `checkPlanAccess()` now calls `db.select().from().where()` first, which wasn't mocked.
 **Solution:** Updated user-tracking test to send JWT on the GET request. Updated unit test mocks to simulate the `select→from→where` chain that `checkPlanAccess()` uses.
 **Prevention:** When adding authorization checks to existing routes, search for all tests that call those routes and verify they still have valid credentials. Unit tests with mocked DBs need their mock chains updated when new DB queries are added to the handler.
 

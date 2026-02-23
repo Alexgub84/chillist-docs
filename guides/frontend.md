@@ -77,8 +77,11 @@ npm run dev
 | `npm run typecheck` | TypeScript type checking |
 | `npm run lint` | ESLint check |
 | `npm run lint:fix` | ESLint auto-fix |
-| `npm run test` | Run unit tests (watch mode) |
-| `npm run test:run` | Run unit tests once (CI mode) |
+| `npm run test` | Run all tests (unit + integration + E2E, all browsers) |
+| `npm run test:unit` | Run unit tests once |
+| `npm run test:unit:watch` | Run unit tests in watch mode |
+| `npm run test:integ` | Run integration tests once |
+| `npm run test:e2e` | Run E2E tests (all browsers) |
 | `npm run mock:server` | Start mock API server with watch |
 | `npm run mock:server:ci` | Start mock API server without watch (CI) |
 | `npm run api:fetch` | Fetch OpenAPI spec from backend repo |

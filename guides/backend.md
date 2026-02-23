@@ -223,7 +223,7 @@ Done:
 - ~~Opportunistic user tracking~~ (records `createdByUserId` and owner `userId` when JWT present)
 - ~~Profile endpoints~~ (`GET/PATCH /auth/profile` for user preferences)
 - ~~Rate limiting~~ (`@fastify/rate-limit`) and ~~security headers~~ (`@fastify/helmet`)
-- ~~Plan ownership + access control~~ (JWT-created plans default to `unlisted`, all read routes enforce visibility via `checkPlanAccess()`, `GET /plans` filtered by user's plans + public, 29 tests, PR #84, v1.8.0)
+- ~~Plan ownership + access control~~ (JWT-created plans default to `invite_only`, all read routes enforce visibility via `checkPlanAccess()`, `GET /plans` filtered by user's plans + public, 29 tests, PR #84, v1.8.0)
 
 Current:
 - WhatsApp phone verification for guests (Twilio OTP) — Phase 3

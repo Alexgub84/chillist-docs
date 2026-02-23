@@ -20,7 +20,7 @@
 | Share link | Done | Invite token per participant, public `GET /plans/:planId/invite/:inviteToken` endpoint |
 | Assignments | Partial | DB table exists (`item_assignments`), API routes not implemented |
 | Weather | Not started | Optional forecast for plan location |
-| Auth | In progress | Phase 1 (invite tokens) done. Phase 2 (BE JWT via JWKS) done. Phase 3 (FE sign-up/sign-in/OAuth + JWT injection) done. Phase 4 (user management schema) done: `guest_profiles`, `user_details`, `plan_invites` tables added; `createdByUserId` on plans, `userId`/`guestProfileId`/`inviteStatus` on participants; Supabase is single PII store. Phase 5 (opportunistic user tracking) done: records userId when JWT present. Phase 6 (profile endpoints + security hardening) done: `GET/PATCH /auth/profile`, `@fastify/rate-limit` (100/min global, 10/min auth), `@fastify/helmet`. Phase 7 (plan ownership + access control) done: JWT-created plans default to `unlisted`, all read routes enforce visibility via `checkPlanAccess()`, `GET /plans` filters by user's plans + public, 29 access control tests (PR #84, v1.8.0). Google OAuth on sign-in and sign-up. Profile completion page. Owner pre-fill from session. FE issue #92: send JWT on all requests. E2E tests deferred (#67). |
+| Auth | In progress | Phase 1 (invite tokens) done. Phase 2 (BE JWT via JWKS) done. Phase 3 (FE sign-up/sign-in/OAuth + JWT injection) done. Phase 4 (user management schema) done: `guest_profiles`, `user_details`, `plan_invites` tables added; `createdByUserId` on plans, `userId`/`guestProfileId`/`inviteStatus` on participants; Supabase is single PII store. Phase 5 (opportunistic user tracking) done: records userId when JWT present. Phase 6 (profile endpoints + security hardening) done: `GET/PATCH /auth/profile`, `@fastify/rate-limit` (100/min global, 10/min auth), `@fastify/helmet`. Phase 7 (plan ownership + access control) done: JWT-created plans default to `invite_only`, all read routes enforce visibility via `checkPlanAccess()`, `GET /plans` filters by user's plans + public, 29 access control tests (PR #84, v1.8.0). Google OAuth on sign-in and sign-up. Profile completion page. Owner pre-fill from session. FE issue #92: send JWT on all requests. E2E tests deferred (#67). |
 | i18n (Hebrew + English) | Done | i18next + react-i18next. All UI text translated. Language toggle in header. RTL support for Hebrew. Language persisted to localStorage. Unit + E2E tests. |
 | Home / Landing page | Done | Hero section with campfire photo, 3-step "How it works" onboarding (Create a plan → Add gear/food → Track together) with mobile app screenshots per language (EN/HE), scroll-reveal animations, auth-aware CTAs. Screenshot script: `npm run screenshots`. |
 
@@ -63,7 +63,7 @@
   - Timestamps: `createdAt`, `updatedAt`
 - **Plan**
   - `planId`, `title`, optional: `description`, `location` (name/country/region/city/lat/lon/timezone), `startDate`, `endDate`, `tags[]`
-  - `ownerParticipantId`, `status` ("draft" | "active" | "archived"), `visibility` ("public" | "unlisted" | "private")
+  - `ownerParticipantId`, `status` ("draft" | "active" | "archived"), `visibility` ("public" | "invite_only" | "private")
   - Timestamps: `createdAt`, `updatedAt`
 - **Items**
   - **EquipmentItem** | **FoodItem** (discriminated by `category`)
@@ -191,7 +191,7 @@ Base URL: `/` (versioning can be added later: `/v1`)
 - **Share links** (done): Each participant has a unique `inviteToken`. Public `GET /plans/:planId/invite/:inviteToken` returns plan data with PII stripped.
 - **Supabase JWT auth** (in progress): FE signs up/in via Supabase directly (email+password or Google OAuth). BE verifies JWTs via JWKS. `GET /auth/me` proves the auth chain works.
 - **Plans remain public** for now. No route-level permission enforcement until Step 3 (Permissions + Privacy).
-- **Future:** Route-level permissions, plan ownership linked to Supabase user, visibility enforcement (public/unlisted/private).
+- **Future:** Route-level permissions, plan ownership linked to Supabase user, visibility enforcement (public/invite_only/private).
 
 ---
 

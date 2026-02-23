@@ -67,7 +67,7 @@ All tables (including new tables) stay in the existing Railway PostgreSQL instan
 
 ### 2.4 Plan Creation: Open But Fail-Fast on Bad JWT
 
-Anyone can create plans without a JWT (plan gets `visibility: public`, `createdByUserId: null`). If a valid JWT is present, the plan gets `visibility: unlisted` (default) and `createdByUserId` set to the user's Supabase UUID.
+Anyone can create plans without a JWT (plan gets `visibility: public`, `createdByUserId: null`). If a valid JWT is present, the plan gets `visibility: invite_only` (default) and `createdByUserId` set to the user's Supabase UUID.
 
 **Fail-fast rule:** If an `Authorization: Bearer` header IS present but JWT verification fails, the BE returns **401** immediately — it does NOT silently create an ownerless plan. This prevents the FE from getting a 201 success for a plan that will be inaccessible (private plan with no owner = 404 for everyone).
 
@@ -762,11 +762,11 @@ Adapted from original spec:
 
 ### Phase 2.5: Plan Ownership + Access Control 🔄
 
-**Goal:** Enforce `visibility` field on plans. Authenticated plan creation defaults to `unlisted`. Only owner/linked participants can read non-public plans.
+**Goal:** Enforce `visibility` field on plans. Authenticated plan creation defaults to `invite_only`. Only owner/linked participants can read non-public plans.
 
 **Step A — Core access control: Done (PR #84)**
 
-- `POST /plans/with-owner` with JWT defaults `visibility` to `unlisted`
+- `POST /plans/with-owner` with JWT defaults `visibility` to `invite_only`
 - `checkPlanAccess()` utility in `src/utils/plan-access.ts`: checks visibility + user relationship (owner via `createdByUserId`, participant via `participants.userId`)
 - `GET /plans/:planId` enforces access control (returns 404 for unauthorized access to non-public plans — same response as nonexistent plan to prevent information leakage)
 - 17 integration tests: visibility defaults, owner/participant/viewer access, expired JWT, orphaned plans, response shape identity, invite route compatibility
@@ -785,7 +785,7 @@ Adapted from original spec:
 
 - JWT verification failure log level upgraded from `debug` to `warn` in `src/plugins/auth.ts` — failures now visible in production logs
 - Fail-fast guard on write endpoints (`POST /plans/with-owner`, `PATCH /plans/:planId`, `DELETE /plans/:planId`): if `Authorization: Bearer` header is present but `request.user` is null, return 401 instead of creating broken resources
-- 5 integration tests: invalid JWT on create/patch/delete returns 401, no JWT creates public plan, valid JWT creates unlisted plan with owner
+- 5 integration tests: invalid JWT on create/patch/delete returns 401, no JWT creates public plan, valid JWT creates invite_only plan with owner
 
 ### Phase 3: WhatsApp Verification + Guest Sessions
 
@@ -866,7 +866,7 @@ Adapted from original spec:
 | 3 | When should the API key be deprecated? It's a blanket bypass of all permissions. | Phase 6-7 | After FE fully uses JWT |
 | 4 | Should a registered user be able to "unclaim" a participant spot? | Phase 5 | Before Phase 5 |
 | 5 | If a participant is linked to a user, should editing their profile (displayName) auto-update the participant's displayName? Or keep them separate? | Phase 2-5 | Before Phase 5 |
-| 6 | ~~Should plan `visibility` field (public/unlisted/private) be enforced now, or deferred?~~ **Decided:** Enforcing now in Phase 2.5. Authenticated plan creation defaults to `unlisted`. | Phase 2.5 | Decided |
+| 6 | ~~Should plan `visibility` field (public/invite_only/private) be enforced now, or deferred?~~ **Decided:** Enforcing now in Phase 2.5. Authenticated plan creation defaults to `invite_only`. | Phase 2.5 | Decided |
 | 7 | Twilio sandbox vs production: start with sandbox for dev (only pre-registered numbers)? When to get Meta approval for production WhatsApp? | Phase 3 | Before Phase 3 |
 | 8 | Code resend cooldown: how long before allowing a resend? Suggested: 60 seconds. | Phase 3 | Before Phase 3 |
 | 9 | WhatsApp message template: what text? OTP templates are fast-tracked by Meta. Suggested: "Your Chillist verification code is: {{1}}. It expires in 10 minutes." | Phase 3 | Before Phase 3 |
