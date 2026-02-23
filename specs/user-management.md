@@ -73,6 +73,24 @@ Anyone can create plans without a JWT (plan gets `visibility: public`, `createdB
 
 This fail-fast guard applies to all write endpoints: `POST /plans/with-owner`, `PATCH /plans/:planId`, `DELETE /plans/:planId`.
 
+#### Visibility Rules (enforced on both create and update)
+
+| Auth state | Allowed visibility values | Default (when not sent) |
+|---|---|---|
+| JWT present (signed-in) | `invite_only`, `private` | `invite_only` |
+| No JWT (anonymous) | `public` | `public` |
+
+The BE enforces these rules on `POST /plans/with-owner` and `PATCH /plans/:planId`. Sending a disallowed value returns **400** with a descriptive message:
+
+| Scenario | HTTP | Error message |
+|---|---|---|
+| Signed-in user sets `public` on create | 400 | `Signed-in users cannot create public plans. Use invite_only or private.` |
+| Anonymous user sets `invite_only` or `private` on create | 400 | `Anonymous users can only create public plans. Sign in to use invite_only or private visibility.` |
+| Signed-in user updates visibility to `public` | 400 | `Signed-in users cannot set visibility to public. Use invite_only or private.` |
+| Anonymous user updates visibility to `invite_only` or `private` | 400 | `Anonymous users can only set visibility to public. Sign in to use invite_only or private.` |
+
+**FE guidance:** The FE does not need to send a `visibility` field — the server applies the correct default. If the FE offers a visibility picker, only show the allowed options based on whether the user is signed in.
+
 ### 2.5 PII Stripping: Always on the BE
 
 **PII is always stripped on the BE, never on the FE.** The BE removes PII fields from the response before sending. Guests never receive this data — not even in the raw JSON. This prevents PII from being visible in the browser Network tab or client-side logs.
