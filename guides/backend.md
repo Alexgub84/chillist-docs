@@ -211,18 +211,17 @@ npm run test:run
 - **Architecture:** FE signs up/in directly with Supabase. BE only verifies JWTs — no Supabase client on the BE.
 - **JWKS verification:** `jose` library fetches public keys from `${SUPABASE_URL}/auth/v1/.well-known/jwks.json` (asymmetric ES256 keys). No secrets stored on the BE.
 - **`request.user`:** Decorated on every request when a valid `Authorization: Bearer <jwt>` header is present. Contains `{ id, email, role }` from JWT claims.
-- **Profile auto-provisioning:** On every authenticated request, a `profiles` row is auto-created (INSERT ... ON CONFLICT DO NOTHING). No explicit profile creation step needed.
-- **Protected routes:** All plan, item, and participant routes require a valid JWT. Plan ownership is enforced via `createdByUserId` on the plans table. Invite routes remain public.
-- **Auth endpoints:** `GET /auth/me` (JWT identity), `GET /auth/profile` (user profile), `PATCH /auth/profile` (update display name / avatar).
+- **PII separation:** Supabase is the single store for registered user PII (name, email, phone). Railway DB stores only Supabase UUIDs as references — no user PII. `user_details` table holds app-specific preferences (food prefs, equipment). `guest_profiles` table holds temporary PII for unregistered participants.
+- **Protected routes:** Currently all routes use API key (legacy). JWT enforcement coming after FE migrates to JWT. `GET /auth/me` is the only JWT-specific endpoint.
 - **Auth plugin DI:** Tests inject a fake JWKS via `BuildAppOptions.auth` — no real Supabase calls in integration tests.
-- **Authorization utilities:** `src/utils/auth.ts` provides `requireUser`, `requirePlanOwner`, `requireItemPlanOwner`, `requireParticipantPlanOwner` helpers used by all route handlers.
 
-### What's next
+### What's next (user management — #73)
 
-- WhatsApp OTP verification for guest access (Twilio)
-- Guest sessions (30-min DB-backed tokens)
-- Claim-via-invite (registered users link to participant records)
-- Edit permissions (participants edit own assigned items only)
+- Opportunistic user tracking (record userId when JWT is present, no enforcement)
+- Secure invite system (hashed tokens, preview, accept with JWT)
+- FE migration from API key to JWT
+- JWT enforcement on all routes + participant-based ownership checks
+- Remove API key bypass
 - Rate limiting (`@fastify/rate-limit`) and security headers (`@fastify/helmet`)
 
 ## Cost Estimate

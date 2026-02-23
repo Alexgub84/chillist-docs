@@ -6,7 +6,7 @@
 
 ## Implementation Status
 
-> Last updated: 2026-02-22
+> Last updated: 2026-02-23
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -17,10 +17,10 @@
 | Status filtering | Done | Filter items by status on plan screen |
 | Category grouping | Done | Items grouped by equipment/food |
 | SEO & sharing metadata | Done | OG tags, Twitter Card, favicon, web manifest, logo in header |
-| Share link | Done | Invite token per participant, public `GET /plans/:planId/invite/:inviteToken` endpoint. PII-stripped: name + last initial only. |
+| Share link | Done | Invite token per participant, public `GET /plans/:planId/invite/:inviteToken` endpoint |
 | Assignments | Partial | DB table exists (`item_assignments`), API routes not implemented |
-| Weather | Not started | Optional forecast for plan location |
-| Auth | In progress | Phase 1 (invite tokens) done. Phase 2 (BE JWT via JWKS) done. Phase 3 (FE sign-up/sign-in/OAuth + JWT injection) done. Phase 4 (plan ownership + access control) done: `profiles` table, profile auto-provisioning, `createdByUserId` on plans, JWT required for all plan/item/participant routes, `GET /plans` scoped to user, ownership checks on CRUD, `GET/PATCH /auth/profile` endpoints. Google OAuth on sign-in and sign-up. Profile completion page (`/complete-profile`) after sign-up (name, last name, phone with country prefix, email — saved to Supabase `user_metadata`). Owner pre-fill from session on plan creation. Country phone prefix selector on profile + plan forms (defaults to Israel for Hebrew). E2E tests deferred (#67). |
+| Weather | Done | 7-day forecast via Open-Meteo API on plan detail page (non-blocking, requires plan location with lat/lon). Fetches on every page load. i18n supported. |
+| Auth | In progress | Phase 1 (invite tokens) done. Phase 2 (BE JWT via JWKS) done. Phase 3 (FE sign-up/sign-in/OAuth + JWT injection) done. Phase 4 (user management schema) done: `guest_profiles`, `user_details`, `plan_invites` tables added; `createdByUserId` on plans, `userId`/`guestProfileId`/`inviteStatus` on participants; Supabase is single PII store for registered users. No behavior change yet — routes still use API key. Google OAuth on sign-in and sign-up. Profile completion page (`/complete-profile`) after sign-up (name, last name, phone with country prefix, email — saved to Supabase `user_metadata`). Owner pre-fill from session on plan creation. Country phone prefix selector on profile + plan forms (defaults to Israel for Hebrew). E2E tests deferred (#67). |
 | i18n (Hebrew + English) | Done | i18next + react-i18next. All UI text translated. Language toggle in header. RTL support for Hebrew. Language persisted to localStorage. Unit + E2E tests. |
 | Home / Landing page | Done | Hero section with campfire photo, 3-step "How it works" onboarding (Create a plan → Add gear/food → Track together) with mobile app screenshots per language (EN/HE), scroll-reveal animations, auth-aware CTAs. Screenshot script: `npm run screenshots`. |
 
@@ -75,8 +75,10 @@
   - `id` (UUID, from Supabase `auth.users`), `email`, `role` ("authenticated"), `user_metadata` (display name, avatar from Google OAuth)
   - Identity lives in Supabase. BE verifies JWTs via JWKS. FE reads user profile from Supabase session.
   - No `users`/`profiles` table in our DB yet. Will add when needed (Step 3: Permissions) to link users to plans/participants.
-- **Weather** (not yet implemented)
-  - `WeatherBundle` (current + daily forecast) fetched for plan.location; non-blocking.
+- **Weather**
+  - 7-day forecast fetched from Open-Meteo API (free, no API key) using plan location lat/lon.
+  - Schema: `Forecast` with `days[]` containing `date`, `temperatureMax`, `temperatureMin`, `precipitationSum`, `weatherCode` (WMO codes).
+  - Fetched client-side on every plan detail page load (`staleTime: 0`). Non-blocking — only renders when data is available.
 
 ---
 
@@ -159,8 +161,7 @@ Base URL: `/` (versioning can be added later: `/v1`)
 ### Items
 - `GET /plans/:planId/items` → `Item[]`
 - `POST /plans/:planId/items` → `201 Item`
-- `PATCH /items/:itemId` → `Item`
-- `DELETE /items/:itemId` → `{ ok: true }`
+- `PATCH /items/:itemId` → `Item` (also used to cancel/restore items via status field)
 
 ### Auth
 - `GET /auth/me` → `{ user: { id, email, role } }` (JWT required — returns 401 without valid token)

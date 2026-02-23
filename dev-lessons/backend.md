@@ -6,19 +6,19 @@ A log of bugs fixed and problems solved in `chillist-be`.
 
 <!-- Add new entries at the top -->
 
-### [Arch] Route-Level Auth Checks vs Global Hook
+### [Arch] PII Separation — Supabase as Single Source of User Identity
 **Date:** 2026-02-22
-**Problem:** Adding ownership checks to routes required moving plan/participant/item lookups outside the route's try/catch block. This changed error handling behavior for DB errors during ownership verification.
-**Solution:** Use shared `requirePlanOwner` / `requireItemPlanOwner` / `requireParticipantPlanOwner` utilities in `src/utils/auth.ts`. These return `null` (and send 401/403/404) on auth failures, letting route handlers early-return cleanly. DB errors during ownership checks propagate to Fastify's default handler.
-**Prevention:** When adding auth checks that make DB queries, ensure error handling covers both the auth check and the main business logic. Integration tests with real DB are more reliable than unit tests with mocked DB for testing auth flows.
+**Problem:** Initial implementation duplicated Supabase user PII (email, name) into a local `profiles` table in Railway DB. This created two sources of truth for user data and added an INSERT on every authenticated request.
+**Solution:** Removed `profiles` table. Supabase is the single PII store for registered users. Railway DB stores only Supabase UUIDs as plain references (`plans.createdByUserId`, `participants.userId`) — no FK, no PII. New `user_details` table holds only app-specific preferences (food prefs, equipment). New `guest_profiles` table holds temporary PII for unregistered participants (deleted on sign-up).
+**Prevention:** Never duplicate auth provider PII in app DB. Store only opaque user IDs as references. Keep app-specific data separate from identity data.
 
 ---
 
-### [Arch] Profile Auto-Provisioning via ON CONFLICT DO NOTHING
+### [Arch] Incremental Auth Migration — Don't Break the FE
 **Date:** 2026-02-22
-**Problem:** Need to create a `profiles` row for each registered user on first API request, without requiring a separate "create profile" step.
-**Solution:** Added an `onRequest` hook that runs `INSERT INTO profiles ... ON CONFLICT (user_id) DO NOTHING` on every authenticated request. Idempotent and cheap — the conflict check short-circuits if the row exists.
-**Prevention:** For "ensure X exists" patterns, prefer `INSERT ... ON CONFLICT DO NOTHING` over check-then-insert to avoid race conditions.
+**Problem:** Attempted to add JWT enforcement on all routes in one step. FE currently uses API key only — deploying JWT-required routes would break everything.
+**Solution:** Broke the work into incremental steps: (1) schema only, (2) opportunistic tracking, (3) new endpoints, (4) FE migration, (5) enforce JWT, (6) cleanup. Each BE step is backward-compatible — API key keeps working until FE switches to JWT.
+**Prevention:** When adding auth requirements, always check what the FE currently sends. Deploy BE changes that are additive first, let FE migrate, then enforce.
 
 ---
 
