@@ -135,7 +135,8 @@ Not a database entity. A guest is someone accessing a plan via an invite link wh
 > **Architecture Adaptation (2026-02-22):** The original spec called for a `profiles` table storing email, display_name, and avatar_url locally. Per the PII separation decision, this was replaced by `user_details` (app-specific preferences only). Supabase is the single PII store — Railway DB stores only opaque Supabase UUIDs as references. See [dev-lessons: PII Separation](../dev-lessons/backend.md).
 >
 > Other adaptations:
-> - Onboarding columns (`adultsCount`, `kidsCount`, `foodPreferences`, `allergies`) are on `guest_profiles` table, not on `participants`
+> - Per-plan preferences (`foodPreferences`, `allergies`, `adultsCount`, `kidsCount`, `notes`) live directly on the `participants` table — each participant record stores preferences for that specific plan. The `guest_profiles` table also has these columns but is not the primary store for per-plan preferences.
+> - `user_details` stores **default preferences** for signed-in users. When a signed-in user joins a new plan, their defaults are pre-filled into the participant record but can be customized per-plan.
 > - `plan_invites` table was added (not in original spec) for invite tracking with hashed tokens
 > - `participants.userId` has no FK to a local profiles table — it's a plain UUID reference to Supabase
 
@@ -156,6 +157,7 @@ Notes:
 - No email, display_name, or avatar_url — that PII lives in Supabase `user_metadata`
 - `user_id` comes from Supabase's `auth.users.id` (the JWT `sub` claim)
 - Row created lazily on first `PATCH /auth/profile`, not auto-provisioned
+- These are **default preferences** — when a signed-in user joins a new plan, `foodPreferences` and `allergies` are pre-filled into the participant record. The user can then customize them per-plan. `defaultEquipment` is used to suggest items.
 
 ### 4.2 New Table: `verification_codes`
 
@@ -702,8 +704,10 @@ Adapted from original spec:
 
 **Goal:** Verified guests can onboard, update preferences, view filtered plan data, edit own items, and self-assign/unassign.
 
-- Add `POST /guest/onboarding` endpoint (requires X-Guest-Token, first-time only)
-- Add `PATCH /guest/preferences` endpoint (requires X-Guest-Token, update preferences anytime)
+**Preferences architecture:** Per-plan preferences live on the `participants` table (`foodPreferences`, `allergies`, `adultsCount`, `kidsCount`, `notes`). Guest endpoints update the participant record directly — not `guest_profiles`. For signed-in users joining a plan, `user_details` defaults are pre-filled into the participant record.
+
+- Add `POST /guest/onboarding` endpoint (requires X-Guest-Token, first-time only, updates participant record)
+- Add `PATCH /guest/preferences` endpoint (requires X-Guest-Token, update per-plan preferences on participant record anytime)
 - Add `GET /guest/plan` endpoint (requires X-Guest-Token, returns sanitized plan data with items filtered to own assigned + unassigned)
 - Add `PATCH /guest/items/:itemId` endpoint (requires X-Guest-Token, edit own assigned items — all fields)
 - Add `POST /guest/items/:itemId/assign` endpoint (requires X-Guest-Token, self-assign to unassigned item)
@@ -765,6 +769,7 @@ Adapted from original spec:
 | 8 | Code resend cooldown: how long before allowing a resend? Suggested: 60 seconds. | Phase 3 | Before Phase 3 |
 | 9 | WhatsApp message template: what text? OTP templates are fast-tracked by Meta. Suggested: "Your Chillist verification code is: {{1}}. It expires in 10 minutes." | Phase 3 | Before Phase 3 |
 | 10 | Should the invite link landing page (pre-verification) show any plan info beyond title and owner name? | Phase 4 | Before Phase 4 |
+| 11 | Review `guest_profiles` table role: per-plan preferences now live on `participants`, guest identity (name, phone) is also on `participants`. What remaining purpose does `guest_profiles` serve? Options: (a) cross-plan guest identity lookup by phone, (b) historical record before sign-up, (c) deprecated — remove in cleanup. | Phase 4 | Before Phase 4 |
 
 ---
 

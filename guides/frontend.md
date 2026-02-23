@@ -475,7 +475,7 @@ Every commit triggers:
 1. `npm run typecheck` — fails on TypeScript errors
 2. ESLint + Prettier on staged files (`lint-staged`)
 3. `npm run test:unit` — unit tests in CI mode
-4. `npx playwright test --project="Desktop Chrome"` — E2E tests (Chrome only, with `VITE_AUTH_MOCK=true`)
+4. `npx playwright test` — E2E tests (all browsers: Chrome, Firefox, Desktop Safari, Mobile Safari, with `VITE_AUTH_MOCK=true`)
 
 ## CI/CD (GitHub Actions → Cloudflare Pages)
 
@@ -488,7 +488,7 @@ Two separate workflow files:
 3. Lint
 4. Type check
 5. Unit tests
-6. Install Chromium + run E2E tests (Chrome only, 2 workers)
+6. Install all browsers + run E2E tests (Chrome, Firefox, Desktop Safari, Mobile Safari, 2 workers)
 
 ### `deploy.yml` — runs on push to `main`
 
@@ -497,7 +497,7 @@ Two separate workflow files:
 3. Lint
 4. Type check
 5. Unit tests
-6. Install all browsers + run E2E tests (Chrome, Firefox, Mobile Safari, 2 workers)
+6. Install all browsers + run E2E tests (Chrome, Firefox, Desktop Safari, Mobile Safari, 2 workers)
 7. Build (with production `VITE_API_URL` and `VITE_API_KEY`)
 8. Deploy to Cloudflare Pages
 
