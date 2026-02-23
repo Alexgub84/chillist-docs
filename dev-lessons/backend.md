@@ -6,6 +6,22 @@ A log of bugs fixed and problems solved in `chillist-be`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Route-Level Auth Checks vs Global Hook
+**Date:** 2026-02-22
+**Problem:** Adding ownership checks to routes required moving plan/participant/item lookups outside the route's try/catch block. This changed error handling behavior for DB errors during ownership verification.
+**Solution:** Use shared `requirePlanOwner` / `requireItemPlanOwner` / `requireParticipantPlanOwner` utilities in `src/utils/auth.ts`. These return `null` (and send 401/403/404) on auth failures, letting route handlers early-return cleanly. DB errors during ownership checks propagate to Fastify's default handler.
+**Prevention:** When adding auth checks that make DB queries, ensure error handling covers both the auth check and the main business logic. Integration tests with real DB are more reliable than unit tests with mocked DB for testing auth flows.
+
+---
+
+### [Arch] Profile Auto-Provisioning via ON CONFLICT DO NOTHING
+**Date:** 2026-02-22
+**Problem:** Need to create a `profiles` row for each registered user on first API request, without requiring a separate "create profile" step.
+**Solution:** Added an `onRequest` hook that runs `INSERT INTO profiles ... ON CONFLICT (user_id) DO NOTHING` on every authenticated request. Idempotent and cheap — the conflict check short-circuits if the row exists.
+**Prevention:** For "ensure X exists" patterns, prefer `INSERT ... ON CONFLICT DO NOTHING` over check-then-insert to avoid race conditions.
+
+---
+
 ### [Arch] Use JWKS (Asymmetric Keys) for Supabase JWT Verification
 **Date:** 2026-02-17
 **Problem:** Legacy Supabase JWT secret (HS256 shared secret) requires storing a secret on the BE. Supabase strongly discourages this — secrets can leak, are hard to rotate, and require coordination to revoke.

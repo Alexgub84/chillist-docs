@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Infra] Google Maps API key — localhost referrer restrictions don't work reliably
+**Date:** 2026-02-22
+**Problem:** After adding Google Maps integration, the map showed `RefererNotAllowedMapError` on `localhost:5174` even after adding the URL to Google Cloud Console's HTTP referrer restrictions (both with and without `/*` wildcard).
+**Solution:** Set API key application restriction to "None" for local development. For production, use HTTP referrer restrictions with the production domain (`https://your-domain.pages.dev/*`). Alternatively, create two separate API keys — one unrestricted for dev, one restricted for production.
+**Prevention:** When setting up Google Maps API keys: (1) Use unrestricted keys for localhost dev, (2) When changing the production domain, update the allowed referrers in Google Cloud Console, (3) Document this in the frontend guide under "Google Maps > API Key Restrictions".
+
+---
+
 ### [Arch] NEVER hand-write values the backend owns — use generated types as source of truth
 **Date:** 2026-02-22
 **Problem:** Editing items in production returned "Invalid Request" (400). Worked perfectly locally. The FE hand-wrote `unitSchema = z.enum(['pcs', ..., 'm', 'cm'])` with `m` and `cm` — values the backend doesn't have. The mock server copied the same wrong values, so local dev passed. Only production (real backend) rejected them. This bug was attempted to be fixed 4 times before the root cause was identified.

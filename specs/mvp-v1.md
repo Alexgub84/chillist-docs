@@ -6,7 +6,7 @@
 
 ## Implementation Status
 
-> Last updated: 2026-02-21
+> Last updated: 2026-02-22
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -17,10 +17,10 @@
 | Status filtering | Done | Filter items by status on plan screen |
 | Category grouping | Done | Items grouped by equipment/food |
 | SEO & sharing metadata | Done | OG tags, Twitter Card, favicon, web manifest, logo in header |
-| Share link | Done | Invite token per participant, public `GET /plans/:planId/invite/:inviteToken` endpoint |
+| Share link | Done | Invite token per participant, public `GET /plans/:planId/invite/:inviteToken` endpoint. PII-stripped: name + last initial only. |
 | Assignments | Partial | DB table exists (`item_assignments`), API routes not implemented |
 | Weather | Not started | Optional forecast for plan location |
-| Auth | In progress | Phase 1 (invite tokens) done. Phase 2 (BE JWT via JWKS) done. Phase 3 (FE sign-up/sign-in/OAuth + JWT injection) done. Google OAuth on sign-in and sign-up. Profile completion page (`/complete-profile`) after sign-up (name, last name, phone with country prefix, email — saved to Supabase `user_metadata`). Owner pre-fill from session on plan creation. Country phone prefix selector on profile + plan forms (defaults to Israel for Hebrew). E2E tests deferred (#67). |
+| Auth | In progress | Phase 1 (invite tokens) done. Phase 2 (BE JWT via JWKS) done. Phase 3 (FE sign-up/sign-in/OAuth + JWT injection) done. Phase 4 (plan ownership + access control) done: `profiles` table, profile auto-provisioning, `createdByUserId` on plans, JWT required for all plan/item/participant routes, `GET /plans` scoped to user, ownership checks on CRUD, `GET/PATCH /auth/profile` endpoints. Google OAuth on sign-in and sign-up. Profile completion page (`/complete-profile`) after sign-up (name, last name, phone with country prefix, email — saved to Supabase `user_metadata`). Owner pre-fill from session on plan creation. Country phone prefix selector on profile + plan forms (defaults to Israel for Hebrew). E2E tests deferred (#67). |
 | i18n (Hebrew + English) | Done | i18next + react-i18next. All UI text translated. Language toggle in header. RTL support for Hebrew. Language persisted to localStorage. Unit + E2E tests. |
 | Home / Landing page | Done | Hero section with campfire photo, 3-step "How it works" onboarding (Create a plan → Add gear/food → Track together) with mobile app screenshots per language (EN/HE), scroll-reveal animations, auth-aware CTAs. Screenshot script: `npm run screenshots`. |
 

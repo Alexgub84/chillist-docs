@@ -211,15 +211,19 @@ npm run test:run
 - **Architecture:** FE signs up/in directly with Supabase. BE only verifies JWTs — no Supabase client on the BE.
 - **JWKS verification:** `jose` library fetches public keys from `${SUPABASE_URL}/auth/v1/.well-known/jwks.json` (asymmetric ES256 keys). No secrets stored on the BE.
 - **`request.user`:** Decorated on every request when a valid `Authorization: Bearer <jwt>` header is present. Contains `{ id, email, role }` from JWT claims.
-- **Protected routes:** Only `GET /auth/me` requires a valid JWT (returns 401 without one). All other routes (plans, items, participants, invite) remain public.
+- **Profile auto-provisioning:** On every authenticated request, a `profiles` row is auto-created (INSERT ... ON CONFLICT DO NOTHING). No explicit profile creation step needed.
+- **Protected routes:** All plan, item, and participant routes require a valid JWT. Plan ownership is enforced via `createdByUserId` on the plans table. Invite routes remain public.
+- **Auth endpoints:** `GET /auth/me` (JWT identity), `GET /auth/profile` (user profile), `PATCH /auth/profile` (update display name / avatar).
 - **Auth plugin DI:** Tests inject a fake JWKS via `BuildAppOptions.auth` — no real Supabase calls in integration tests.
+- **Authorization utilities:** `src/utils/auth.ts` provides `requireUser`, `requirePlanOwner`, `requireItemPlanOwner`, `requireParticipantPlanOwner` helpers used by all route handlers.
 
-### What's next (Step 3: Permissions)
+### What's next
 
-- Add `profiles` table linked to Supabase user IDs
-- Enforce plan ownership via JWT `request.user.id`
-- Route-level permission checks (owner vs participant vs viewer)
-- Visibility enforcement (public/unlisted/private plans)
+- WhatsApp OTP verification for guest access (Twilio)
+- Guest sessions (30-min DB-backed tokens)
+- Claim-via-invite (registered users link to participant records)
+- Edit permissions (participants edit own assigned items only)
+- Rate limiting (`@fastify/rate-limit`) and security headers (`@fastify/helmet`)
 
 ## Cost Estimate
 
