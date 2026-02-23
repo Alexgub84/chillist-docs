@@ -107,7 +107,7 @@ The backend is the **single source of truth** for all enum values (units, status
   - Don't test loading states — they are transient and flaky with fast API responses
   - Test final outcomes: wait for content or errors to appear, not spinners
   - Use specific URL patterns in `page.route()` (e.g. `**/localhost:3333/plans`) — broad patterns can intercept page navigation
-  - **Pre-commit hook runs Chrome only** for fast feedback. To test Safari/Firefox locally, run `npm run e2e` (all browsers) or `npm run e2e:docker` (Linux-WebKit, matches CI)
+  - **Pre-commit hook runs all browsers** (Chrome, Firefox, Safari, Mobile Safari) for thorough local validation. CI runs Chrome only as the required gate. To test Linux-WebKit parity, run `npm run e2e:docker`
   - **WebKit form submissions** in Headless UI modals require `click({ force: true })` on submit buttons and `toBeHidden({ timeout: 10000 })` — Linux-WebKit behaves differently from macOS-WebKit
   - **Responsive UI tests** must use Playwright's `isMobile` fixture to handle mobile vs desktop paths (e.g., hamburger menu vs desktop nav). Elements hidden behind responsive breakpoints (`hidden sm:flex`) are invisible on mobile viewports
   - **CI strategy:** Chrome is the required gate (blocks merge). Safari + Firefox run in a non-blocking parallel job (`continue-on-error: true`). Deploy pipeline has no E2E — it trusts CI results

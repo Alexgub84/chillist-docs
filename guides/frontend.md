@@ -481,7 +481,7 @@ Every commit triggers:
 3. `npm run test:unit` — unit tests in CI mode
 4. `npx playwright test` — E2E tests (all 4 browsers, with `VITE_AUTH_MOCK=true`)
 
-CI runs Chrome only. Ensure all browsers installed: `npx playwright install`.
+Pre-commit runs all browsers for thorough local validation. CI runs Chrome only as the required gate. Ensure all browsers installed: `npx playwright install`.
 
 ## CI/CD (GitHub Actions → Cloudflare Pages)
 
