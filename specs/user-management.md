@@ -125,8 +125,9 @@ Not a database entity. A guest is someone accessing a plan via an invite link wh
 - Must verify phone ownership before seeing any plan data (WhatsApp OTP code)
 - Gets a 30-minute session after verification; must re-verify when session expires
 - First time only: sees an onboarding page to provide group details and dietary info
-- Sees plan details and items but only `displayName` and `role` for participants (no full names, phones, or emails)
-- Cannot edit anything
+- Sees plan details and filtered items (own assigned + unassigned only); only `displayName` and `role` for participants (no full names, phones, or emails)
+- Can edit items assigned to them (all fields), self-assign/unassign to unassigned items, and update own per-plan preferences anytime
+- Cannot add new items, delete items, or manage participants
 
 ---
 
@@ -200,9 +201,10 @@ New columns (actually implemented):
 | `guest_profile_id` | UUID | nullable, FK → `guest_profiles.guest_id` | Links to guest profile for unregistered participants |
 | `invite_status` | ENUM | NOT NULL, DEFAULT 'pending' | 'pending' / 'invited' / 'accepted' |
 
-> **Adaptation:** Onboarding columns (`adultsCount`, `kidsCount`, `foodPreferences`, `allergies`, `onboardingCompleted`) are on the `guest_profiles` table, not on `participants`. This keeps participant records clean and lets guest profile data be shared or deleted independently.
+> **Update (2026-02-24):** Per-plan preferences (`foodPreferences`, `allergies`, `adultsCount`, `kidsCount`, `notes`) now live directly on the `participants` table. Guest and signed-in user endpoints update the participant record for per-plan data. The `guest_profiles` table also has these columns but is under review (see Open Question #11).
 
 - Existing columns unchanged (`name`, `lastName`, `contactPhone`, `contactEmail`, `displayName`, `role`, `inviteToken`, etc.)
+- Per-plan preference columns on participant: `foodPreferences`, `allergies`, `adultsCount`, `kidsCount`, `notes`
 - PII stays on the participant row regardless of linking — this is plan-specific data the owner entered
 - `userId` has no foreign key constraint — it's an opaque reference to Supabase, not to a local `profiles` table
 
@@ -416,18 +418,26 @@ Verified guest can self-unassign from an item:
   → BE returns: updated item
 ```
 
-### 6.4 Profile Auto-Provisioning (Registered User)
+### 6.4 User Preferences (Registered User)
 
 ```
-User sends request with valid JWT
-  → auth plugin verifies JWT, sets request.user = { id, email, role }
-  → profile middleware checks: does profiles row exist for request.user.id?
-    → NO:  INSERT INTO profiles (user_id, email) VALUES (jwt.sub, jwt.email)
-    → YES: continue
-  → request.profile is set (or just use request.user.id for queries)
+Signed-in user wants to read their profile + preferences:
+  → FE calls: GET /auth/profile (Authorization: Bearer <jwt>)
+  → BE returns: { user: { id, email, role }, preferences: { foodPreferences, allergies, defaultEquipment } | null }
+  → preferences is null if the user has never saved preferences
+
+Signed-in user wants to save/update default preferences:
+  → FE calls: PATCH /auth/profile (Authorization: Bearer <jwt>)
+  → Body: { foodPreferences?, allergies?, defaultEquipment? }
+  → BE upserts user_details row (creates on first call, updates on subsequent)
+  → BE returns: { user: { id, email, role }, preferences: { foodPreferences, allergies, defaultEquipment } }
+
+When signed-in user joins a new plan:
+  → BE pre-fills participant record with user_details defaults (foodPreferences, allergies)
+  → User can customize per-plan on the participant record
 ```
 
-This happens transparently on every authenticated request. No explicit "create profile" step for the user.
+No auto-provisioning middleware. The `user_details` row is created lazily on first `PATCH /auth/profile`.
 
 ### 6.5 Claim-Via-Invite (Link Registered User to Participant)
 
@@ -457,6 +467,32 @@ Registered user opens a plan they're linked to
 ---
 
 ## 7. API Changes
+
+### 7.0 FE Integration Reference
+
+**Authentication headers the FE must send:**
+
+| User type | Header | How to get the value |
+|-----------|--------|---------------------|
+| Signed-in user | `Authorization: Bearer <jwt>` | `supabase.auth.getSession()` → `session.access_token` |
+| Verified guest | `X-Guest-Token: <sessionToken>` | Returned by `POST /invite/:inviteToken/verify-code` → `sessionToken` |
+| Unverified guest | None (invite token is in the URL path) | From the shared invite link |
+| Legacy (current FE) | `x-api-key: <key>` | Environment variable. Will be deprecated. |
+
+**Error responses — all endpoints use the same shape:**
+
+```json
+{ "message": "Human-readable error description" }
+```
+
+| Status | Meaning | FE action |
+|--------|---------|-----------|
+| 400 | Validation error (bad input) | Show message to user |
+| 401 | Not authenticated (missing/invalid/expired token) | Redirect to sign-in or re-verify |
+| 404 | Not found OR not authorized (same response to prevent leaking existence) | Show "not found" screen |
+| 429 | Rate limited | Show "too many requests, try again later" |
+| 500 | Server error | Show generic error |
+| 503 | Database connection error | Show "service unavailable" |
 
 ### 7.1 New Endpoints
 
@@ -514,41 +550,98 @@ Registered user opens a plan they're linked to
 
 **`POST /guest/onboarding`**
 - Auth: `X-Guest-Token` header required
-- Body: `{ displayName?, adultsCount, kidsCount, foodPreferences?, allergies? }`
-- Action: Updates participant record, sets `onboardingCompleted = true`
-- Response: Updated participant (sanitized — own data only, no other participants' PII)
+- Body:
+  - `displayName` (string, optional) — update display name
+  - `adultsCount` (integer, required) — number of adults in guest's group
+  - `kidsCount` (integer, required) — number of kids in guest's group
+  - `foodPreferences` (string, optional) — free text, e.g. "vegetarian, no shellfish"
+  - `allergies` (string, optional) — free text, e.g. "nuts, gluten"
+- Action: Updates participant record on the `participants` table, sets `onboardingCompleted = true`
+- Response: `{ participantId, displayName, role, adultsCount, kidsCount, foodPreferences, allergies, notes }` (own data only, no PII from other participants)
+- Errors: 400 (validation), 401 (invalid/expired guest token)
 
 **`PATCH /guest/preferences`**
 - Auth: `X-Guest-Token` header required
-- Body: `{ displayName?, adultsCount?, kidsCount?, foodPreferences?, allergies? }`
-- Action: Updates the guest's participant record with any provided fields
-- Response: Updated participant data (own data only)
-- Notes: Unlike onboarding, this does NOT set `onboardingCompleted` — it's a general-purpose update. All fields are optional.
+- Body (all optional — send only fields to update):
+  - `displayName` (string | null)
+  - `adultsCount` (integer | null)
+  - `kidsCount` (integer | null)
+  - `foodPreferences` (string | null) — send null to clear
+  - `allergies` (string | null) — send null to clear
+  - `notes` (string | null)
+- Action: Updates the guest's participant record on the `participants` table. Does NOT set `onboardingCompleted`.
+- Response: `{ participantId, displayName, role, adultsCount, kidsCount, foodPreferences, allergies, notes }`
+- Errors: 400 (validation), 401 (invalid/expired guest token)
 
 **`GET /guest/plan`**
 - Auth: `X-Guest-Token` header required
-- Action: Returns plan + filtered items + sanitized participants (displayName + role only)
-- Items filtered: only items assigned to this guest's participant + unassigned items. Items assigned to other participants are hidden.
-- Response: Same shape as current invite route response, but authenticated via guest session
+- Response:
+  - `planId` (UUID)
+  - `title`, `description`, `status`, `location`, `startDate`, `endDate`, `tags`, `createdAt`, `updatedAt`
+  - `items` — array of items, **filtered**: only items where `assignedParticipantId` matches the guest's `participantId` OR `assignedParticipantId` is null (unassigned). Items assigned to other participants are hidden.
+  - `participants` — array of **sanitized** participants: `{ participantId, displayName, role }` only. No PII.
+- Errors: 401 (invalid/expired guest token)
 
 **`PATCH /guest/items/:itemId`**
 - Auth: `X-Guest-Token` header required
-- Body: `{ name?, category?, quantity?, unit?, status?, notes? }`
-- Action: Updates an item that is assigned to this guest's participant. All item fields are editable.
-- Validation: item must exist and `assignedParticipantId` must match the guest's `participantId`
-- Errors: 404 (item not found or not assigned to this guest), 400 (validation error)
+- URL params: `itemId` (UUID)
+- Body (all optional — send only fields to update):
+  - `name` (string)
+  - `category` ("equipment" | "food")
+  - `quantity` (integer)
+  - `unit` ("pcs" | "kg" | "g" | "lb" | "oz" | "l" | "ml" | "m" | "cm" | "pack" | "set")
+  - `status` ("pending" | "purchased" | "packed" | "canceled")
+  - `notes` (string | null)
+- Validation: item must exist AND `assignedParticipantId` must match the guest's `participantId`. Cannot edit items assigned to other participants or unassigned items.
+- Response: full updated item object
+- Errors: 404 (item not found or not assigned to this guest), 400 (validation), 401 (invalid/expired guest token)
 
 **`POST /guest/items/:itemId/assign`**
 - Auth: `X-Guest-Token` header required
-- Action: Sets `assignedParticipantId` to the guest's `participantId`
-- Validation: item must exist, `assignedParticipantId` must be null (unassigned)
-- Errors: 404 (item not found), 400 (item already assigned to someone)
+- URL params: `itemId` (UUID)
+- Body: none
+- Validation: item must exist in this plan, `assignedParticipantId` must be null (unassigned)
+- Action: `SET assignedParticipantId = guest's participantId`
+- Response: full updated item object (now shows `assignedParticipantId` set)
+- Errors: 404 (item not found), 400 (item already assigned to someone), 401 (invalid/expired guest token)
 
 **`POST /guest/items/:itemId/unassign`**
 - Auth: `X-Guest-Token` header required
-- Action: Sets `assignedParticipantId` to null
+- URL params: `itemId` (UUID)
+- Body: none
 - Validation: item must exist, `assignedParticipantId` must match the guest's `participantId`
-- Errors: 404 (item not found or not assigned to this guest)
+- Action: `SET assignedParticipantId = null`
+- Response: full updated item object (now shows `assignedParticipantId: null`)
+- Errors: 404 (item not found or not assigned to this guest), 401 (invalid/expired guest token)
+
+**`GET /auth/profile`** ✅ (already implemented)
+- Auth: `Authorization: Bearer <jwt>` required
+- Response:
+  - `user` — `{ id: UUID, email: string, role: string }` (from JWT claims)
+  - `preferences` — `{ foodPreferences: string | null, allergies: string | null, defaultEquipment: string[] | null }` or `null` if user has never saved preferences
+- Errors: 401 (missing/invalid JWT)
+
+**`PATCH /auth/profile`** ✅ (already implemented)
+- Auth: `Authorization: Bearer <jwt>` required
+- Body (all optional — send only fields to update):
+  - `foodPreferences` (string | null) — send null to clear
+  - `allergies` (string | null) — send null to clear
+  - `defaultEquipment` (string[] | null) — array of equipment names, send null to clear
+- Action: Upserts `user_details` row (creates on first call, updates on subsequent). These are **default preferences** that pre-fill participant records on new plans.
+- Response: `{ user: { id, email, role }, preferences: { foodPreferences, allergies, defaultEquipment } }`
+- Errors: 401 (missing/invalid JWT)
+
+**`POST /plans/:planId/claim/:inviteToken`**
+- Auth: `Authorization: Bearer <jwt>` required
+- URL params: `planId` (UUID), `inviteToken` (string, 64-char hex)
+- Body: none
+- Validation:
+  - Invite token must exist and belong to this plan
+  - Participant must not already be linked to a different user (`userId` must be null)
+  - This user must not already be a participant in this plan
+- Action: `UPDATE participants SET userId = jwt.sub WHERE inviteToken = :token`. Pre-fills participant preferences from `user_details` defaults if they exist.
+- Response: full participant object (now shows `userId` set)
+- Errors: 404 (invalid token or plan), 400 (already claimed or user already in plan), 401 (missing/invalid JWT)
 
 ---
 

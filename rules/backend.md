@@ -47,6 +47,39 @@ No additional setup needed — start implementing.
 - Plan access control: `checkPlanAccess()` utility checks `visibility` field + user relationship (owner via `createdByUserId`, participant via `participants.userId`). Plans with `visibility != 'public'` require JWT from an authorized user.
 - Auth plugin supports DI for testing: inject a fake JWKS via `BuildAppOptions.auth` to avoid real Supabase calls in integration tests.
 
+## API Contract with FE
+
+The [User & Participant Management spec](../specs/user-management.md) is the **single source of truth** for the FE/BE contract. The FE builds against this document. Any mismatch causes bugs.
+
+### When adding or changing any endpoint:
+
+1. **Update the spec FIRST** (Section 7.4) with the full endpoint detail:
+   - HTTP method + path (with URL param names and types)
+   - Auth header required (`Authorization: Bearer <jwt>`, `X-Guest-Token`, or none)
+   - Request body — every field with: name, type, required/optional, nullable (send null to clear?)
+   - Response shape — exact JSON structure with field types
+   - Error codes — every possible status code with description
+   - Validation rules — what the BE checks before processing
+
+2. **Update the access matrix** (Section 5.1) if the change affects who can do what
+
+3. **Update the FE Integration Reference** (Section 7.0) if adding new auth methods or error codes
+
+4. **Create a FE issue** (`chillist-fe`) for any change that requires FE work:
+   - New endpoints the FE needs to call
+   - Changed response shapes
+   - New auth headers the FE must send
+   - New error codes the FE must handle
+
+5. **Run `npm run openapi:generate`** and commit `docs/openapi.json`
+
+### Preventing mismatches:
+
+- Do NOT implement an endpoint without its full detail in the spec
+- Do NOT change a response shape without updating the spec AND creating a FE issue
+- Do NOT add a required field to a request body without checking if it breaks existing FE calls
+- The OpenAPI spec (`docs/openapi.json`) is auto-generated from code — the user-management spec is the human-readable contract that explains intent, auth flows, and validation logic
+
 ## OpenAPI Spec
 
 - The backend owns the OpenAPI spec — it is the source of truth
@@ -152,7 +185,10 @@ Keep tests separate when:
 1. Write tests for any new or changed functionality (see Testing section above)
 2. Run validation: `npm run typecheck && npm run lint && npm run test:run`
 3. Fix any failures automatically
-4. If API routes or schemas changed, run `npm run openapi:generate` and commit updated `docs/openapi.json`
+4. If API routes or schemas changed:
+   a. Run `npm run openapi:generate` and commit updated `docs/openapi.json`
+   b. Update the [user-management spec](../specs/user-management.md) with full endpoint details (see API Contract section)
+   c. Create a FE issue if the change requires FE work
 5. Run the API Breaking Change Check above
 6. Ask for user confirmation
 7. Follow the common [Git Workflow](common.md#git-workflow) (commit, push, PR)
