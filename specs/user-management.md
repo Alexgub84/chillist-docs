@@ -1,8 +1,8 @@
 # User & Participant Management — Spec
 
-> **Status:** Planning
-> **Last updated:** 2026-02-22
-> **Depends on:** Supabase Auth (Phase 2 done), existing plans/participants/items schema
+> **Status:** In Progress (through Phase 2.5)
+> **Last updated:** 2026-02-23
+> **Depends on:** Supabase Auth (done), existing plans/participants/items schema
 
 ---
 
@@ -94,8 +94,9 @@ Guests verify phone ownership via a 6-digit OTP code sent over WhatsApp using th
 
 A person who signed up via Supabase Auth (email/password or Google OAuth).
 
-- Represented by a `profiles` row in our DB, linked to Supabase `auth.users.id`
-- Profile is auto-created on first authenticated request to the BE
+- Identity (email, name, phone) lives in Supabase only — BE stores only the Supabase UUID as a reference
+- App-specific preferences (food prefs, allergies, default equipment) stored in `user_details` table
+- `GET /auth/profile` returns identity from JWT + preferences from `user_details`
 - Can create plans, claim participant spots, see full PII, edit assigned items
 - Once registered, only connected to new plans created after registration (no auto-linking to old participant records)
 
@@ -131,21 +132,30 @@ Not a database entity. A guest is someone accessing a plan via an invite link wh
 
 ## 4. Schema Changes
 
-### 4.1 New Table: `profiles`
+> **Architecture Adaptation (2026-02-22):** The original spec called for a `profiles` table storing email, display_name, and avatar_url locally. Per the PII separation decision, this was replaced by `user_details` (app-specific preferences only). Supabase is the single PII store — Railway DB stores only opaque Supabase UUIDs as references. See [dev-lessons: PII Separation](../dev-lessons/backend.md).
+>
+> Other adaptations:
+> - Onboarding columns (`adultsCount`, `kidsCount`, `foodPreferences`, `allergies`) are on `guest_profiles` table, not on `participants`
+> - `plan_invites` table was added (not in original spec) for invite tracking with hashed tokens
+> - `participants.userId` has no FK to a local profiles table — it's a plain UUID reference to Supabase
+
+### 4.1 ~~New Table: `profiles`~~ → Replaced by `user_details`
+
+The original `profiles` table was replaced by `user_details` to avoid duplicating Supabase PII in the local DB.
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
 | `user_id` | UUID | PK | Matches Supabase `auth.users.id` |
-| `email` | VARCHAR(255) | UNIQUE, NOT NULL | From JWT claims |
-| `display_name` | VARCHAR(255) | nullable | User-chosen display name |
-| `avatar_url` | TEXT | nullable | From OAuth provider or upload |
+| `food_preferences` | TEXT | nullable | Free-text dietary preferences |
+| `allergies` | TEXT | nullable | Free-text allergy list |
+| `default_equipment` | JSONB | nullable | List of equipment items the user typically brings |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
 | `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
 
 Notes:
-- `user_id` is NOT auto-generated — it comes from Supabase's `auth.users.id` (the JWT `sub` claim)
-- No password or credential fields — Supabase owns authentication
-- Lightweight: only app-specific profile metadata
+- No email, display_name, or avatar_url — that PII lives in Supabase `user_metadata`
+- `user_id` comes from Supabase's `auth.users.id` (the JWT `sub` claim)
+- Row created lazily on first `PATCH /auth/profile`, not auto-provisioned
 
 ### 4.2 New Table: `verification_codes`
 
@@ -180,32 +190,31 @@ Notes:
 
 ### 4.4 Modified Table: `participants`
 
-New columns:
+New columns (actually implemented):
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| `user_id` | UUID | nullable, FK → `profiles.user_id` | Set when a registered user claims this participant spot |
-| `adults_count` | INTEGER | nullable | Number of adults in guest's group (from onboarding) |
-| `kids_count` | INTEGER | nullable | Number of kids in guest's group (from onboarding) |
-| `food_preferences` | TEXT | nullable | Free text (e.g., "vegetarian, no shellfish") |
-| `allergies` | TEXT | nullable | Free text (e.g., "nuts, gluten") |
-| `onboarding_completed` | BOOLEAN | NOT NULL, DEFAULT false | True after guest fills in onboarding form |
+| `user_id` | UUID | nullable (no FK — plain Supabase UUID reference) | Set when a registered user claims this participant spot |
+| `guest_profile_id` | UUID | nullable, FK → `guest_profiles.guest_id` | Links to guest profile for unregistered participants |
+| `invite_status` | ENUM | NOT NULL, DEFAULT 'pending' | 'pending' / 'invited' / 'accepted' |
+
+> **Adaptation:** Onboarding columns (`adultsCount`, `kidsCount`, `foodPreferences`, `allergies`, `onboardingCompleted`) are on the `guest_profiles` table, not on `participants`. This keeps participant records clean and lets guest profile data be shared or deleted independently.
 
 - Existing columns unchanged (`name`, `lastName`, `contactPhone`, `contactEmail`, `displayName`, `role`, `inviteToken`, etc.)
 - PII stays on the participant row regardless of linking — this is plan-specific data the owner entered
-- Onboarding data is **per-plan** (different trip = different group size / food preferences)
-- If a guest later registers as a user, onboarding data is preserved on the participant record and remains editable
+- `userId` has no foreign key constraint — it's an opaque reference to Supabase, not to a local `profiles` table
 
 ### 4.5 Modified Table: `plans`
 
-New column:
+New column (actually implemented):
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| `created_by_user_id` | UUID | nullable, FK → `profiles.user_id` | The registered user who created this plan (null if created anonymously) |
+| `created_by_user_id` | UUID | nullable (no FK — plain Supabase UUID reference) | The registered user who created this plan (null if created anonymously) |
 
 - Separate from `owner_participant_id` (which is a participant, not a user)
-- Populated automatically if the plan creator has a valid JWT
+- Populated automatically when the plan creator has a valid JWT (done in Phase 1.5)
+- No FK to a local `profiles` table — opaque Supabase UUID reference
 
 ### 4.6 Relations
 
@@ -509,8 +518,8 @@ Internet → Fastify BE (Railway, public) → PostgreSQL (Railway private networ
 | Auth | JWT via Supabase JWKS + API key fallback | Done (being enhanced) |
 | CORS | Restricted to `FRONTEND_URL` in production | Done |
 | Credential storage | DB password in Railway env vars only, JWT verified via public keys | Done |
-| Rate limiting | `@fastify/rate-limit` — limits requests per IP | To add (Phase 2) |
-| Security headers | `@fastify/helmet` — X-Content-Type-Options, HSTS, X-Frame-Options, etc. | To add (Phase 2) |
+| Rate limiting | `@fastify/rate-limit` — 100 req/min global, 10 req/min on auth endpoints | Done (Phase 2) |
+| Security headers | `@fastify/helmet` — X-Content-Type-Options, HSTS, X-Frame-Options, etc. | Done (Phase 2) |
 | Request size | Fastify default 1MB body limit | Done (default) |
 | OTP brute-force | Max 5 attempts per code, 10 min code expiry, 3 requests/hour per token | To add (Phase 3) |
 
@@ -527,11 +536,11 @@ Add these two Fastify plugins as part of Phase 2 (profile provisioning), since t
 
 ### 9.1 New Dependencies
 
-| Package | Purpose |
-|---------|---------|
-| `twilio` | WhatsApp Business API — send OTP codes via WhatsApp |
-| `@fastify/rate-limit` | Rate limiting per IP/route |
-| `@fastify/helmet` | HTTP security headers |
+| Package | Purpose | Status |
+|---------|---------|--------|
+| `twilio` | WhatsApp Business API — send OTP codes via WhatsApp | Not yet added |
+| `@fastify/rate-limit` | Rate limiting per IP/route (100 req/min global, 10 req/min auth) | Done (v10.3.0) |
+| `@fastify/helmet` | HTTP security headers | Done (v13.0.2) |
 
 ### 9.2 New Environment Variables
 
@@ -554,38 +563,62 @@ Add these two Fastify plugins as part of Phase 2 (profile provisioning), since t
 
 Each phase is independently deployable with no breaking changes.
 
-### Phase 1: Database Schema Changes + Security Verification
+### Phase 1: Database Schema Changes ✅
 
-**Goal:** Add all new tables and columns. No behavior changes.
+**Status:** Done (adapted). PR #76.
 
-- Add `profiles` table to Drizzle schema
-- Add `verification_codes` table to Drizzle schema
-- Add `guest_sessions` table to Drizzle schema
-- Add `userId` column (nullable) to `participants` table
-- Add `createdByUserId` column (nullable) to `plans` table
-- Add onboarding columns to `participants` (`adultsCount`, `kidsCount`, `foodPreferences`, `allergies`, `onboardingCompleted`)
-- Add Drizzle relations for all new FKs
-- Generate and run migration
-- Update TypeScript types
-- Update test helpers with new seed functions
-- Verify Railway Postgres public networking is disabled
-- Verify production `DATABASE_URL` uses `RAILWAY_PRIVATE_DOMAIN`
+**Goal:** Add new tables and columns. No behavior changes.
 
-**Risk:** None. All new columns are nullable (except `onboardingCompleted` which defaults to false). Existing code continues to work.
+Adapted from original spec:
+- Added `user_details` table (replaces `profiles` — PII separation, Supabase is single PII store)
+- Added `guest_profiles` table (onboarding columns live here, not on `participants`)
+- Added `plan_invites` table (not in original spec — invite tracking with hashed tokens)
+- Added `userId`, `guestProfileId`, `inviteStatus` columns to `participants`
+- Added `createdByUserId` column to `plans`
+- Generated and ran migration
+- Updated TypeScript types and test seed helpers
 
-### Phase 2: Profile Auto-Provisioning + Security Hardening
+NOT yet added (deferred to when needed):
+- `verification_codes` table (needed for Phase 3: WhatsApp verification)
+- `guest_sessions` table (needed for Phase 3: guest sessions)
 
-**Goal:** Registered users get a profile row automatically. API endpoints are hardened.
+### Phase 1.5: Opportunistic User Tracking ✅
 
-- Add middleware/hook: on authenticated request, upsert `profiles` row
-- Add `GET /auth/profile` endpoint
-- Add `PATCH /auth/profile` endpoint (update displayName, avatarUrl)
-- Add `@fastify/rate-limit` (stricter limits on auth/verification endpoints)
-- Add `@fastify/helmet` (security headers)
-- Write integration tests (profile creation, retrieval, update)
-- Populate `plans.createdByUserId` when a logged-in user creates a plan
+**Status:** Done. PR #80.
 
-**Risk:** Low. Additive behavior. Existing routes unaffected.
+**Goal:** Record Supabase user ID on plans/participants when JWT is present. No enforcement.
+
+- `POST /plans/with-owner` sets `createdByUserId` and owner `userId` from `request.user?.id`
+- No route requires JWT — API key still works for everything
+- If no JWT present, fields remain null
+
+### Phase 2: Profile Endpoints + Security Hardening ✅
+
+**Status:** Done (adapted). PR #81.
+
+**Goal:** Authenticated users can read/update app preferences. API hardened with rate limiting and security headers.
+
+Adapted from original spec:
+- No `profiles` table and no auto-provisioning middleware — Supabase is single PII store
+- `GET /auth/profile` returns JWT identity + `user_details` preferences (null if never saved)
+- `PATCH /auth/profile` upserts `user_details` row (food prefs, allergies, default equipment)
+- Added `@fastify/rate-limit` (100 req/min global, 10 req/min on auth endpoints)
+- Added `@fastify/helmet` (security headers, CSP disabled in dev for Swagger UI)
+- Integration tests for profile CRUD
+
+### Phase 2.5: Plan Ownership + Access Control 🔄
+
+**Status:** Next.
+
+**Goal:** Enforce `visibility` field on plans. Authenticated plan creation defaults to `unlisted`. Only owner/linked participants can read non-public plans.
+
+- `POST /plans/with-owner` with JWT defaults `visibility` to `unlisted`
+- `checkPlanAccess()` utility: checks visibility + user relationship (owner or linked participant)
+- `GET /plans/:planId` enforces access control (404 for unauthorized access to non-public plans)
+- `GET /plans` filters by user's plans + public plans
+- `GET /plans/:planId/participants` and `GET /plans/:planId/items` enforce plan access
+- Invite route unchanged — still the guest access path with PII stripping
+- Integration tests for all access control scenarios
 
 ### Phase 3: WhatsApp Verification + Guest Sessions
 
@@ -659,7 +692,7 @@ Each phase is independently deployable with no breaking changes.
 | 3 | When should the API key be deprecated? It's a blanket bypass of all permissions. | Phase 6-7 | After FE fully uses JWT |
 | 4 | Should a registered user be able to "unclaim" a participant spot? | Phase 5 | Before Phase 5 |
 | 5 | If a participant is linked to a user, should editing their profile (displayName) auto-update the participant's displayName? Or keep them separate? | Phase 2-5 | Before Phase 5 |
-| 6 | Should plan `visibility` field (public/unlisted/private) be enforced now, or deferred? | Phase 6 | Before Phase 6 |
+| 6 | ~~Should plan `visibility` field (public/unlisted/private) be enforced now, or deferred?~~ **Decided:** Enforcing now in Phase 2.5. Authenticated plan creation defaults to `unlisted`. | Phase 2.5 | Decided |
 | 7 | Twilio sandbox vs production: start with sandbox for dev (only pre-registered numbers)? When to get Meta approval for production WhatsApp? | Phase 3 | Before Phase 3 |
 | 8 | Code resend cooldown: how long before allowing a resend? Suggested: 60 seconds. | Phase 3 | Before Phase 3 |
 | 9 | WhatsApp message template: what text? OTP templates are fast-tracked by Meta. Suggested: "Your Chillist verification code is: {{1}}. It expires in 10 minutes." | Phase 3 | Before Phase 3 |
@@ -671,13 +704,15 @@ Each phase is independently deployable with no breaking changes.
 
 Since all new columns are nullable (or have safe defaults) and all new tables are additive:
 
-1. Deploy schema changes (Phase 1) first — no code behavior changes
-2. Deploy profile provisioning + security hardening (Phase 2) — starts populating profiles, no access restrictions yet
-3. Deploy WhatsApp verification + guest sessions (Phase 3) — guests now verify via OTP before accessing plans
-4. Deploy guest onboarding (Phase 4) — first-time guests fill in group/dietary info
-5. Deploy claim endpoint (Phase 5) — registered users can link to participant records
-6. Deploy response filtering (Phase 6) with API key fallback — FE can migrate gradually
-7. Deploy edit permissions (Phase 7) — FE must handle 403s by this point
-8. Remove API key fallback — once FE fully uses JWT
+1. ~~Deploy schema changes (Phase 1)~~ — Done (PR #76)
+2. ~~Deploy opportunistic user tracking (Phase 1.5)~~ — Done (PR #80)
+3. ~~Deploy profile endpoints + security hardening (Phase 2)~~ — Done (PR #81)
+4. Deploy plan ownership + access control (Phase 2.5) — **next**
+5. Deploy WhatsApp verification + guest sessions (Phase 3)
+6. Deploy guest onboarding (Phase 4)
+7. Deploy claim endpoint (Phase 5)
+8. Deploy response filtering enhancements (Phase 6) with API key fallback
+9. Deploy edit permissions (Phase 7) — FE must handle 403s by this point
+10. Remove API key fallback — once FE fully uses JWT
 
 Each phase is a separate PR with its own tests. No phase depends on the FE being updated (except Phase 7 which needs FE to handle 403 errors gracefully).

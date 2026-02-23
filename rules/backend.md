@@ -32,7 +32,9 @@ No additional setup needed — start implementing.
 
 - JWT verification via JWKS (Supabase asymmetric keys, `jose` library). No secrets stored on the BE.
 - `request.user` is populated on every request when a valid `Authorization: Bearer <jwt>` header is present. Contains `{ id, email, role }`.
-- Route-level auth: only routes that explicitly check `request.user` are protected (currently only `GET /auth/me`). All other routes remain public until Step 3.
+- Protected routes (require JWT, return 401 without): `GET /auth/me`, `GET /auth/profile`, `PATCH /auth/profile`.
+- Rate limiting: `@fastify/rate-limit` active globally (100 req/min per IP), stricter on auth endpoints (10 req/min).
+- Security headers: `@fastify/helmet` active on all responses.
 - API key still works as fallback for non-auth routes. Skips OPTIONS, `/health`, invite routes, and `/auth/*` routes.
 - Any `onRequest` middleware that checks headers (auth, API key) must explicitly skip `OPTIONS` preflight requests — browsers cannot send custom headers on preflight.
 
@@ -41,7 +43,8 @@ No additional setup needed — start implementing.
 - FE calls Supabase directly for sign-up/sign-in — the BE does NOT proxy auth requests or have a Supabase client.
 - BE only verifies JWTs via the Supabase JWKS endpoint (`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`).
 - `GET /auth/me` is the proof-of-auth endpoint: requires JWT, returns user identity.
-- Plans routes remain public until Step 3 (Permissions + Privacy).
+- `GET /auth/profile` returns identity from JWT + app preferences from `user_details` table.
+- Plan access control: `checkPlanAccess()` utility checks `visibility` field + user relationship (owner via `createdByUserId`, participant via `participants.userId`). Plans with `visibility != 'public'` require JWT from an authorized user.
 - Auth plugin supports DI for testing: inject a fake JWKS via `BuildAppOptions.auth` to avoid real Supabase calls in integration tests.
 
 ## OpenAPI Spec

@@ -6,21 +6,21 @@
 
 ## Implementation Status
 
-> Last updated: 2026-02-23
+> Last updated: 2026-02-24
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Plans CRUD | Done | Full REST API + FE screens, plans list with upcoming/past time filter |
+| Plans CRUD | Done | Full REST API + FE screens |
 | Participants CRUD | Done | Scoped to plans, role-based |
-| Items CRUD | Done | Equipment/food categories, inline editing, modal for create & edit, floating "Add Item" button |
+| Items CRUD | Done | Equipment/food categories, inline editing |
 | Item status flow | Done | pending → purchased → packed → canceled |
 | Status filtering | Done | Filter items by status on plan screen |
 | Category grouping | Done | Items grouped by equipment/food |
 | SEO & sharing metadata | Done | OG tags, Twitter Card, favicon, web manifest, logo in header |
 | Share link | Done | Invite token per participant, public `GET /plans/:planId/invite/:inviteToken` endpoint |
 | Assignments | Partial | DB table exists (`item_assignments`), API routes not implemented |
-| Weather | Done | 7-day forecast via Open-Meteo API on plan detail page (non-blocking, requires plan location with lat/lon). Fetches on every page load. i18n supported. |
-| Auth | In progress | Phase 1 (invite tokens) done. Phase 2 (BE JWT via JWKS) done. Phase 3 (FE sign-up/sign-in/OAuth + JWT injection) done. Phase 4 (user management schema) done: `guest_profiles`, `user_details`, `plan_invites` tables added; `createdByUserId` on plans, `userId`/`guestProfileId`/`inviteStatus` on participants; Supabase is single PII store for registered users. No behavior change yet — routes still use API key. Google OAuth on sign-in and sign-up. Profile completion page (`/complete-profile`) after sign-up (name, last name, phone with country prefix, email — saved to Supabase `user_metadata`). Owner pre-fill from session on plan creation. Country phone prefix selector on profile + plan forms (defaults to Israel for Hebrew). E2E tests deferred (#67). |
+| Weather | Not started | Optional forecast for plan location |
+| Auth | In progress | Phase 1 (invite tokens) done. Phase 2 (BE JWT via JWKS) done. Phase 3 (FE sign-up/sign-in/OAuth + JWT injection) done. Phase 4 (user management schema) done: `guest_profiles`, `user_details`, `plan_invites` tables added; `createdByUserId` on plans, `userId`/`guestProfileId`/`inviteStatus` on participants; Supabase is single PII store. Phase 5 (opportunistic user tracking) done: records userId when JWT present. Phase 6 (profile endpoints + security hardening) done: `GET/PATCH /auth/profile`, `@fastify/rate-limit` (100/min global, 10/min auth), `@fastify/helmet`. Phase 7 (plan ownership + access control) next: visibility enforcement, `checkPlanAccess()` utility. Google OAuth on sign-in and sign-up. Profile completion page. Owner pre-fill from session. E2E tests deferred (#67). |
 | i18n (Hebrew + English) | Done | i18next + react-i18next. All UI text translated. Language toggle in header. RTL support for Hebrew. Language persisted to localStorage. Unit + E2E tests. |
 | Home / Landing page | Done | Hero section with campfire photo, 3-step "How it works" onboarding (Create a plan → Add gear/food → Track together) with mobile app screenshots per language (EN/HE), scroll-reveal animations, auth-aware CTAs. Screenshot script: `npm run screenshots`. |
 
@@ -58,6 +58,7 @@
 
 - **Participant**
   - `participantId`, `displayName`, `name`, `lastName`, `role` ("owner" | "participant" | "viewer"), optional: `avatarUrl`, `contactEmail`, `contactPhone`
+  - Plan-specific preferences (override user/guest defaults): optional `adultsCount`, `kidsCount`, `foodPreferences`, `allergies`, `notes`
   - Scoped to a plan via `planId`
   - Timestamps: `createdAt`, `updatedAt`
 - **Plan**
@@ -71,14 +72,17 @@
 - **ItemAssignment** (DB table exists, API routes not yet implemented)
   - `assignmentId`, `planId`, `itemId`, `participantId`, optional: `quantityAssigned`, `notes`, `isConfirmed`
   - Timestamps: `createdAt`, `updatedAt`
+- **UserDetails** (app-specific preferences for registered users)
+  - `userId` (UUID reference to Supabase), `foodPreferences`, `allergies`, `defaultEquipment`
+  - These are the user's **default** preferences. FE pre-fills participant fields from these during onboarding; the user can override per plan.
+- **GuestProfile** (temporary PII for unregistered participants)
+  - `guestId`, `name`, `lastName`, `phone`, optional: `email`, `foodPreferences`, `allergies`, `adultsCount`, `kidsCount`
+  - Same defaults pattern: FE pre-fills, user overrides per plan on the participant record.
 - **User** (managed by Supabase Auth, not stored in our DB)
   - `id` (UUID, from Supabase `auth.users`), `email`, `role` ("authenticated"), `user_metadata` (display name, avatar from Google OAuth)
   - Identity lives in Supabase. BE verifies JWTs via JWKS. FE reads user profile from Supabase session.
-  - No `users`/`profiles` table in our DB yet. Will add when needed (Step 3: Permissions) to link users to plans/participants.
-- **Weather**
-  - 7-day forecast fetched from Open-Meteo API (free, no API key) using plan location lat/lon.
-  - Schema: `Forecast` with `days[]` containing `date`, `temperatureMax`, `temperatureMin`, `precipitationSum`, `weatherCode` (WMO codes).
-  - Fetched client-side on every plan detail page load (`staleTime: 0`). Non-blocking — only renders when data is available.
+- **Weather** (not yet implemented)
+  - `WeatherBundle` (current + daily forecast) fetched for plan.location; non-blocking.
 
 ---
 
@@ -99,17 +103,15 @@
 ### 4.1 Plans
 - CRUD plans.
 - Plan screen shows participants, items grouped by category, and completion stats.
-- Plans list has time filter tabs (All / Upcoming / Past) with counts. Defaults to "Upcoming". Plans with no date are treated as upcoming.
 
 ### 4.2 Participants
 - Add/remove participants to a plan.
 - Role: "owner" (full edit), "participant" (update items & self-assign), "viewer" (read-only).
 
 ### 4.3 Items
-- Add item (name, category, quantity, unit, notes, status). Both create and edit open in a modal. "Add Item" button floats at the bottom of the viewport (fixed position) on both mobile and desktop.
+- Add item (name, category, quantity, unit, notes, status).
 - Group by category; filter by status; simple text search.
 - Inline editing for quantity, unit, and status fields.
-- Cancel button on each item card to quickly set status to "canceled".
 - Equipment items always use "pcs" as the unit. Food items require a unit.
 - Checklist mode: in Buying List / Packing List filtered views, items show a checkbox instead of the status dropdown. Checking an item triggers strikethrough + fade animation then advances the status (pending → purchased, purchased → packed). Details are read-only in this mode.
 - Bulk: change status to "packed" or "purchased" for selected items (optional nice-to-have).

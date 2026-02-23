@@ -6,6 +6,22 @@ A log of bugs fixed and problems solved in `chillist-be`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Plan Access Control — Return 404 Instead of 403 for Unauthorized Plans
+**Date:** 2026-02-23
+**Problem:** When enforcing visibility on `GET /plans/:planId`, returning 403 (Forbidden) leaks the existence of private plans to unauthorized users. An attacker could enumerate plan IDs and learn which ones exist.
+**Solution:** Return 404 for both "plan not found" and "plan exists but you're not authorized." The response body is identical in both cases (`{ message: "Plan not found" }`). Created a shared `checkPlanAccess()` utility (`src/utils/plan-access.ts`) that returns `{ allowed: false, plan: null }` for unauthorized access — callers see the same result as a missing plan.
+**Prevention:** Always return 404 (not 403) when hiding the existence of a resource. Test that the 404 response shape is identical for unauthorized vs nonexistent resources.
+
+---
+
+### [Arch] Access Control Changes Break Existing Tests That Skip Auth
+**Date:** 2026-02-23
+**Problem:** Adding visibility enforcement to `GET /plans/:planId` broke the user-tracking integration test and two unit tests. The user-tracking test created a plan with JWT (now defaults to `unlisted`) then did a GET without JWT — returned 404 instead of 200. The unit tests mocked `db.query.plans.findFirst` but `checkPlanAccess()` now calls `db.select().from().where()` first, which wasn't mocked.
+**Solution:** Updated user-tracking test to send JWT on the GET request. Updated unit test mocks to simulate the `select→from→where` chain that `checkPlanAccess()` uses.
+**Prevention:** When adding authorization checks to existing routes, search for all tests that call those routes and verify they still have valid credentials. Unit tests with mocked DBs need their mock chains updated when new DB queries are added to the handler.
+
+---
+
 ### [Arch] PII Separation — Supabase as Single Source of User Identity
 **Date:** 2026-02-22
 **Problem:** Initial implementation duplicated Supabase user PII (email, name) into a local `profiles` table in Railway DB. This created two sources of truth for user data and added an INSERT on every authenticated request.
