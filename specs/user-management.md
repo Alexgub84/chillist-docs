@@ -1,6 +1,6 @@
 # User & Participant Management — Spec
 
-> **Status:** In Progress (Phase 2.5 Step A done)
+> **Status:** In Progress (Phase 2.5 done)
 > **Last updated:** 2026-02-24
 > **Depends on:** Supabase Auth (done), existing plans/participants/items schema
 
@@ -618,12 +618,13 @@ Adapted from original spec:
 - 17 integration tests: visibility defaults, owner/participant/viewer access, expired JWT, orphaned plans, response shape identity, invite route compatibility
 - Version 1.7.0
 
-**Step B — Extended protection: Next**
+**Step B — Extended protection: Done (PR #84, second commit)**
 
-- `GET /plans` filters by user's plans + public plans
-- `GET /plans/:planId/participants` and `GET /plans/:planId/items` enforce plan access
-- Invite route unchanged — still the guest access path with PII stripping
-- Additional integration tests
+- `GET /plans` filters results: JWT user sees own plans (owner or linked participant) + public plans; no JWT sees only public plans. Uses `or()` + `exists()` subquery in Drizzle.
+- `GET /plans/:planId/participants` enforces plan access via `checkPlanAccess()`
+- `GET /plans/:planId/items` enforces plan access via `checkPlanAccess()`
+- 12 additional integration tests (list filtering, sub-resource access/denial)
+- Version 1.8.0
 
 ### Phase 3: WhatsApp Verification + Guest Sessions
 
@@ -712,7 +713,7 @@ Since all new columns are nullable (or have safe defaults) and all new tables ar
 1. ~~Deploy schema changes (Phase 1)~~ — Done (PR #76)
 2. ~~Deploy opportunistic user tracking (Phase 1.5)~~ — Done (PR #80)
 3. ~~Deploy profile endpoints + security hardening (Phase 2)~~ — Done (PR #81)
-4. Deploy plan ownership + access control (Phase 2.5) — **Step A done (PR #84), Step B next**
+4. ~~Deploy plan ownership + access control (Phase 2.5)~~ — Done (PR #84)
 5. Deploy WhatsApp verification + guest sessions (Phase 3)
 6. Deploy guest onboarding (Phase 4)
 7. Deploy claim endpoint (Phase 5)
