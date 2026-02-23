@@ -20,6 +20,8 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 **Solution:** Applied `force: true` on all form submit button clicks inside Headless UI dialogs (same pattern as ComboboxOption clicks documented earlier). Increased `toBeHidden` timeout from 5s to 10s. Verified visibility before clicking (`await expect(btn).toBeVisible()`).
 **Prevention:** Playwright's WebKit on Linux behaves differently from macOS WebKit. For Headless UI modal form submissions: (1) always use `click({ force: true })` on submit buttons, (2) use generous `toBeHidden` timeouts (10s), (3) test with `npm run e2e:docker` to reproduce CI's Linux-WebKit environment locally before pushing.
 
+**How to see Safari failures when they pass locally:** CI runs WebKit on Linux (different from macOS). Run `npm run e2e:docker` locally to match CI exactly. On PRs, the `test-safari` job always uploads a Playwright report artifact — download it from the Actions run to inspect failures. Safari failures show as yellow warning annotations on the PR; they do not block merge.
+
 ---
 
 ### [Arch] JWT 401 had no retry or recovery — expired tokens caused hard failures
