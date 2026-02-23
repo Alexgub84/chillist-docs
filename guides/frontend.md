@@ -255,7 +255,7 @@ The app uses Google Maps for smart location autocomplete when creating plans and
 2. Create an **API key**
 3. Enable the following APIs under **APIs & Services > Library**:
    - **Maps JavaScript API**
-   - **Places API**
+   - **Places API (New)** (required for `PlaceAutocompleteElement`)
 4. Set the API key in `.env`:
    ```
    VITE_GOOGLE_MAPS_API_KEY=your-api-key
@@ -275,13 +275,13 @@ In **Google Cloud Console > Credentials > your API key**:
 
 ### How it works
 
-- **Plan form** (`PlanForm.tsx`): A Google Places Autocomplete search input is shown above the manual location fields. When the user selects a place, all fields (name, city, country, region, latitude, longitude) are auto-filled. The manual fields remain editable. A mini map preview appears when coordinates are set.
+- **Plan form** (`PlanForm.tsx`): A `PlaceAutocompleteElement` (Google's new Places widget) is shown above the manual location fields. When the user selects a place, all fields (name, city, country, region, latitude, longitude) are auto-filled via `fetchFields()`. The manual fields remain editable. A mini map preview appears when coordinates are set.
 - **Plan detail** (`Plan.tsx`): If the plan's location has latitude/longitude, an interactive map with a pin is displayed alongside the text description. On mobile the map is full-width above the text; on desktop they sit side by side.
 - **No API key?** Both components render nothing — the manual text fields in the form still work, and the plan detail shows the text description only.
 
 ### Library
 
-Uses `@vis.gl/react-google-maps` (official Google Maps React wrapper). Each component that needs the map wraps itself with `<APIProvider>` locally — no global provider in the root route.
+Uses `@vis.gl/react-google-maps` (official Google Maps React wrapper). Each component that needs the map wraps itself with `<APIProvider>` locally — no global provider in the root route. The autocomplete component uses `version="beta"` on its `APIProvider` to access `PlaceAutocompleteElement`.
 
 ## Weather Forecast
 

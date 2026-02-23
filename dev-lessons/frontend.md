@@ -6,6 +6,22 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Deps] Migrate from legacy google.maps.places.Autocomplete to PlaceAutocompleteElement
+**Date:** 2026-02-23
+**Problem:** Console warning: "As of March 1st, 2025, google.maps.places.Autocomplete is not available to new customers. Please use google.maps.places.PlaceAutocompleteElement instead."
+**Solution:** Replaced the legacy `new places.Autocomplete(input, options)` with `new google.maps.places.PlaceAutocompleteElement({})` in `LocationAutocomplete.tsx`. Key differences: (1) the element is appended to a container div via ref instead of binding to an existing input, (2) listen for `gmp-placeselect`/`gmp-select` events instead of `place_changed`, (3) use `place.fetchFields()` to request `displayName`, `location`, `addressComponents`, (4) address components use `longText` instead of `long_name`. Added `version="beta"` to the autocomplete's `APIProvider` to ensure the element is available. Requires "Places API (New)" enabled in Google Cloud Console.
+**Prevention:** When Google deprecation warnings appear for Maps APIs, check the migration guide and the `@vis.gl/react-google-maps` examples for the recommended replacement. The `PlaceAutocompleteElement` renders its own styled input (shadow DOM) — you lose custom Tailwind styling on the input but gain built-in RTL localization and accessibility.
+
+---
+
+### [Test] E2E button selector must match accessible name — SVG icons with aria-hidden are excluded
+**Date:** 2026-02-23
+**Problem:** E2E test "adds items via UI" timed out in CI waiting for `getByRole('button', { name: /^\+\s*Add Item$/i })`. The "Add Item" button renders the `+` as an SVG with `aria-hidden="true"` and the text "Add Item" in a `<span>`. Playwright computes the accessible name from visible text content only, so the actual name is `"Add Item"`, not `"+ Add Item"`.
+**Solution:** Changed the test regex from `/^\+\s*Add Item$/i` to `/^Add Item$/i` to match the actual accessible name.
+**Prevention:** When writing `getByRole` selectors for buttons that contain icons (SVG with `aria-hidden="true"`), only match against the text content — the icon is excluded from the accessible name. Always verify button accessible names by running the test locally before pushing.
+
+---
+
 ### [Infra] Google Maps API key — localhost referrer restrictions don't work reliably
 **Date:** 2026-02-22
 **Problem:** After adding Google Maps integration, the map showed `RefererNotAllowedMapError` on `localhost:5174` even after adding the URL to Google Cloud Console's HTTP referrer restrictions (both with and without `/*` wildcard).
