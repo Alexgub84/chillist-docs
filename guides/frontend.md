@@ -260,6 +260,43 @@ After sign-in, the Supabase client provides a `session` object with user profile
 - Later (Step 3: Permissions), the BE will extract `request.user.id` from the JWT to link the plan to the authenticated user in the database.
 - Until Step 3, the owner participant is still created from the request body payload (no enforced link to the Supabase user yet).
 
+## User Management & Auth-Gated Access
+
+The app gates UI elements based on three levels of user identity. All checks are UX-only — the BE enforces real access control via JWT.
+
+### Access levels
+
+| Level | How detected | What's visible |
+|-------|-------------|---------------|
+| **Unauthenticated** | `!user` from `useAuth()` | Read-only plan view. Plans list shows "Sign In" / "Sign Up" instead of "Create New Plan". Invite page shows "Sign in to join" / "Create an account". No edit buttons anywhere. |
+| **Authenticated (non-owner)** | `user` exists but `user.id !== owner.userId` | Can view plans they have access to. Plans list shows "Create New Plan". Invite page shows "Go to plan". No edit buttons on other owners' plans or participant preferences. |
+| **Authenticated (owner)** | `user.id === owner.userId` (derived from `plan.participants`) | Full edit access: "Edit Plan" button, "Edit" buttons on participant preferences, RSVP status badges visible, manage participants modal. |
+| **Admin** | `isAdmin` from `useAuth()` (reads `app_metadata.role`) | All of the above + delete buttons on every plan in the plans list. |
+
+### Deriving ownership
+
+```typescript
+const { user } = useAuth();
+const owner = plan.participants.find(p => p.role === 'owner');
+const isOwner = !!user && !!owner?.userId && user.id === owner.userId;
+```
+
+The `userId` field on participants is populated by the BE when a JWT is present during participant creation (opportunistic user tracking). For older plans created before auth, `userId` may be `null` — in that case `isOwner` is `false` and the edit UI is hidden.
+
+### RSVP status
+
+Each participant has an `rsvpStatus` field (`pending` | `confirmed` | `not_sure`). This is displayed as a colored badge next to the participant's name:
+
+- `confirmed` — green badge
+- `not_sure` — yellow badge
+- `pending` — gray badge
+
+RSVP badges are only visible to the plan owner (gated by `isOwner`). The owner's own card never shows an RSVP badge. Badges appear in both the Group Details section and the Manage Participants modal.
+
+### Public API (invite endpoint)
+
+The invite landing page (`/invite/:planId/:inviteToken`) uses `publicRequest()` instead of `request()` to fetch plan data without authentication. This endpoint returns PII-stripped participant data (only `participantId`, `displayName`, `role` — no phone, email, or preferences). See `src/core/api.ts > publicRequest()` and `src/hooks/useInvitePlan.ts`.
+
 ## Google Maps (Location Picker + Map Display)
 
 The app uses Google Maps for smart location autocomplete when creating plans and for displaying an interactive map on the plan detail page. This feature is **optional** — if `VITE_GOOGLE_MAPS_API_KEY` is not set, the location fields fall back to manual text inputs with no map.

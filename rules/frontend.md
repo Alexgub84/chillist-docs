@@ -111,6 +111,8 @@ The backend is the **single source of truth** for all enum values (units, status
   - **WebKit form submissions** in Headless UI modals require `click({ force: true })` on submit buttons and `toBeHidden({ timeout: 10000 })` — Linux-WebKit behaves differently from macOS-WebKit
   - **Responsive UI tests** must use Playwright's `isMobile` fixture to handle mobile vs desktop paths (e.g., hamburger menu vs desktop nav). Elements hidden behind responsive breakpoints (`hidden sm:flex`) are invisible on mobile viewports
   - **Testing layers:** Pre-commit (Husky) runs all 4 browsers for thorough local validation. CI (`ci.yml`) runs Chrome only as the required gate (blocks merge). Deploy (`deploy.yml`) runs no tests — build + deploy only, trusts CI. Branch protection on `main` ensures no untested code is deployed
+  - **Auth-gated UI tests** must cover 3 states: owner (authenticated + owns plan), non-owner (authenticated + different userId), unauthenticated (no `injectUserSession`). Any E2E test that interacts with auth-gated elements must call `injectUserSession(page)` first
+  - **Locator scoping:** When header and main content share identical links (e.g., both have "Sign In"), scope locators to `page.getByRole('main')` to avoid strict mode violations from multiple matches
 
 ## Auth and User Data
 
@@ -128,6 +130,26 @@ The backend is the **single source of truth** for all enum values (units, status
 - Use `const { isAdmin } = useAuth()` in components to conditionally render admin-only UI (e.g., delete buttons on the plans list).
 - Admin checks are UX-only — the BE enforces access control. Never trust `isAdmin` for security decisions.
 - The mock auth (`src/lib/mock-supabase-auth.ts`) supports `app_metadata` on mock users. E2E tests inject admin sessions via `injectAdminSession(page)` from `tests/e2e/fixtures.ts`.
+
+### Auth-Gated UI Pattern
+
+The app conditionally renders UI elements based on authentication state and plan ownership. These checks are **UX-only** — the BE enforces real access control via JWT.
+
+**Authentication state** (signed in vs not):
+- Use `const { user } = useAuth()` → `const isAuthenticated = !!user`
+- Example: Plans list shows "Create New Plan" for signed-in users, "Sign In" / "Sign Up" for guests
+- Example: Invite page shows "Go to plan" for signed-in users, "Sign in to join" / "Create an account" for guests
+
+**Plan ownership** (owner vs non-owner):
+- Derive from participants: `const owner = plan.participants.find(p => p.role === 'owner')` → `const isOwner = !!user && !!owner?.userId && user.id === owner.userId`
+- Gate edit actions with `isOwner` — pass `undefined` as callback props to hide edit buttons (e.g., `onEditPreferences={isOwner ? handler : undefined}`)
+- Example: Only the owner sees "Edit" buttons on participant preference cards, the "Edit Plan" button, and RSVP status badges
+
+**When adding new auth-gated UI:**
+1. Determine the gating level: authentication (signed in?) or ownership (is owner?)
+2. Pass the boolean as a prop or derive it locally
+3. Conditionally render or pass `undefined` for optional callback props — component hides the UI when the prop is falsy
+4. Add E2E tests for all 3 states: owner, non-owner (authenticated), unauthenticated
 
 ### JWT 401 Retry and Auth Error Modal
 
