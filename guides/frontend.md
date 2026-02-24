@@ -322,9 +322,17 @@ Each participant has an `inviteStatus` field (`pending` | `invited` | `accepted`
 
 The claim endpoint links the authenticated user's `userId` to the participant record and sets `inviteStatus` to `accepted`. It requires a valid JWT and returns 401 if unauthenticated, 404 if the token is invalid, and 400 if already claimed.
 
+### Guest continue without signing in
+
+Unauthenticated users on the invite landing page can click "Continue without signing in" to open a preferences modal (adults, kids, food preferences, allergies, notes). On submit, preferences are saved via `PATCH /plans/:planId/invite/:inviteToken/preferences` (public endpoint, no JWT required — the invite token identifies the participant). On submit or skip, the guest is redirected to `/plan/:planId`. See `saveGuestPreferences()` in `src/core/api.ts`.
+
 ### Public API (invite endpoint)
 
 The invite landing page (`/invite/:planId/:inviteToken`) uses `publicRequest()` instead of `request()` to fetch plan data without authentication. This endpoint returns PII-stripped participant data (only `participantId`, `displayName`, `role` — no phone, email, or preferences). See `src/core/api.ts > publicRequest()` and `src/hooks/useInvitePlan.ts`.
+
+Public endpoints (no JWT required):
+- `GET /plans/:planId/invite/:inviteToken` — fetch plan data (PII-stripped)
+- `PATCH /plans/:planId/invite/:inviteToken/preferences` — save guest preferences (body: `adultsCount`, `kidsCount`, `foodPreferences`, `allergies`, `notes`)
 
 ### Invite link sharing
 
