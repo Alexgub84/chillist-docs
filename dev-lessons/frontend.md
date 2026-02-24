@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] AuthProvider called /auth/me on every SIGNED_IN event — 8+ redundant 401s on page load
+**Date:** 2026-02-24
+**Problem:** Production console showed 8+ `GET /auth/me 401` errors on every page load. `AuthProvider.onAuthStateChange` called `fetchAuthMe()` on every `SIGNED_IN` event to get the user's email for a toast. Supabase fires `SIGNED_IN` multiple times (session restore, tab focus, auto-refresh), and each call with an expired/missing token triggered the 401 retry cascade in `request()` (original call → 401 → `refreshSession()` → retry → another 401).
+**Solution:** Removed the `fetchAuthMe()` call from `onAuthStateChange`. The user's email is already available in the Supabase session object (`newSession.user.email`), so no backend round-trip is needed for the toast.
+**Prevention:** Never make backend calls from `onAuthStateChange` for data that's already in the Supabase session. `onAuthStateChange` fires frequently (session restore, token refresh, tab focus) — keep handlers lightweight and side-effect-free. If backend verification is needed, do it once on explicit user-initiated sign-in, not on every event.
+
+---
+
 ### [Infra] Deploy pipeline took 7-31 min and failed on WebKit E2E — restructured CI/CD
 **Date:** 2026-02-23
 **Problem:** `deploy.yml` re-ran the full E2E suite (4 browsers, 2 retries) that `ci.yml` already passed on the PR. WebKit-only form-dismissal bugs caused 3 deterministic failures on every deploy. With 60s timeout × 3 attempts × 4 browsers, a single failing test burned 12 minutes. Additionally, `install-deps` in `deploy.yml` lacked browser filters, sometimes taking 25 minutes when apt mirrors were slow.

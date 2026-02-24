@@ -496,7 +496,8 @@ Single job (Chrome only):
 3. Lint
 4. Type check
 5. Unit tests
-6. Install Chromium + run E2E tests (Desktop Chrome only)
+6. Integration tests
+7. Install Chromium + run E2E tests (Desktop Chrome only)
 
 ### `deploy.yml` — runs on push to `main`
 
@@ -508,8 +509,9 @@ Single job (no E2E — CI already validated on the PR):
 4. Lint
 5. Type check
 6. Unit tests
-7. Build (with production env vars)
-8. Deploy to Cloudflare Pages
+7. Integration tests
+8. Build (with production env vars)
+9. Deploy to Cloudflare Pages
 
 ### Testing all browsers / Safari (Linux-WebKit parity)
 

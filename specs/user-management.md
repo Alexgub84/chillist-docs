@@ -149,6 +149,16 @@ Not a database entity. A guest is someone accessing a plan via an invite link wh
 - Can edit items assigned to them (all fields), self-assign/unassign to unassigned items, and update own per-plan preferences anytime
 - Cannot add new items, delete items, or manage participants
 
+### 3.4 Admin
+
+A registered user with elevated privileges for platform management and debugging.
+
+- **Assignment:** Set via Supabase `app_metadata.role = 'admin'` (Supabase dashboard or Admin API). The BE reads `app_metadata.role` from the JWT, falling back to the top-level `role` claim, then to `'authenticated'`.
+- **Read access:** Can read all plans, items, and participants regardless of visibility (`public`, `invite_only`, `private`). Bypasses `checkPlanAccess()` entirely.
+- **Visibility rules bypass:** Can create public plans while signed in, and set any plan's visibility to `public` (normal signed-in users cannot).
+- **Write access:** No special write bypasses beyond visibility rules. When Phase 7 ownership enforcement is added, admin exemptions must be wired into write routes too.
+- **Not a participant role:** Admin is a JWT-level role, not a participant role. An admin does not appear in a plan's participants list unless explicitly added.
+
 ---
 
 ## 4. Schema Changes
@@ -320,6 +330,7 @@ participants 1 ←──── * guest_sessions     (via guest_sessions.particip
 
 | Accessor | Auth Method | Sees Plan + Items | Sees Participant PII | Can Add Items | Can Edit Items | Can Self-Assign | Can Update Own Preferences | Can Manage Participants |
 |----------|-----------|-------------------|---------------------|---------------|---------------|----------------|---------------------------|------------------------|
+| Admin | JWT (`app_metadata.role = 'admin'`) | All plans, all items (bypasses visibility) | Yes | Yes | All items | N/A | Yes | Yes |
 | Owner (registered) | JWT | Yes | Yes | Yes | All items | N/A | Yes | Yes |
 | Owner (unregistered) | API key (legacy) | Yes | Yes | Yes | All items | N/A | No | Yes |
 | Participant (linked) | JWT | Yes | Yes | Yes | Own assigned only | Yes | Yes | No |
