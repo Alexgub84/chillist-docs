@@ -17,7 +17,7 @@
 | Status filtering | Done | Filter items by status on plan screen |
 | Category grouping | Done | Items grouped by equipment/food |
 | SEO & sharing metadata | Done | OG tags, Twitter Card, favicon, web manifest, logo in header |
-| Share link | Done | Invite token per participant, public `GET /plans/:planId/invite/:inviteToken` endpoint. FE: copy/share buttons in Manage Participants modal and Group Details section. Invite landing page at `/invite/:planId/:inviteToken` — read-only plan view (title, dates, location, items, stripped participants) using `publicRequest()` (no auth). Mock server + E2E tests. Issue #60, #101. |
+| Share link | Done | Invite token per participant, public `GET /plans/:planId/invite/:inviteToken` endpoint. FE: copy/share buttons in Manage Participants modal and Group Details section. Invite landing page at `/invite/:planId/:inviteToken` — read-only plan view with auth-aware CTA: unauthenticated users see "Sign in to join" / "Create an account" linking to `/signin?redirect=/plan/:planId`; authenticated users see "Go to plan" linking directly to `/plan/:planId`. Sign-in and sign-up pages support `?redirect` search param for post-auth navigation. Mock server + E2E tests. Issue #60, #101. |
 | Participant preferences | Done | Preferences modal (adults, kids, food prefs, allergies, notes) after plan creation for owner + edit per participant on plan detail page. Group Details section shows all participants' preferences. |
 | Assignments | Partial | DB table exists (`item_assignments`), API routes not implemented |
 | Weather | Not started | Optional forecast for plan location |

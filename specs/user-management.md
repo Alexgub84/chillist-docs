@@ -1,7 +1,7 @@
 # User & Participant Management — Spec
 
-> **Status:** In Progress (Phase 3 — Step 1 done)
-> **Last updated:** 2026-02-24
+> **Status:** In Progress (Phase 3 — Step 1 done, Step 3 claim endpoint done)
+> **Last updated:** 2026-02-25
 > **Depends on:** Supabase Auth (done), existing plans/participants/items schema
 
 ---
@@ -543,7 +543,7 @@ Registered user opens a plan they're linked to
 | POST | `/guest/items/:itemId/unassign` | X-Invite-Token | Self-unassign from an item | Step 2 |
 | GET | `/auth/profile` | JWT required | Get current user's profile | ✅ Done |
 | PATCH | `/auth/profile` | JWT required | Update display name, avatar | ✅ Done |
-| POST | `/plans/:planId/claim/:inviteToken` | JWT required | Link authenticated user to participant | Step 3 |
+| POST | `/plans/:planId/claim/:inviteToken` | JWT required | Link authenticated user to participant | ✅ Done |
 
 ### 7.2 Modified Endpoints (Access Control Added)
 
@@ -847,12 +847,17 @@ Each endpoint must:
 
 **FE issue:** Generate invite link from token (copy & share). Depends on Step 1 being deployed.
 
-#### Step 3: Claim + Signed-Up Preferences
+#### Step 3: Claim + Signed-Up Preferences 🔄
 
 **Goal:** Let a registered user (JWT) claim a participant record and manage per-plan preferences.
 
-Endpoints to build:
-- `POST /plans/:planId/claim/:inviteToken` — Link JWT user to participant record. Validates: token exists, participant not already linked, user not already in plan. Sets `participants.userId = jwt.sub`.
+**Claim endpoint: Done (v1.12.0)**
+
+- `POST /plans/:planId/claim/:inviteToken` — Link JWT user to participant record. Validates: token exists, participant not already linked, user not already in plan. Sets `participants.userId = jwt.sub`, `inviteStatus = 'accepted'`. Pre-fills empty participant preferences from `user_details` defaults if available. Idempotent — re-claiming by the same user returns 200.
+- 13 integration tests: happy path, plan list visibility after claim, idempotency, preference pre-fill, preference preservation, auth errors (no JWT, expired JWT, wrong key), invalid token, cross-plan token, already claimed by other, user already in plan, owner self-claim.
+- Added `inviteStatus` to Participant response schema.
+
+**Remaining:**
 - Endpoint for signed-up participants to update their own per-plan preferences via JWT (same fields as guest preferences, but authenticated via JWT instead of invite token).
 
 #### Step 4: Invite Route Reduction (BREAKING)
@@ -946,7 +951,7 @@ Since all new columns are nullable (or have safe defaults) and all new tables ar
 4. ~~Deploy plan ownership + access control (Phase 2.5)~~ — Done (PR #84)
 5. ~~Deploy guest auth plugin + DB migration (Phase 3 Step 1)~~ — Done (v1.11.0)
 6. Deploy guest endpoints (Phase 3 Step 2) — **FE: generate invite link, guest UI**
-7. Deploy claim + signed-up preferences (Phase 3 Step 3) — **FE: claim flow**
+7. Deploy claim + signed-up preferences (Phase 3 Step 3) — Claim endpoint done (v1.12.0). **FE: claim flow after sign-up.** JWT preferences endpoint remaining.
 8. Deploy invite route reduction (Phase 3 Step 4) — **BREAKING: FE must use /guest/plan first**
 9. Deploy response filtering enhancements (Phase 6) with API key fallback
 10. Deploy edit permissions (Phase 7) — FE must handle 403s by this point

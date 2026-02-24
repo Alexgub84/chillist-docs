@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Sign-in/sign-up redirect param — use non-lazy route with `validateSearch`
+**Date:** 2026-02-24
+**Problem:** The invite page needed to link to sign-in with a `?redirect=/plan/:planId` param so the user lands on the plan page after authentication. The sign-in and sign-up lazy routes had no search param support — they hardcoded `navigate({ to: '/plans' })`.
+**Solution:** Created non-lazy route files (`signin.tsx`, `signup.tsx`) with `validateSearch: z.object({ redirect: z.string().optional() })`. The lazy components use `useSearch({ from: '/signin' })` to read the param and fall back to `/plans` when absent. Google OAuth `redirectTo` also uses the param. Existing unit tests needed `useSearch: () => ({})` added to the `@tanstack/react-router` mock.
+**Prevention:** When a route needs search params, always create a non-lazy route file alongside the `.lazy.tsx` to define `validateSearch`. Add `useSearch` to any `@tanstack/react-router` mock in test files that render components using it.
+
+---
+
 ### [Arch] Public API endpoints need a separate request helper — no auth, no 401 retry
 **Date:** 2026-02-24
 **Problem:** The invite landing page fetches plan data via a public endpoint (`GET /plans/:planId/invite/:inviteToken`). The existing `request()` helper always calls `getAccessToken()` and has a 401 retry cascade, which is wasteful and incorrect for unauthenticated endpoints.
