@@ -90,18 +90,21 @@ When removing an env var: reverse all 6 steps.
 4. Pop the stash to apply changes on the new branch
 5. Stage and commit with a clear message
 6. If a related GitHub issue exists, include `Closes #XX` in the commit message
-7. Push the branch: `git push -u origin <branch-name>`
-8. Create a PR immediately after push using `gh pr create`
+7. **Sync with main before push:** `git fetch origin main && git merge origin/main`
+   - If conflicts arise, resolve them, run validation (`typecheck`, `lint`, `test:unit`), then `git add -A && git commit --no-edit`
+8. Push the branch: `git push -u origin <branch-name>`
+9. Create a PR immediately after push using `gh pr create`
    - Include `Closes #XX` in the PR body if there is a related issue
 
 ### Existing branch (subsequent commits / before push)
 
-Always sync with main before pushing to avoid PR conflicts:
+**ALWAYS** sync with main before pushing to avoid PR conflicts:
 
 1. Stage and commit your changes on the feature branch
-2. Fetch and merge latest main: `git fetch origin main && git merge origin/main`
+2. **Sync with main:** `git fetch origin main && git merge origin/main`
 3. If conflicts arise, resolve them, run validation (`typecheck`, `lint`, `test:unit`), then `git add -A && git commit --no-edit`
 4. Push the branch: `git push`
+5. If creating a PR: `gh pr create` — include `Closes #XX` in the body if there is a related issue
 
 ## Version Bumps
 
