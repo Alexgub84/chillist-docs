@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [E2E] Auth-conditional UI needs authenticated session in E2E tests
+**Date:** 2026-02-24
+**Problem:** The "Plan creation via UI" E2E test clicked `getByRole('link', { name: /create new plan/i })` on `/plans`. After making "Create New Plan" conditional on authentication (replaced by Sign In / Sign Up for guests), the test timed out because no user session was injected.
+**Solution:** Added `await injectUserSession(page)` at the start of the test. When scoping locators in unauthenticated tests, use `page.getByRole('main')` to avoid duplicates from the header's own Sign In / Sign Up links.
+**Prevention:** Any E2E test that interacts with auth-gated UI must call `injectUserSession(page)` first. When asserting elements that exist in both header and main content, scope to `page.getByRole('main')`.
+
+---
+
 ### [Arch] Sign-in/sign-up redirect param — use non-lazy route with `validateSearch`
 **Date:** 2026-02-24
 **Problem:** The invite page needed to link to sign-in with a `?redirect=/plan/:planId` param so the user lands on the plan page after authentication. The sign-in and sign-up lazy routes had no search param support — they hardcoded `navigate({ to: '/plans' })`.
