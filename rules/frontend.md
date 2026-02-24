@@ -122,6 +122,13 @@ The backend is the **single source of truth** for all enum values (units, status
 - **Plan visibility is gated by auth state in `PlanForm`:** signed-in users see `private` (default) and `invite_only`; not-signed-in users see only `public`. The `useAuth` hook determines auth state.
 - Never log access tokens or refresh tokens to the browser console in production.
 
+### Admin Role Detection
+
+- The admin role is stored in `app_metadata.role` in the Supabase JWT. After sign-in, `AuthProvider` reads `user.app_metadata.role` — if it equals `"admin"`, `isAdmin` is set to `true` in the auth context.
+- Use `const { isAdmin } = useAuth()` in components to conditionally render admin-only UI (e.g., delete buttons on the plans list).
+- Admin checks are UX-only — the BE enforces access control. Never trust `isAdmin` for security decisions.
+- The mock auth (`src/lib/mock-supabase-auth.ts`) supports `app_metadata` on mock users. E2E tests inject admin sessions via `injectAdminSession(page)` from `tests/e2e/fixtures.ts`.
+
 ### JWT 401 Retry and Auth Error Modal
 
 - On 401 from the BE, the API layer (`src/core/api.ts` `request()`) must call `supabase.auth.refreshSession()` and retry the request **once** with the new token before failing.

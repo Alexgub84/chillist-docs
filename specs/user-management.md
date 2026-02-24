@@ -1,6 +1,6 @@
 # User & Participant Management — Spec
 
-> **Status:** In Progress (Phase 2.5 done)
+> **Status:** In Progress (Phase 3 — Step 1 done)
 > **Last updated:** 2026-02-24
 > **Depends on:** Supabase Auth (done), existing plans/participants/items schema
 
@@ -8,12 +8,12 @@
 
 ## 1. Overview
 
-Add user identity, participant linking, guest verification, and access control to Chillist. Currently all plans and participants are public — anyone with an API key can read/write everything. This spec introduces:
+Add user identity, participant linking, guest access, and access control to Chillist. Currently all plans and participants are public — anyone with an API key can read/write everything. This spec introduces:
 
 - **Registered users** (profiles linked to Supabase Auth)
-- **WhatsApp phone verification** for guests (OTP via Twilio)
-- **Guest sessions** (30-minute verified access)
-- **First-time guest onboarding** (group size, food preferences, allergies)
+- **Guest access via persistent invite token** (no OTP, no session expiry)
+- **RSVP confirmation** (pending / confirmed / not_sure)
+- **Activity tracking** (`lastActivityAt` per participant)
 - **Participant claiming** (registered user links themselves to a participant record)
 - **Response filtering** (PII hidden from guests)
 - **Edit permissions** (participants can only edit their own assigned items)
@@ -95,16 +95,33 @@ The BE enforces these rules on `POST /plans/with-owner` and `PATCH /plans/:planI
 
 **PII is always stripped on the BE, never on the FE.** The BE removes PII fields from the response before sending. Guests never receive this data — not even in the raw JSON. This prevents PII from being visible in the browser Network tab or client-side logs.
 
-### 2.6 WhatsApp Verification via Twilio
+### 2.6 Guest Access via Persistent Invite Token
 
-Guests verify phone ownership via a 6-digit OTP code sent over WhatsApp using the Twilio WhatsApp Business API.
+> **Decision (2026-02-24):** WhatsApp OTP verification was deferred. Guest access uses the existing `inviteToken` on participants directly as a persistent authentication credential. No session expiry, no Twilio dependency.
 
-**Why Twilio:**
-- Most developer-friendly WhatsApp BSP (Business Solution Provider)
-- Well-documented Node.js SDK
-- Pay-per-message, no monthly minimums
-- Handles WhatsApp message template approval with Meta
-- Sandbox mode for development/testing (no Meta approval needed)
+Guests authenticate by sending their invite token in the `X-Invite-Token` HTTP header. The token is the same `inviteToken` already generated for each participant — no additional table or secret needed.
+
+**How it works:**
+1. Owner creates a plan, adds participants → each gets an `inviteToken` (64-char hex, already exists)
+2. FE generates a shareable invite link containing the token
+3. Guest opens the link → FE extracts the token and sends it as `X-Invite-Token` header on all requests
+4. BE `guest-auth` plugin validates the token against `participants` table, populates `request.guestParticipant`
+5. Guest endpoints (`/guest/*`) check `request.guestParticipant` for authorization
+
+**Two guest paths:**
+
+| Path | Auth mechanism | Behavior |
+|------|---------------|----------|
+| Guest (no sign-up) | `X-Invite-Token` header | Can view plan, update preferences, edit own items. Must keep using the invite link. |
+| Signed-up participant | JWT (`Authorization: Bearer`) | Supabase ID linked to participant row via claim. Full JWT-based access. |
+
+Both paths can update per-plan preferences (food, allergies, group size).
+
+**Why persistent tokens (not sessions):**
+- Simpler architecture — no `guest_sessions` table, no expiry logic, no cleanup jobs
+- The invite link IS the access credential — it doesn't change and doesn't expire
+- `lastActivityAt` on the participant tracks engagement without session management
+- If a token needs to be revoked, the owner can regenerate it (future feature)
 
 ---
 
@@ -128,6 +145,8 @@ A per-plan entity representing someone involved in the plan.
 - Exists independently of user accounts — most participants won't have accounts
 - Has a nullable `userId` that links to a `profiles` row when claimed
 - Has an `inviteToken` for sharing access
+- Has `rsvpStatus` (pending/confirmed/not_sure) for attendance confirmation
+- Has `lastActivityAt` tracking when they last accessed via invite token
 - Registered participants can see full plan details but only edit their own assigned items
 
 Three participant states:
@@ -140,14 +159,15 @@ Three participant states:
 
 ### 3.3 Guest
 
-Not a database entity. A guest is someone accessing a plan via an invite link who verifies their phone via WhatsApp OTP.
+Not a database entity. A guest is someone accessing a plan via an invite token who has NOT signed up.
 
-- Must verify phone ownership before seeing any plan data (WhatsApp OTP code)
-- Gets a 30-minute session after verification; must re-verify when session expires
-- First time only: sees an onboarding page to provide group details and dietary info
+- Authenticates via `X-Invite-Token` header (persistent, no expiry)
 - Sees plan details and filtered items (own assigned + unassigned only); only `displayName` and `role` for participants (no full names, phones, or emails)
-- Can edit items assigned to them (all fields), self-assign/unassign to unassigned items, and update own per-plan preferences anytime
+- Can confirm RSVP status (pending/confirmed/not_sure)
+- Can update per-plan preferences (displayName, adultsCount, kidsCount, foodPreferences, allergies, notes)
+- Can edit items assigned to them (all fields), self-assign/unassign to unassigned items
 - Cannot add new items, delete items, or manage participants
+- Must keep using the invite link (no JWT, no session)
 
 ### 3.4 Admin
 
@@ -170,6 +190,8 @@ A registered user with elevated privileges for platform management and debugging
 > - `user_details` stores **default preferences** for signed-in users. When a signed-in user joins a new plan, their defaults are pre-filled into the participant record but can be customized per-plan.
 > - `plan_invites` table was added (not in original spec) for invite tracking with hashed tokens
 > - `participants.userId` has no FK to a local profiles table — it's a plain UUID reference to Supabase
+>
+> **Guest access redesign (2026-02-24):** WhatsApp OTP verification and guest sessions were deferred. The `verification_codes` and `guest_sessions` tables are NOT needed. Guest access uses the existing `inviteToken` on participants with `X-Invite-Token` header. Added `rsvpStatus` enum and `lastActivityAt` column to participants.
 
 ### 4.1 ~~New Table: `profiles`~~ → Replaced by `user_details`
 
@@ -190,36 +212,13 @@ Notes:
 - Row created lazily on first `PATCH /auth/profile`, not auto-provisioned
 - These are **default preferences** — when a signed-in user joins a new plan, `foodPreferences` and `allergies` are pre-filled into the participant record. The user can then customize them per-plan. `defaultEquipment` is used to suggest items.
 
-### 4.2 New Table: `verification_codes`
+### ~~4.2 New Table: `verification_codes`~~ — DEFERRED
 
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| `id` | UUID | PK, DEFAULT random | |
-| `participant_id` | UUID | FK → `participants.participant_id`, CASCADE delete | |
-| `code` | VARCHAR(6) | NOT NULL | 6-digit numeric OTP |
-| `expires_at` | TIMESTAMPTZ | NOT NULL | 10 minutes from creation |
-| `attempts` | INTEGER | NOT NULL, DEFAULT 0 | Brute-force protection (max 5) |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
+> **Deferred (2026-02-24):** WhatsApp OTP verification is not implemented. No `verification_codes` table needed. If OTP is added later, this section will be reinstated.
 
-Notes:
-- One active code per participant at a time (old codes deleted on new request)
-- After 5 failed attempts the code is invalidated
-- Expired codes cleaned up on query or periodically
+### ~~4.3 New Table: `guest_sessions`~~ — REMOVED
 
-### 4.3 New Table: `guest_sessions`
-
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| `session_token` | VARCHAR(64) | PK | Random hex (`randomBytes(32)`) |
-| `participant_id` | UUID | FK → `participants.participant_id`, CASCADE delete | |
-| `plan_id` | UUID | FK → `plans.plan_id`, CASCADE delete | |
-| `expires_at` | TIMESTAMPTZ | NOT NULL | 30 minutes from creation |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
-
-Notes:
-- DB-backed sessions (not JWT) — easy to revoke, clean up, and track
-- After 30 minutes, guest must re-verify via WhatsApp OTP
-- Expired sessions cleaned up on query or periodically
+> **Removed (2026-02-24):** Guest sessions replaced by persistent invite token auth. No `guest_sessions` table needed. The `inviteToken` on `participants` is the access credential. `lastActivityAt` tracks engagement.
 
 ### 4.4 Modified Table: `participants`
 
@@ -230,6 +229,8 @@ New columns (actually implemented):
 | `user_id` | UUID | nullable (no FK — plain Supabase UUID reference) | Set when a registered user claims this participant spot |
 | `guest_profile_id` | UUID | nullable, FK → `guest_profiles.guest_id` | Links to guest profile for unregistered participants |
 | `invite_status` | ENUM | NOT NULL, DEFAULT 'pending' | 'pending' / 'invited' / 'accepted' |
+| `rsvp_status` | ENUM | NOT NULL, DEFAULT 'pending' | 'pending' / 'confirmed' / 'not_sure' — attendance confirmation |
+| `last_activity_at` | TIMESTAMPTZ | nullable | Updated by guest-auth plugin on each request with valid `X-Invite-Token` |
 
 > **Update (2026-02-24):** Per-plan preferences (`foodPreferences`, `allergies`, `adultsCount`, `kidsCount`, `notes`) now live directly on the `participants` table. Guest and signed-in user endpoints update the participant record for per-plan data. The `guest_profiles` table also has these columns but is under review (see Open Question #11).
 
@@ -257,62 +258,40 @@ profiles 1 ←──── * participants        (via participants.user_id)
 profiles 1 ←──── * plans               (via plans.created_by_user_id)
 plans    1 ←──── * participants         (existing, via participants.plan_id)
 plans    1 ←──── * items                (existing, via items.plan_id)
-plans    1 ←──── * guest_sessions       (via guest_sessions.plan_id)
-participants 1 ←──── * verification_codes (via verification_codes.participant_id)
-participants 1 ←──── * guest_sessions     (via guest_sessions.participant_id)
 ```
 
 ### 4.7 Entity Diagram
 
 ```
 ┌─────────────┐         ┌──────────────────┐         ┌──────────┐
-│  profiles    │         │   participants   │         │  items   │
+│ user_details │         │   participants   │         │  items   │
 ├─────────────┤    ┌────►├──────────────────┤    ┌───►├──────────┤
 │ user_id (PK)│◄───┤    │ participant_id   │    │   │ item_id  │
-│ email       │    │    │ plan_id (FK)     │────┤   │ plan_id  │
-│ display_name│    │    │ user_id (FK)     │    │   │ assigned_│
-│ avatar_url  │    │    │ name             │    │   │  particip│
-│ created_at  │    │    │ last_name        │    │   │  ant_id  │
-│ updated_at  │    │    │ contact_phone    │    │   │ name     │
-└─────────────┘    │    │ display_name     │    │   │ category │
-                   │    │ role             │    │   │ status   │
+│ food_prefs  │    │    │ plan_id (FK)     │────┤   │ plan_id  │
+│ allergies   │    │    │ user_id          │    │   │ assigned_│
+│ default_    │    │    │ name             │    │   │  particip│
+│  equipment  │    │    │ last_name        │    │   │  ant_id  │
+│ created_at  │    │    │ contact_phone    │    │   │ name     │
+│ updated_at  │    │    │ display_name     │    │   │ category │
+└─────────────┘    │    │ role             │    │   │ status   │
                    │    │ invite_token     │    │   │ ...      │
-                   │    │ adults_count     │    │   └──────────┘
+                   │    │ invite_status    │    │   └──────────┘
+                   │    │ rsvp_status      │    │
+                   │    │ last_activity_at │    │
+                   │    │ adults_count     │    │
                    │    │ kids_count       │    │
                    │    │ food_preferences │    │
                    │    │ allergies        │    │
-                   │    │ onboarding_      │    │
-                   │    │   completed      │    │
+                   │    │ notes            │    │
                    │    │ ...              │    │
-                   │    └────────┬─────────┘    │
-                   │             │              │
-                   │             ▼              │
-                   │    ┌──────────────────┐    │
-                   │    │ verification_    │    │
-                   │    │   codes          │    │
-                   │    ├──────────────────┤    │
-                   │    │ id (PK)          │    │
-                   │    │ participant_id   │    │
-                   │    │ code             │    │
-                   │    │ expires_at       │    │
-                   │    │ attempts         │    │
                    │    └──────────────────┘    │
                    │                            │
                    │    ┌──────────────────┐    │
-                   │    │ guest_sessions   │    │
-                   │    ├──────────────────┤    │
-                   │    │ session_token(PK)│    │
-                   │    │ participant_id   │    │
-                   │    │ plan_id          │────┘
-                   │    │ expires_at       │
-                   │    └──────────────────┘
-                   │
-                   │    ┌──────────────────┐
-                   │    │     plans        │
-                   └────┤──────────────────┤
-                        │ plan_id (PK)     │
+                   │    │     plans        │    │
+                   └────┤──────────────────┤    │
+                        │ plan_id (PK)     │────┘
                         │ created_by_      │
-                        │   user_id (FK)   │
+                        │   user_id        │
                         │ owner_participant│
                         │   _id            │
                         │ title            │
@@ -328,15 +307,15 @@ participants 1 ←──── * guest_sessions     (via guest_sessions.particip
 
 ### 5.1 Access Matrix
 
-| Accessor | Auth Method | Sees Plan + Items | Sees Participant PII | Can Add Items | Can Edit Items | Can Self-Assign | Can Update Own Preferences | Can Manage Participants |
-|----------|-----------|-------------------|---------------------|---------------|---------------|----------------|---------------------------|------------------------|
-| Admin | JWT (`app_metadata.role = 'admin'`) | All plans, all items (bypasses visibility) | Yes | Yes | All items | N/A | Yes | Yes |
-| Owner (registered) | JWT | Yes | Yes | Yes | All items | N/A | Yes | Yes |
-| Owner (unregistered) | API key (legacy) | Yes | Yes | Yes | All items | N/A | No | Yes |
-| Participant (linked) | JWT | Yes | Yes | Yes | Own assigned only | Yes | Yes | No |
-| Guest (verified) | X-Guest-Token | Own assigned + unassigned only | displayName + role only | No | Own assigned only (all fields) | Yes (assign + unassign) | Yes (anytime, not just onboarding) | No |
-| Guest (unverified) | Invite token in URL | Own assigned + unassigned only (PII stripped) | No | No | No | No | No | No |
-| Anonymous | None | No (401) | No | No | No | No | No | No |
+| Accessor | Auth Method | Sees Plan + Items | Sees Participant PII | Can Add Items | Can Edit Items | Can Self-Assign | Can Update Own Preferences | Can Confirm RSVP | Can Manage Participants |
+|----------|-----------|-------------------|---------------------|---------------|---------------|----------------|---------------------------|-----------------|------------------------|
+| Admin | JWT (`app_metadata.role = 'admin'`) | All plans, all items (bypasses visibility) | Yes | Yes | All items | N/A | Yes | N/A | Yes |
+| Owner (registered) | JWT | Yes | Yes | Yes | All items | N/A | Yes | N/A | Yes |
+| Owner (unregistered) | API key (legacy) | Yes | Yes | Yes | All items | N/A | No | N/A | Yes |
+| Participant (linked) | JWT | Yes | Yes | Yes | Own assigned only | Yes | Yes | Yes | No |
+| Guest (invite token) | X-Invite-Token | Own assigned + unassigned only | displayName + role only | No | Own assigned only (all fields) | Yes (assign + unassign) | Yes (anytime) | Yes | No |
+| Guest (unverified) | Invite token in URL | Own assigned + unassigned only (PII stripped) | No | No | No | No | No | No | No |
+| Anonymous | None | No (401) | No | No | No | No | No | No | No |
 
 ### 5.2 PII Fields (Hidden from Guests)
 
@@ -356,94 +335,121 @@ The existing invite route (`GET /plans/:planId/invite/:inviteToken`) already imp
 Each protected route checks auth in this order:
 
 1. **JWT present** (`Authorization: Bearer`, `request.user` is set) → registered user flow (look up relationship to plan: owner? linked participant? unrelated?)
-2. **Guest session present** (`X-Guest-Token` header) → look up in `guest_sessions` table, check not expired → verified guest flow
+2. **Invite token present** (`X-Invite-Token` header, `request.guestParticipant` is set) → guest flow (validate token against participants, check plan membership)
 3. **Invite token in URL** → landing page / verification flow only (minimal plan info, no full data)
 4. **Neither** → 401 Unauthorized
 
 The API key remains as a legacy fallback during transition and will be deprecated later.
 
+### 5.4 API Key: Legacy Auth (Temporary)
+
+**What it is:** A single shared secret string stored in the `API_KEY` environment variable on the server. The FE includes it as the `x-api-key` HTTP header on every request. It has no user identity, no expiration, and no per-user distinction — anyone with the key gets full access to everything.
+
+**Why it exists:** Before JWT was introduced, there was no user authentication. The API key was added as a basic gate so that random bots and strangers couldn't hit the API. It's not real auth — it just proves "this request comes from the legitimate frontend app."
+
+**How it works today:** The `onRequest` hook in `app.ts` checks every request (except exempt routes). A request passes if it has **either** a valid `x-api-key` header **or** a valid JWT. A guest with only `X-Invite-Token` has neither, so they get 401 on protected routes and can only access exempt routes.
+
+**End state (after Phase 7):** Every protected route requires JWT. The API key is removed entirely. The auth model becomes:
+
+| User type | Auth mechanism | Routes |
+|---|---|---|
+| Signed-in user (owner/participant) | JWT (`Authorization: Bearer`) | All protected routes |
+| Guest | `X-Invite-Token` header | `/guest/*` routes only |
+| Anonymous | None | `/health`, invite landing page only |
+
+**FE prerequisites before API key removal:**
+- Every request from a signed-in user sends `Authorization: Bearer <jwt>`
+- FE handles 401 (redirect to login) and 403 (show "not allowed") gracefully
+- No `x-api-key` header anywhere in FE code
+- All owner actions (create/edit/delete plans, manage participants, manage items) work via JWT
+
+### 5.5 API Key Bypass Rules (Current)
+
+The `onRequest` hook enforces API key or JWT on all routes **except** these prefixes (which handle their own auth):
+
+| Route prefix | Auth mechanism | Reason |
+|---|---|---|
+| `/health` | None | Public health check |
+| `/auth/` | JWT (route-level) | Auth routes validate JWT internally |
+| `/guest/` | `X-Invite-Token` (route-level) | Guest endpoints validate invite token internally |
+| `/invite/` | None / rate-limited | Invite verification endpoints (public, rate-limited) |
+| `/plans/:id/invite/:token` | Token in URL | Existing invite landing page |
+
 ---
 
 ## 6. Key Flows
 
-### 6.1 WhatsApp Phone Verification (Guest)
+### 6.1 Guest Access via Invite Token
 
 ```
-Owner creates plan, adds participant with phone number
-  → Participant gets an inviteToken (existing behavior)
+Owner creates plan, adds participants with name/phone
+  → Each participant gets an inviteToken (64-char hex, auto-generated)
 
-Owner shares invite link manually (e.g., pastes in WhatsApp chat)
+Owner copies invite link from FE and shares it (e.g., WhatsApp, SMS, email)
+  → Link format: https://app.chillist.com/invite/<inviteToken>
 
-Guest opens invite link → FE shows landing page (plan title, owner name)
-  → FE calls: POST /invite/:inviteToken/request-code
-  → BE validates inviteToken, finds participant's contactPhone
-  → BE generates 6-digit code, stores in verification_codes (10 min TTL)
-  → BE sends code via Twilio WhatsApp API to contactPhone
-  → BE returns: { message: "Code sent", expiresInSeconds: 600 }
+Guest opens invite link
+  → FE extracts token from URL
+  → FE stores token in local storage
+  → FE sends X-Invite-Token header on all /guest/* requests
 
-Guest receives WhatsApp message: "Your Chillist code: 123456"
-  → Guest enters code on FE
-  → FE calls: POST /invite/:inviteToken/verify-code { code: "123456" }
-  → BE validates: code matches, not expired, attempts < 5
-  → BE creates guest_session (random token, 30 min TTL)
-  → BE deletes used verification code
-  → BE returns: { sessionToken, participantId, planId, onboardingCompleted }
+BE guest-auth plugin (onRequest hook):
+  → Reads X-Invite-Token header
+  → Looks up participant by inviteToken
+  → If found: sets request.guestParticipant = { participantId, planId }
+  → Updates lastActivityAt on the participant
+  → If not found: request.guestParticipant remains null (guest routes will 401)
 
-FE stores sessionToken, uses X-Guest-Token header for subsequent requests
-After 30 minutes → token expires → guest must re-verify
+Guest can now:
+  → View plan (GET /guest/plan) — filtered items, sanitized participants
+  → Update RSVP status (PATCH /guest/rsvp)
+  → Update preferences (PATCH /guest/preferences)
+  → Edit assigned items (PATCH /guest/items/:itemId)
+  → Self-assign/unassign items (POST /guest/items/:itemId/assign, /unassign)
 ```
 
-### 6.2 Guest Onboarding (First Time Only)
+### 6.2 Guest Preferences Update
 
 ```
-After successful phone verification, if onboardingCompleted = false:
-  → FE shows onboarding form:
-    - Display name (optional update)
-    - How many adults in their group
-    - How many kids in their group
-    - Food preferences (free text)
-    - Allergies (free text)
-  → FE calls: POST /guest/onboarding (X-Guest-Token header)
-    Body: { displayName?, adultsCount, kidsCount, foodPreferences?, allergies? }
-  → BE updates participant record, sets onboardingCompleted = true
-  → BE returns: updated participant data
+Guest with active invite token:
+  → FE calls: PATCH /guest/preferences (X-Invite-Token header)
+    Body: { displayName?, adultsCount?, kidsCount?, foodPreferences?, allergies?, notes? }
+  → BE validates: request.guestParticipant is set
+  → BE updates participant record on the participants table
+  → BE returns: { participantId, displayName, role, rsvpStatus, adultsCount, kidsCount, foodPreferences, allergies, notes }
 
-On subsequent visits (after re-verification):
-  → onboardingCompleted = true → skip onboarding, go straight to plan view
+Preferences are editable anytime — not a one-time onboarding.
+Preferences are per-plan — a guest can have different dietary needs for different trips.
 ```
 
-Onboarding data is **per-plan** — a guest can have different group sizes and dietary needs for different trips. If the guest later registers as a user and claims their participant spot, this data is preserved and remains editable.
-
-**Preferences are editable anytime** — not just during initial onboarding. Verified guests can update their preferences (displayName, adultsCount, kidsCount, foodPreferences, allergies) on subsequent visits via `PATCH /guest/preferences`.
-
-### 6.3 Guest Plan Access (Verified)
+### 6.3 Guest Plan Access
 
 ```
-Verified guest with active session:
-  → FE calls: GET /guest/plan (X-Guest-Token header)
-  → BE looks up guest_session, checks not expired
+Guest with active invite token:
+  → FE calls: GET /guest/plan (X-Invite-Token header)
+  → BE validates request.guestParticipant
   → BE returns: plan + filtered items + sanitized participants (displayName + role only)
   → Items filtered: only items assigned to this participant + unassigned items
   → Items assigned to other participants are hidden
 ```
 
-### 6.3a Guest Item Interaction (Verified)
+### 6.3a Guest Item Interaction
 
 ```
-Verified guest can edit items assigned to them:
-  → FE calls: PATCH /guest/items/:itemId (X-Guest-Token header)
+Guest can edit items assigned to them:
+  → FE calls: PATCH /guest/items/:itemId (X-Invite-Token header)
   → BE validates: item exists, item is assigned to this guest's participant
   → BE updates: all item fields (name, status, quantity, unit, notes)
   → BE returns: updated item
 
-Verified guest can self-assign to an unassigned item:
-  → FE calls: POST /guest/items/:itemId/assign (X-Guest-Token header)
+Guest can self-assign to an unassigned item:
+  → FE calls: POST /guest/items/:itemId/assign (X-Invite-Token header)
   → BE validates: item exists, item has no assignedParticipantId (unassigned)
   → BE updates: SET assignedParticipantId = guest's participantId
   → BE returns: updated item
 
-Verified guest can self-unassign from an item:
-  → FE calls: POST /guest/items/:itemId/unassign (X-Guest-Token header)
+Guest can self-unassign from an item:
+  → FE calls: POST /guest/items/:itemId/unassign (X-Invite-Token header)
   → BE validates: item exists, item is assigned to this guest's participant
   → BE updates: SET assignedParticipantId = null
   → BE returns: updated item
@@ -506,7 +512,7 @@ Registered user opens a plan they're linked to
 | User type | Header | How to get the value |
 |-----------|--------|---------------------|
 | Signed-in user | `Authorization: Bearer <jwt>` | `supabase.auth.getSession()` → `session.access_token` |
-| Verified guest | `X-Guest-Token: <sessionToken>` | Returned by `POST /invite/:inviteToken/verify-code` → `sessionToken` |
+| Guest (invite token) | `X-Invite-Token: <inviteToken>` | Extracted from the invite link URL |
 | Unverified guest | None (invite token is in the URL path) | From the shared invite link |
 | Legacy (current FE) | `x-api-key: <key>` | Environment variable. Will be deprecated. |
 
@@ -527,19 +533,17 @@ Registered user opens a plan they're linked to
 
 ### 7.1 New Endpoints
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/invite/:inviteToken/request-code` | None (rate-limited) | Send WhatsApp OTP to participant's phone |
-| POST | `/invite/:inviteToken/verify-code` | None (rate-limited) | Validate OTP, issue guest session token |
-| POST | `/guest/onboarding` | X-Guest-Token | Submit onboarding data (first time) |
-| PATCH | `/guest/preferences` | X-Guest-Token | Update own preferences anytime (displayName, adultsCount, kidsCount, foodPreferences, allergies) |
-| GET | `/guest/plan` | X-Guest-Token | Get plan data (sanitized, filtered items, guest view) |
-| PATCH | `/guest/items/:itemId` | X-Guest-Token | Edit an item assigned to this guest (all fields) |
-| POST | `/guest/items/:itemId/assign` | X-Guest-Token | Self-assign to an unassigned item |
-| POST | `/guest/items/:itemId/unassign` | X-Guest-Token | Self-unassign from an item |
-| GET | `/auth/profile` | JWT required | Get current user's profile |
-| PATCH | `/auth/profile` | JWT required | Update display name, avatar |
-| POST | `/plans/:planId/claim/:inviteToken` | JWT required | Link authenticated user to participant |
+| Method | Path | Auth | Description | Status |
+|--------|------|------|-------------|--------|
+| PATCH | `/guest/rsvp` | X-Invite-Token | Update RSVP status (pending/confirmed/not_sure) | Step 2 |
+| PATCH | `/guest/preferences` | X-Invite-Token | Update own per-plan preferences | Step 2 |
+| GET | `/guest/plan` | X-Invite-Token | Get plan data (sanitized, filtered items, guest view) | Step 2 |
+| PATCH | `/guest/items/:itemId` | X-Invite-Token | Edit an item assigned to this guest (all fields) | Step 2 |
+| POST | `/guest/items/:itemId/assign` | X-Invite-Token | Self-assign to an unassigned item | Step 2 |
+| POST | `/guest/items/:itemId/unassign` | X-Invite-Token | Self-unassign from an item | Step 2 |
+| GET | `/auth/profile` | JWT required | Get current user's profile | ✅ Done |
+| PATCH | `/auth/profile` | JWT required | Update display name, avatar | ✅ Done |
+| POST | `/plans/:planId/claim/:inviteToken` | JWT required | Link authenticated user to participant | Step 3 |
 
 ### 7.2 Modified Endpoints (Access Control Added)
 
@@ -547,8 +551,8 @@ Registered user opens a plan they're linked to
 |----------|--------|
 | `GET /plans/:planId` | Check JWT → return full data if owner/linked participant; 401 if no auth |
 | `GET /plans/:planId/participants` | Check JWT → return full PII if owner/linked participant; 401 if no auth |
-| `GET /plans/:planId/invite/:inviteToken` | Returns filtered items (own assigned + unassigned only) + stripped participants. After Phase 4: returns **minimal data only** (plan title, owner displayName) — acts as landing page before verification. |
-| `PATCH /items/:itemId` | Check JWT → owner can edit any item; linked participant can edit only own assigned. Verified guests use `PATCH /guest/items/:itemId` instead (same logic, different auth). |
+| `GET /plans/:planId/invite/:inviteToken` | Returns filtered items (own assigned + unassigned only) + stripped participants. After Step 4: returns **minimal data only** (plan title, owner displayName) — acts as landing page before guest accesses `/guest/*` routes. |
+| `PATCH /items/:itemId` | Check JWT → owner can edit any item; linked participant can edit only own assigned. Guests use `PATCH /guest/items/:itemId` instead (same logic, different auth). |
 | `DELETE /items/:itemId` | Check JWT → owner only |
 | `POST /plans/:planId/items` | Check JWT → owner and linked participants can add |
 | `POST /plans/:planId/participants` | Check JWT → owner only |
@@ -566,33 +570,15 @@ Registered user opens a plan they're linked to
 
 ### 7.4 New Endpoint Details
 
-**`POST /invite/:inviteToken/request-code`**
-- Auth: None (public, rate-limited: 3 requests per token per hour)
-- Action: Validates invite token, generates 6-digit code, stores in `verification_codes`, sends via Twilio WhatsApp to participant's `contactPhone`
-- Response: `{ message: "Code sent", expiresInSeconds: 600 }`
-- Errors: 404 (invalid token), 429 (too many requests)
-
-**`POST /invite/:inviteToken/verify-code`**
-- Auth: None (public, rate-limited)
-- Body: `{ code: "123456" }`
-- Action: Validates code (max 5 attempts, 10 min expiry), creates guest session (30 min TTL), deletes used code
-- Response: `{ sessionToken, participantId, planId, onboardingCompleted }`
-- Errors: 400 (wrong code), 404 (invalid token/expired code), 429 (max attempts exceeded)
-
-**`POST /guest/onboarding`**
-- Auth: `X-Guest-Token` header required
-- Body:
-  - `displayName` (string, optional) — update display name
-  - `adultsCount` (integer, required) — number of adults in guest's group
-  - `kidsCount` (integer, required) — number of kids in guest's group
-  - `foodPreferences` (string, optional) — free text, e.g. "vegetarian, no shellfish"
-  - `allergies` (string, optional) — free text, e.g. "nuts, gluten"
-- Action: Updates participant record on the `participants` table, sets `onboardingCompleted = true`
-- Response: `{ participantId, displayName, role, adultsCount, kidsCount, foodPreferences, allergies, notes }` (own data only, no PII from other participants)
-- Errors: 400 (validation), 401 (invalid/expired guest token)
+**`PATCH /guest/rsvp`**
+- Auth: `X-Invite-Token` header required
+- Body: `{ rsvpStatus: "pending" | "confirmed" | "not_sure" }`
+- Action: Updates `rsvpStatus` on the guest's participant record
+- Response: `{ participantId, rsvpStatus }`
+- Errors: 400 (validation), 401 (invalid invite token)
 
 **`PATCH /guest/preferences`**
-- Auth: `X-Guest-Token` header required
+- Auth: `X-Invite-Token` header required
 - Body (all optional — send only fields to update):
   - `displayName` (string | null)
   - `adultsCount` (integer | null)
@@ -600,21 +586,21 @@ Registered user opens a plan they're linked to
   - `foodPreferences` (string | null) — send null to clear
   - `allergies` (string | null) — send null to clear
   - `notes` (string | null)
-- Action: Updates the guest's participant record on the `participants` table. Does NOT set `onboardingCompleted`.
-- Response: `{ participantId, displayName, role, adultsCount, kidsCount, foodPreferences, allergies, notes }`
-- Errors: 400 (validation), 401 (invalid/expired guest token)
+- Action: Updates the guest's participant record on the `participants` table.
+- Response: `{ participantId, displayName, role, rsvpStatus, adultsCount, kidsCount, foodPreferences, allergies, notes }`
+- Errors: 400 (validation), 401 (invalid invite token)
 
 **`GET /guest/plan`**
-- Auth: `X-Guest-Token` header required
+- Auth: `X-Invite-Token` header required
 - Response:
   - `planId` (UUID)
   - `title`, `description`, `status`, `location`, `startDate`, `endDate`, `tags`, `createdAt`, `updatedAt`
   - `items` — array of items, **filtered**: only items where `assignedParticipantId` matches the guest's `participantId` OR `assignedParticipantId` is null (unassigned). Items assigned to other participants are hidden.
-  - `participants` — array of **sanitized** participants: `{ participantId, displayName, role }` only. No PII.
-- Errors: 401 (invalid/expired guest token)
+  - `participants` — array of **sanitized** participants: `{ participantId, displayName, role, rsvpStatus }` only. No PII.
+- Errors: 401 (invalid invite token)
 
 **`PATCH /guest/items/:itemId`**
-- Auth: `X-Guest-Token` header required
+- Auth: `X-Invite-Token` header required
 - URL params: `itemId` (UUID)
 - Body (all optional — send only fields to update):
   - `name` (string)
@@ -625,25 +611,25 @@ Registered user opens a plan they're linked to
   - `notes` (string | null)
 - Validation: item must exist AND `assignedParticipantId` must match the guest's `participantId`. Cannot edit items assigned to other participants or unassigned items.
 - Response: full updated item object
-- Errors: 404 (item not found or not assigned to this guest), 400 (validation), 401 (invalid/expired guest token)
+- Errors: 404 (item not found or not assigned to this guest), 400 (validation), 401 (invalid invite token)
 
 **`POST /guest/items/:itemId/assign`**
-- Auth: `X-Guest-Token` header required
+- Auth: `X-Invite-Token` header required
 - URL params: `itemId` (UUID)
 - Body: none
 - Validation: item must exist in this plan, `assignedParticipantId` must be null (unassigned)
 - Action: `SET assignedParticipantId = guest's participantId`
 - Response: full updated item object (now shows `assignedParticipantId` set)
-- Errors: 404 (item not found), 400 (item already assigned to someone), 401 (invalid/expired guest token)
+- Errors: 404 (item not found), 400 (item already assigned to someone), 401 (invalid invite token)
 
 **`POST /guest/items/:itemId/unassign`**
-- Auth: `X-Guest-Token` header required
+- Auth: `X-Invite-Token` header required
 - URL params: `itemId` (UUID)
 - Body: none
 - Validation: item must exist, `assignedParticipantId` must match the guest's `participantId`
 - Action: `SET assignedParticipantId = null`
 - Response: full updated item object (now shows `assignedParticipantId: null`)
-- Errors: 404 (item not found or not assigned to this guest), 401 (invalid/expired guest token)
+- Errors: 404 (item not found or not assigned to this guest), 401 (invalid invite token)
 
 **`GET /auth/profile`** ✅ (already implemented)
 - Auth: `Authorization: Bearer <jwt>` required
@@ -698,20 +684,13 @@ Internet → Fastify BE (Railway, public) → PostgreSQL (Railway private networ
 |-------|---------|--------|
 | SQL injection | Drizzle ORM parameterized queries | Done |
 | Input validation | Zod schemas on all request bodies | Done |
-| Auth | JWT via Supabase JWKS + API key fallback | Done (being enhanced) |
+| Auth | JWT via Supabase JWKS + API key fallback + X-Invite-Token for guests | Done (being enhanced) |
 | CORS | Restricted to `FRONTEND_URL` in production | Done |
 | Credential storage | DB password in Railway env vars only, JWT verified via public keys | Done |
 | Rate limiting | `@fastify/rate-limit` — 100 req/min global, 10 req/min on auth endpoints | Done (Phase 2) |
 | Security headers | `@fastify/helmet` — X-Content-Type-Options, HSTS, X-Frame-Options, etc. | Done (Phase 2) |
 | Request size | Fastify default 1MB body limit | Done (default) |
-| OTP brute-force | Max 5 attempts per code, 10 min code expiry, 3 requests/hour per token | To add (Phase 3) |
-
-### 8.3 Security Hardening Tasks (Phase 2)
-
-Add these two Fastify plugins as part of Phase 2 (profile provisioning), since that's when auth-dependent routes start appearing:
-
-1. **`@fastify/rate-limit`** — protect against brute-force and DDoS. Apply stricter limits to auth, claim, and verification endpoints (e.g., 10 req/min) vs general routes (e.g., 100 req/min).
-2. **`@fastify/helmet`** — standard HTTP security headers. Default config is sufficient.
+| Guest permission boundary | API key hook rejects guest-only requests on protected routes (29 tests) | Done (Phase 3 Step 1) |
 
 ---
 
@@ -721,24 +700,16 @@ Add these two Fastify plugins as part of Phase 2 (profile provisioning), since t
 
 | Package | Purpose | Status |
 |---------|---------|--------|
-| `twilio` | WhatsApp Business API — send OTP codes via WhatsApp | Not yet added |
 | `@fastify/rate-limit` | Rate limiting per IP/route (100 req/min global, 10 req/min auth) | Done (v10.3.0) |
 | `@fastify/helmet` | HTTP security headers | Done (v13.0.2) |
 
-### 9.2 New Environment Variables
+> **Note:** Twilio was originally planned for WhatsApp OTP but is deferred. No `twilio` dependency needed.
 
-| Variable | Description | Where |
-|----------|-------------|-------|
-| `TWILIO_ACCOUNT_SID` | Twilio account identifier | Railway env + `.env` |
-| `TWILIO_AUTH_TOKEN` | Twilio auth secret | Railway secrets |
-| `TWILIO_WHATSAPP_FROM` | Twilio WhatsApp sender number (e.g., `whatsapp:+14155238886`) | Railway env + `.env` |
+### 9.2 Environment Variables
 
-### 9.3 Twilio Setup
+No new environment variables needed for guest access (invite token uses existing `inviteToken` field).
 
-1. Create a Twilio account
-2. Enable WhatsApp sandbox for development (no Meta approval needed — only pre-registered numbers can receive messages)
-3. For production: register a WhatsApp Business sender number and submit an OTP message template for Meta approval (OTP templates are fast-tracked)
-4. Twilio service module uses DI pattern — tests inject a mock Twilio client (no real WhatsApp messages in tests)
+> **Deferred:** `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` — only needed if WhatsApp OTP is added later.
 
 ---
 
@@ -760,10 +731,6 @@ Adapted from original spec:
 - Added `createdByUserId` column to `plans`
 - Generated and ran migration
 - Updated TypeScript types and test seed helpers
-
-NOT yet added (deferred to when needed):
-- `verification_codes` table (needed for Phase 3: WhatsApp verification)
-- `guest_sessions` table (needed for Phase 3: guest sessions)
 
 ### Phase 1.5: Opportunistic User Tracking ✅
 
@@ -789,7 +756,7 @@ Adapted from original spec:
 - Added `@fastify/helmet` (security headers, CSP disabled in dev for Swagger UI)
 - Integration tests for profile CRUD
 
-### Phase 2.5: Plan Ownership + Access Control 🔄
+### Phase 2.5: Plan Ownership + Access Control ✅
 
 **Goal:** Enforce `visibility` field on plans. Authenticated plan creation defaults to `invite_only`. Only owner/linked participants can read non-public plans.
 
@@ -816,48 +783,92 @@ Adapted from original spec:
 - Fail-fast guard on write endpoints (`POST /plans/with-owner`, `PATCH /plans/:planId`, `DELETE /plans/:planId`): if `Authorization: Bearer` header is present but `request.user` is null, return 401 instead of creating broken resources
 - 5 integration tests: invalid JWT on create/patch/delete returns 401, no JWT creates public plan, valid JWT creates invite_only plan with owner
 
-### Phase 3: WhatsApp Verification + Guest Sessions
+### Phase 3: Guest Access via Invite Token 🔄
 
-**Goal:** Guests can verify phone ownership and get a time-limited session.
+> **Redesigned (2026-02-24):** Originally "WhatsApp Verification + Guest Sessions". WhatsApp OTP and guest sessions were deferred. Replaced with persistent invite token auth. Broken into 4 incremental steps, each a separate PR.
 
-- Add Twilio service module (with DI — tests inject mock)
-- Add `POST /invite/:inviteToken/request-code` endpoint (send WhatsApp OTP)
-- Add `POST /invite/:inviteToken/verify-code` endpoint (validate OTP, create guest session)
-- Add guest session validation middleware (checks `X-Guest-Token` header, looks up in DB)
-- Implement code expiry (10 min) and attempt limits (max 5)
-- Implement session expiry (30 min)
-- Add expired code/session cleanup (on-query deletion of expired rows)
-- Write integration tests with mocked Twilio (send code, verify code, wrong code, expired code, max attempts, expired session)
+#### Step 1: Invite Auth Plugin + DB Migration ✅
 
-**Risk:** Medium. Introduces external dependency (Twilio). Requires Twilio account setup and WhatsApp sandbox for dev.
+**Status:** Done. Version 1.11.0.
 
-### Phase 4: Guest Onboarding + Guest Interaction
+**Goal:** Add the guest-auth infrastructure — plugin, schema changes, permission boundaries.
 
-**Goal:** Verified guests can onboard, update preferences, view filtered plan data, edit own items, and self-assign/unassign.
+**DB changes:**
+- New enum: `rsvp_status` (pending / confirmed / not_sure)
+- New columns on `participants`: `rsvp_status` (NOT NULL, default 'pending'), `last_activity_at` (nullable timestamp)
+- Migration: `drizzle/0008_unknown_sue_storm.sql`
 
-**Preferences architecture:** Per-plan preferences live on the `participants` table (`foodPreferences`, `allergies`, `adultsCount`, `kidsCount`, `notes`). Guest endpoints update the participant record directly — not `guest_profiles`. For signed-in users joining a plan, `user_details` defaults are pre-filled into the participant record.
+**New files:**
+- `src/plugins/guest-auth.ts` — Fastify plugin that:
+  - Reads `X-Invite-Token` header on every request
+  - Looks up participant by `inviteToken`
+  - Populates `request.guestParticipant = { participantId, planId }`
+  - Updates `lastActivityAt` on the matched participant
+  - Fails silently (logs warning, leaves `guestParticipant` null) on lookup errors
+- `src/types/fastify.d.ts` — Extended `FastifyRequest` with `guestParticipant: GuestParticipant | null`
 
-- Add `POST /guest/onboarding` endpoint (requires X-Guest-Token, first-time only, updates participant record)
-- Add `PATCH /guest/preferences` endpoint (requires X-Guest-Token, update per-plan preferences on participant record anytime)
-- Add `GET /guest/plan` endpoint (requires X-Guest-Token, returns sanitized plan data with items filtered to own assigned + unassigned)
-- Add `PATCH /guest/items/:itemId` endpoint (requires X-Guest-Token, edit own assigned items — all fields)
-- Add `POST /guest/items/:itemId/assign` endpoint (requires X-Guest-Token, self-assign to unassigned item)
-- Add `POST /guest/items/:itemId/unassign` endpoint (requires X-Guest-Token, self-unassign)
-- Modify `GET /plans/:planId/invite/:inviteToken` to return minimal data only (plan title, owner displayName — landing page before verification)
-- Write integration tests (onboarding, preferences update, plan access, item editing, self-assign/unassign, permission boundaries)
+**Modified files:**
+- `src/app.ts` — Registers `guest-auth` plugin, adds `hasInviteToken` to request logging, bypasses API key check for `/guest/` and `/invite/` prefixes, adds `apiKey` DI option for test isolation
+- `src/db/schema.ts` — Added `rsvpStatusEnum`, `rsvpStatus` and `lastActivityAt` columns to participants
+- `src/schemas/participant.schema.ts` — Added `rsvpStatus` and `lastActivityAt` to JSON schema
 
-**Risk:** Low-medium. New endpoints only. Modifies one existing endpoint (invite route returns less data). Item editing requires careful validation to prevent guests from editing other participants' items.
+**Test coverage (51 new tests across 2 files):**
 
-### Phase 5: Claim-Via-Invite (Registered Users)
+`tests/integration/guest-auth.test.ts` (22 tests):
+- Valid token: `lastActivityAt` updated, selective update, incremental timestamps, correct plan resolution
+- Invalid/missing token: no `lastActivityAt` update for missing header, nonexistent token, empty/short/long/XSS/SQL-injection tokens
+- API key bypass: `/guest/` and `/invite/` routes return 404 not 401
+- `rsvpStatus`: defaults to 'pending' on creation (both endpoints), included in list/get/patch responses
+- `lastActivityAt`: null on creation, null in list, updated after guest access
 
-**Goal:** Registered users can link themselves to participant records.
+`tests/integration/guest-permissions.test.ts` (29 tests):
+- Baseline: owner with API key can access protected routes
+- Guest with X-Invite-Token cannot: list plans, create plans, get/update/delete plans, list/create/get/update/delete participants, list/create/update items, access auth endpoints
+- Guest CAN: access invite route, health endpoint, `/guest/` and `/invite/` paths bypass API key
+- No auth at all: rejected on all protected routes
 
-- Add `POST /plans/:planId/claim/:inviteToken` endpoint
-- Validation: token valid, participant not already linked to another user, user not already in this plan
-- On success: set `participants.userId = jwt.sub`
-- Write integration tests (happy path, already claimed, duplicate user, invalid token)
+#### Step 2: Guest Endpoints (next)
 
-**Risk:** Low. New endpoint only. Existing invite flow unchanged.
+**Goal:** Implement all guest interaction endpoints. Each requires `X-Invite-Token` header and checks `request.guestParticipant`.
+
+Endpoints to build:
+- `PATCH /guest/rsvp` — Update RSVP status
+- `PATCH /guest/preferences` — Update per-plan preferences (displayName, adultsCount, kidsCount, foodPreferences, allergies, notes)
+- `GET /guest/plan` — View plan with filtered items (own assigned + unassigned) and sanitized participants (displayName + role + rsvpStatus only)
+- `PATCH /guest/items/:itemId` — Edit own assigned item (all fields)
+- `POST /guest/items/:itemId/assign` — Self-assign to unassigned item
+- `POST /guest/items/:itemId/unassign` — Self-unassign from own item
+
+Each endpoint must:
+1. Check `request.guestParticipant` is set (401 if null)
+2. Validate plan membership (item belongs to same plan as participant)
+3. Strip PII from any participant data in responses
+4. Return appropriate error codes (400 validation, 401 auth, 404 not found)
+
+**FE issue:** Generate invite link from token (copy & share). Depends on Step 1 being deployed.
+
+#### Step 3: Claim + Signed-Up Preferences
+
+**Goal:** Let a registered user (JWT) claim a participant record and manage per-plan preferences.
+
+Endpoints to build:
+- `POST /plans/:planId/claim/:inviteToken` — Link JWT user to participant record. Validates: token exists, participant not already linked, user not already in plan. Sets `participants.userId = jwt.sub`.
+- Endpoint for signed-up participants to update their own per-plan preferences via JWT (same fields as guest preferences, but authenticated via JWT instead of invite token).
+
+#### Step 4: Invite Route Reduction (BREAKING)
+
+**Goal:** Reduce the data returned by `GET /plans/:planId/invite/:inviteToken` to minimal landing page data only (plan title, owner displayName). Full plan data moves to `GET /guest/plan`.
+
+**This is a BREAKING CHANGE.** The FE must be updated to use `GET /guest/plan` before this step is deployed.
+
+Migration plan:
+1. FE switches to `GET /guest/plan` for full plan data
+2. BE deploys Step 4 — invite route returns only `{ planId, title, ownerDisplayName }`
+3. The invite route becomes a "landing page" endpoint — guest sees plan title and enters via `/guest/*` routes
+
+### Phase 5: ~~Claim-Via-Invite~~ → Merged into Phase 3 Step 3
+
+> Merged with Phase 3 Step 3 above.
 
 ### Phase 6: Response Filtering (Read Access Control)
 
@@ -873,7 +884,7 @@ Adapted from original spec:
 
 ### Phase 7: Edit Permissions (JWT Users)
 
-**Goal:** Enforce who can edit what for JWT-authenticated users (owner + linked participants). Guest edit permissions are handled in Phase 4 via `/guest/*` routes.
+**Goal:** Enforce who can edit what for JWT-authenticated users (owner + linked participants). Guest edit permissions are handled in Phase 3 Step 2 via `/guest/*` routes.
 
 - `PATCH /items/:itemId`: owner can edit any; linked participant can edit only own assigned
 - `DELETE /items/:itemId`: owner only
@@ -884,6 +895,26 @@ Adapted from original spec:
 
 **Risk:** Medium. Changes write behavior. Must coordinate with FE to handle 403 responses.
 
+### Phase 8: Remove API Key
+
+**Goal:** Every protected route requires JWT. Remove the API key entirely.
+
+**Prerequisites (all must be true before starting):**
+- FE sends `Authorization: Bearer <jwt>` on every request from a signed-in user
+- FE handles 401 (redirect to login) and 403 ("not allowed") gracefully
+- FE no longer sends `x-api-key` header on any request
+- All Phases 1–7 are deployed and stable in production
+
+**Changes:**
+- Remove `API_KEY` environment variable from Railway and `.env`
+- Remove `API_KEY` from `env.ts` schema and `config.ts`
+- Remove the API key check from the `onRequest` hook in `app.ts` — replace with: if no `request.user` (JWT) and route is not exempt → 401
+- Remove `apiKey` option from `BuildAppOptions` (test DI)
+- Update `guest-permissions.test.ts` — API key tests become JWT tests
+- Update any other tests that rely on `x-api-key` header → switch to JWT
+
+**Risk:** High. This is the final breaking change. Must verify FE is fully migrated first.
+
 ---
 
 ## 11. Open Questions
@@ -892,15 +923,16 @@ Adapted from original spec:
 |---|----------|--------|----------------|
 | 1 | What happens to unregistered plan owners after auth enforcement? They can't use API key forever. Should they get an owner-specific invite token? Or must they sign up? | Phase 6 | Before Phase 6 |
 | 2 | Should `GET /plans` (list all plans) require auth? Currently returns all plans to anyone. | Phase 6 | Before Phase 6 |
-| 3 | When should the API key be deprecated? It's a blanket bypass of all permissions. | Phase 6-7 | After FE fully uses JWT |
-| 4 | Should a registered user be able to "unclaim" a participant spot? | Phase 5 | Before Phase 5 |
-| 5 | If a participant is linked to a user, should editing their profile (displayName) auto-update the participant's displayName? Or keep them separate? | Phase 2-5 | Before Phase 5 |
+| 3 | ~~When should the API key be deprecated?~~ **Decided:** Phase 8 (after Phase 7). See Section 5.4 for full plan and FE prerequisites. | Phase 8 | Decided |
+| 4 | Should a registered user be able to "unclaim" a participant spot? | Phase 3 Step 3 | Before Step 3 |
+| 5 | If a participant is linked to a user, should editing their profile (displayName) auto-update the participant's displayName? Or keep them separate? | Phase 3 Step 3 | Before Step 3 |
 | 6 | ~~Should plan `visibility` field (public/invite_only/private) be enforced now, or deferred?~~ **Decided:** Enforcing now in Phase 2.5. Authenticated plan creation defaults to `invite_only`. | Phase 2.5 | Decided |
-| 7 | Twilio sandbox vs production: start with sandbox for dev (only pre-registered numbers)? When to get Meta approval for production WhatsApp? | Phase 3 | Before Phase 3 |
-| 8 | Code resend cooldown: how long before allowing a resend? Suggested: 60 seconds. | Phase 3 | Before Phase 3 |
-| 9 | WhatsApp message template: what text? OTP templates are fast-tracked by Meta. Suggested: "Your Chillist verification code is: {{1}}. It expires in 10 minutes." | Phase 3 | Before Phase 3 |
-| 10 | Should the invite link landing page (pre-verification) show any plan info beyond title and owner name? | Phase 4 | Before Phase 4 |
-| 11 | Review `guest_profiles` table role: per-plan preferences now live on `participants`, guest identity (name, phone) is also on `participants`. What remaining purpose does `guest_profiles` serve? Options: (a) cross-plan guest identity lookup by phone, (b) historical record before sign-up, (c) deprecated — remove in cleanup. | Phase 4 | Before Phase 4 |
+| 7 | ~~Twilio sandbox vs production~~ **Deferred:** WhatsApp OTP not implemented. If added later, start with sandbox for dev. | — | Deferred |
+| 8 | ~~Code resend cooldown~~ **Deferred:** No OTP implementation. | — | Deferred |
+| 9 | ~~WhatsApp message template~~ **Deferred:** No OTP implementation. | — | Deferred |
+| 10 | Should the invite link landing page (pre-guest-access) show any plan info beyond title and owner name? | Phase 3 Step 4 | Before Step 4 |
+| 11 | Review `guest_profiles` table role: per-plan preferences now live on `participants`, guest identity (name, phone) is also on `participants`. What remaining purpose does `guest_profiles` serve? Options: (a) cross-plan guest identity lookup by phone, (b) historical record before sign-up, (c) deprecated — remove in cleanup. | Phase 3 Step 2 | Before Step 2 |
+| 12 | Should invite tokens be revocable/regeneratable by the owner? If compromised, the owner should be able to invalidate the old token and generate a new one. | Phase 3 Step 2+ | Before production launch |
 
 ---
 
@@ -912,11 +944,12 @@ Since all new columns are nullable (or have safe defaults) and all new tables ar
 2. ~~Deploy opportunistic user tracking (Phase 1.5)~~ — Done (PR #80)
 3. ~~Deploy profile endpoints + security hardening (Phase 2)~~ — Done (PR #81)
 4. ~~Deploy plan ownership + access control (Phase 2.5)~~ — Done (PR #84)
-5. Deploy WhatsApp verification + guest sessions (Phase 3)
-6. Deploy guest onboarding (Phase 4)
-7. Deploy claim endpoint (Phase 5)
-8. Deploy response filtering enhancements (Phase 6) with API key fallback
-9. Deploy edit permissions (Phase 7) — FE must handle 403s by this point
-10. Remove API key fallback — once FE fully uses JWT
+5. ~~Deploy guest auth plugin + DB migration (Phase 3 Step 1)~~ — Done (v1.11.0)
+6. Deploy guest endpoints (Phase 3 Step 2) — **FE: generate invite link, guest UI**
+7. Deploy claim + signed-up preferences (Phase 3 Step 3) — **FE: claim flow**
+8. Deploy invite route reduction (Phase 3 Step 4) — **BREAKING: FE must use /guest/plan first**
+9. Deploy response filtering enhancements (Phase 6) with API key fallback
+10. Deploy edit permissions (Phase 7) — FE must handle 403s by this point
+11. **Remove API key entirely (Phase 8)** — FE must be fully migrated to JWT first. Every protected route requires JWT after this. See Section 5.4 for prerequisites.
 
-Each phase is a separate PR with its own tests. No phase depends on the FE being updated (except Phase 7 which needs FE to handle 403 errors gracefully).
+Each step is a separate PR with its own tests. Steps 1-3 have no breaking changes. Step 4 and Phase 8 are breaking and require FE coordination.
