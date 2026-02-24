@@ -6,6 +6,15 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Deps] PlaceAutocompleteElement renders in closed Shadow DOM — invisible to accessibility tree
+**Date:** 2026-02-24
+**Problem:** After switching from the legacy `google.maps.places.Autocomplete` (blocked for new customers since March 2025) to the new `PlaceAutocompleteElement`, the autocomplete input appeared invisible to browser automation tools and Playwright accessibility snapshots. The element was confirmed to be created and appended to the DOM (taking up ~100px of vertical space), but the closed Shadow DOM prevented its internal `<input>` from appearing in the accessibility tree.
+**Root cause:** `PlaceAutocompleteElement` uses a closed Shadow DOM (`#shadow-root (closed)`). The internal input, search icon, clear button, and dropdown are all encapsulated. External CSS cannot style it by default, and accessibility tools (including Playwright's `page.locator`) cannot see the internal elements.
+**Solution:** (1) Switched to `PlaceAutocompleteElement` with `version="weekly"` on `APIProvider` (not `"beta"` — beta injects problematic global CSS). (2) Used the `gmp-select` event (not the deprecated `gmp-placeselect`) to handle place selection. (3) Styled using `::part(input)` CSS selector (GA since January 2026) and set `display: block; width: 100%;` on the container. (4) The `appearance: auto !important` CSS fix in `index.css` protects date/time pickers from any global CSS injection.
+**Prevention:** When using Google Maps web components (`gmp-place-autocomplete`, `gmp-basic-place-autocomplete`), expect closed Shadow DOM — you cannot inspect or interact with internal elements from outside. Use `::part(input)` for styling. For E2E tests, you'll need to use `page.locator('gmp-place-autocomplete')` with `.evaluate()` to pierce the shadow DOM, or test the outcome (form field values) instead of the autocomplete interaction itself.
+
+---
+
 ### [Arch] Sign-out used window.location.reload() instead of router navigation + cache clear
 **Date:** 2026-02-24
 **Problem:** After sign-out, the app called `window.location.reload()` to reset state. This caused a full page reload — jarring UX, threw away the entire React tree, and re-fetched all static assets. It also bypassed the router, so the user stayed on whatever page they were on (potentially an auth-gated page).
@@ -75,10 +84,10 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 ---
 
 ### [Deps] Migrate from legacy google.maps.places.Autocomplete to PlaceAutocompleteElement
-**Date:** 2026-02-23
-**Problem:** Console warning: "As of March 1st, 2025, google.maps.places.Autocomplete is not available to new customers. Please use google.maps.places.PlaceAutocompleteElement instead."
-**Solution:** Replaced the legacy `new places.Autocomplete(input, options)` with `new google.maps.places.PlaceAutocompleteElement({})` in `LocationAutocomplete.tsx`. Key differences: (1) the element is appended to a container div via ref instead of binding to an existing input, (2) listen for `gmp-placeselect`/`gmp-select` events instead of `place_changed`, (3) use `place.fetchFields()` to request `displayName`, `location`, `addressComponents`, (4) address components use `longText` instead of `long_name`. Added `version="beta"` to the autocomplete's `APIProvider` to ensure the element is available. Requires "Places API (New)" enabled in Google Cloud Console.
-**Prevention:** When Google deprecation warnings appear for Maps APIs, check the migration guide and the `@vis.gl/react-google-maps` examples for the recommended replacement. The `PlaceAutocompleteElement` renders its own styled input (shadow DOM) — you lose custom Tailwind styling on the input but gain built-in RTL localization and accessibility.
+**Date:** 2026-02-23 (updated 2026-02-24)
+**Problem:** Console warning: "As of March 1st, 2025, google.maps.places.Autocomplete is not available to new customers." The legacy API was completely blocked for new API keys — the widget initialized but made zero autocomplete API calls.
+**Solution:** Replaced the legacy `new places.Autocomplete(input, options)` with `new google.maps.places.PlaceAutocompleteElement({})` in `LocationAutocomplete.tsx`. Key differences: (1) the element is appended to a container div via ref instead of binding to an existing input, (2) listen for `gmp-select` event (not the deprecated `gmp-placeselect`) instead of `place_changed`, (3) use `place.fetchFields()` to request `displayName`, `location`, `addressComponents`, (4) address components use `longText` instead of `long_name`. Use `version="weekly"` (not `"beta"`) on `APIProvider`. Style with `::part(input)` CSS selector. Requires "Places API (New)" enabled in Google Cloud Console.
+**Prevention:** When Google deprecation warnings appear for Maps APIs, check the migration guide. The `PlaceAutocompleteElement` renders its own styled input (closed Shadow DOM) — use `::part(input)` for styling. Prefer `version="weekly"` over `version="beta"` to get GA features without beta-only global CSS injection issues.
 
 ---
 
