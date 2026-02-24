@@ -502,7 +502,7 @@ Single job (Chrome only):
 
 ### `deploy.yml` — runs on push to `main`
 
-Single job (no E2E — CI already validated on the PR):
+Single job (Chrome E2E included as a final gate before deploy):
 
 1. Validate required environment variables
 2. Install dependencies
@@ -511,8 +511,9 @@ Single job (no E2E — CI already validated on the PR):
 5. Type check
 6. Unit tests
 7. Integration tests
-8. Build (with production env vars)
-9. Deploy to Cloudflare Pages
+8. Install Chromium + run E2E tests (Desktop Chrome only)
+9. Build (with production env vars)
+10. Deploy to Cloudflare Pages
 
 ### Testing all browsers / Safari (Linux-WebKit parity)
 

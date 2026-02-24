@@ -6,12 +6,12 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
-### [Deps] PlaceAutocompleteElement renders in closed Shadow DOM — invisible to accessibility tree
+### [Deps] Google Places autocomplete — use programmatic API, not PlaceAutocompleteElement
 **Date:** 2026-02-24
-**Problem:** After switching from the legacy `google.maps.places.Autocomplete` (blocked for new customers since March 2025) to the new `PlaceAutocompleteElement`, the autocomplete input appeared invisible to browser automation tools and Playwright accessibility snapshots. The element was confirmed to be created and appended to the DOM (taking up ~100px of vertical space), but the closed Shadow DOM prevented its internal `<input>` from appearing in the accessibility tree.
-**Root cause:** `PlaceAutocompleteElement` uses a closed Shadow DOM (`#shadow-root (closed)`). The internal input, search icon, clear button, and dropdown are all encapsulated. External CSS cannot style it by default, and accessibility tools (including Playwright's `page.locator`) cannot see the internal elements.
-**Solution:** (1) Switched to `PlaceAutocompleteElement` with `version="weekly"` on `APIProvider` (not `"beta"` — beta injects problematic global CSS). (2) Used the `gmp-select` event (not the deprecated `gmp-placeselect`) to handle place selection. (3) Styled using `::part(input)` CSS selector (GA since January 2026) and set `display: block; width: 100%;` on the container. (4) The `appearance: auto !important` CSS fix in `index.css` protects date/time pickers from any global CSS injection.
-**Prevention:** When using Google Maps web components (`gmp-place-autocomplete`, `gmp-basic-place-autocomplete`), expect closed Shadow DOM — you cannot inspect or interact with internal elements from outside. Use `::part(input)` for styling. For E2E tests, you'll need to use `page.locator('gmp-place-autocomplete')` with `.evaluate()` to pierce the shadow DOM, or test the outcome (form field values) instead of the autocomplete interaction itself.
+**Problem:** `PlaceAutocompleteElement` renders in a closed Shadow DOM — its input is invisible to accessibility tools and browser automation. It also creates its own input element, making it impossible to integrate with an existing `<input>` field in a form. Additionally, `version="weekly"` on `APIProvider` injects global CSS that breaks form input styles (borders, backgrounds, padding stripped from all inputs).
+**Root cause:** (1) `PlaceAutocompleteElement` uses a closed Shadow DOM — you cannot inspect, style, or interact with its internal elements from outside. (2) Setting `version="weekly"` on `APIProvider` loads a Maps JS API version that injects more aggressive global CSS than the default version, breaking Tailwind-styled form inputs across the entire page.
+**Solution:** Use the programmatic `AutocompleteSuggestion.fetchAutocompleteSuggestions()` API instead. This lets you: (1) bind autocomplete to any existing `<input>` via a ref, (2) render a custom dropdown with full control over styling, (3) avoid Shadow DOM entirely. Use `AutocompleteSessionToken` for billing optimization. Do NOT pass `version="weekly"` to `APIProvider` — the programmatic Places API is GA and available in the default version.
+**Prevention:** Avoid `PlaceAutocompleteElement` when you need to integrate with existing form inputs or control styling. Prefer the programmatic `fetchAutocompleteSuggestions` API. Never use `version="weekly"` or `version="beta"` on `APIProvider` unless you specifically need a beta/preview feature — both inject global CSS that can break form styles.
 
 ---
 
@@ -83,11 +83,11 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
-### [Deps] Migrate from legacy google.maps.places.Autocomplete to PlaceAutocompleteElement
+### [Deps] Migrate from legacy google.maps.places.Autocomplete to programmatic Places API
 **Date:** 2026-02-23 (updated 2026-02-24)
 **Problem:** Console warning: "As of March 1st, 2025, google.maps.places.Autocomplete is not available to new customers." The legacy API was completely blocked for new API keys — the widget initialized but made zero autocomplete API calls.
-**Solution:** Replaced the legacy `new places.Autocomplete(input, options)` with `new google.maps.places.PlaceAutocompleteElement({})` in `LocationAutocomplete.tsx`. Key differences: (1) the element is appended to a container div via ref instead of binding to an existing input, (2) listen for `gmp-select` event (not the deprecated `gmp-placeselect`) instead of `place_changed`, (3) use `place.fetchFields()` to request `displayName`, `location`, `addressComponents`, (4) address components use `longText` instead of `long_name`. Use `version="weekly"` (not `"beta"`) on `APIProvider`. Style with `::part(input)` CSS selector. Requires "Places API (New)" enabled in Google Cloud Console.
-**Prevention:** When Google deprecation warnings appear for Maps APIs, check the migration guide. The `PlaceAutocompleteElement` renders its own styled input (closed Shadow DOM) — use `::part(input)` for styling. Prefer `version="weekly"` over `version="beta"` to get GA features without beta-only global CSS injection issues.
+**Solution:** Replaced the legacy `new places.Autocomplete(input, options)` with `AutocompleteSuggestion.fetchAutocompleteSuggestions()` in `LocationAutocomplete.tsx`. Key differences: (1) programmatic API fetches predictions — you render your own dropdown, (2) bind to any existing input via a ref and `input` event listener (debounced at 300ms), (3) use `placePrediction.toPlace()` then `place.fetchFields()` to get `displayName`, `location`, `addressComponents`, (4) address components use `longText` instead of `long_name`, (5) use `AutocompleteSessionToken` for per-session billing. Do NOT use `version="weekly"` on `APIProvider` — causes global CSS injection. Requires "Places API (New)" enabled in Google Cloud Console.
+**Prevention:** When Google deprecation warnings appear for Maps APIs, check the migration guide. Prefer the programmatic `fetchAutocompleteSuggestions` API over `PlaceAutocompleteElement` — it gives full control over the input and dropdown without Shadow DOM or global CSS side effects.
 
 ---
 
