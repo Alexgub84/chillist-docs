@@ -232,16 +232,20 @@ Done:
 - ~~Rate limiting~~ (`@fastify/rate-limit`) and ~~security headers~~ (`@fastify/helmet`)
 - ~~Plan ownership + access control~~ (JWT-created plans default to `invite_only`, all read routes enforce visibility via `checkPlanAccess()`, `GET /plans` filtered by user's plans + public, 29 tests, PR #84, v1.8.0)
 
+Done (continued):
+- ~~Guest auth plugin~~ (Phase 3 Step 1, v1.11.0) — `X-Invite-Token` header auth, `rsvpStatus` + `lastActivityAt` columns, guest permission boundaries, 51 tests
+- ~~Claim-via-invite~~ (Phase 3 Step 3, v1.12.0) — `POST /plans/:planId/claim/:inviteToken` links authenticated user to participant record, pre-fills preferences from `user_details` defaults, 13 tests
+
 Current:
-- WhatsApp phone verification for guests (Twilio OTP) — Phase 3
+- Guest endpoints (Phase 3 Step 2) — RSVP, preferences, plan view, item interaction via `X-Invite-Token`
 
 Future:
-- WhatsApp phone verification for guests (Twilio OTP)
-- Guest sessions and onboarding
-- Claim-via-invite (link registered user to participant)
+- JWT-based per-plan preferences for signed-up participants
+- Invite route reduction (Phase 3 Step 4, BREAKING)
+- Response filtering enhancements (Phase 6)
+- JWT enforcement on all routes + edit permissions (Phase 7)
 - FE migration from API key to JWT
-- JWT enforcement on all routes + edit permissions
-- Remove API key bypass
+- Remove API key bypass (Phase 8)
 
 ## Cost Estimate
 

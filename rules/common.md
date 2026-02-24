@@ -82,7 +82,7 @@ When removing an env var: reverse all 6 steps.
 
 ## Git Workflow
 
-When committing, follow this sequence:
+### New branch (first commit)
 
 1. Stash current changes
 2. Switch to main and pull latest: `git checkout main && git pull origin main`
@@ -93,6 +93,15 @@ When committing, follow this sequence:
 7. Push the branch: `git push -u origin <branch-name>`
 8. Create a PR immediately after push using `gh pr create`
    - Include `Closes #XX` in the PR body if there is a related issue
+
+### Existing branch (subsequent commits / before push)
+
+Always sync with main before pushing to avoid PR conflicts:
+
+1. Stage and commit your changes on the feature branch
+2. Fetch and merge latest main: `git fetch origin main && git merge origin/main`
+3. If conflicts arise, resolve them, run validation (`typecheck`, `lint`, `test:unit`), then `git add -A && git commit --no-edit`
+4. Push the branch: `git push`
 
 ## Version Bumps
 
