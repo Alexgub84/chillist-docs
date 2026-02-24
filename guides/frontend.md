@@ -322,6 +322,18 @@ Each participant has an `inviteStatus` field (`pending` | `invited` | `accepted`
 
 The claim endpoint links the authenticated user's `userId` to the participant record and sets `inviteStatus` to `accepted`. It requires a valid JWT and returns 401 if unauthenticated, 404 if the token is invalid, and 400 if already claimed.
 
+### Invite claim flow (sign-in from invite page)
+
+When a guest clicks "Sign in to join" or "Create an account" on the invite page:
+
+1. **Store:** `storePendingInvite(planId, inviteToken)` saves to `localStorage('chillist-pending-invite')`
+2. **Navigate:** Guest goes to `/signin?redirect=/plan/:planId` or `/signup?redirect=/plan/:planId`
+3. **Auth completes:** `AuthProvider.onAuthStateChange` fires `SIGNED_IN`
+4. **Auto-claim:** AuthProvider checks `getPendingInvite()` — if found, calls `claimInvite(planId, inviteToken)` (POST with JWT), then clears localStorage
+5. **Redirect:** The `?redirect` param navigates to `/plan/:planId` — the plan is now accessible because the user's `userId` is linked to the participant record
+
+Files: `src/core/pending-invite.ts` (store/get/clear), `src/core/api.ts` (`claimInvite`), `src/contexts/AuthProvider.tsx` (auto-claim on SIGNED_IN).
+
 ### Guest continue without signing in
 
 Unauthenticated users on the invite landing page can click "Continue without signing in" to open a preferences modal (adults, kids, food preferences, allergies, notes). On submit, preferences are saved via `PATCH /plans/:planId/invite/:inviteToken/preferences` (public endpoint, no JWT required — the invite token identifies the participant). On submit or skip, the guest is redirected to `/plan/:planId`. See `saveGuestPreferences()` in `src/core/api.ts`.

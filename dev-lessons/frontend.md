@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Invite claim — guest must link to participant after sign-in via localStorage handoff
+**Date:** 2026-02-24
+**Problem:** Guest opens invite link → signs up → redirected to plan page → "plan not found". The BE only returns plans where the user is the owner, a linked participant (`participants.userId` matches), or the plan is public. A newly signed-up user has `participants.userId = null` — the participant record isn't linked to their Supabase account yet.
+**Solution:** (1) Store `{ planId, inviteToken }` in localStorage when the guest clicks sign-in/sign-up from the invite page. (2) In `AuthProvider`, on `SIGNED_IN` event, check localStorage for a pending invite. (3) If found, clear it and call `POST /plans/:planId/claim/:inviteToken` with the JWT — this links the user's `userId` to the participant record and sets `inviteStatus` to `accepted`. (4) The redirect to `/plan/:planId` (via `?redirect` param) now works because the user is a linked participant.
+**Prevention:** When implementing invite-to-auth flows, always plan for the "linking" step between the anonymous invite token and the authenticated user identity. Use localStorage as a bridge across the auth redirect boundary. The claim must happen before the user tries to access the resource.
+
+---
+
 ### [E2E] Auth-conditional UI needs authenticated session in E2E tests
 **Date:** 2026-02-24
 **Problem:** The "Plan creation via UI" E2E test clicked `getByRole('link', { name: /create new plan/i })` on `/plans`. After making "Create New Plan" conditional on authentication (replaced by Sign In / Sign Up for guests), the test timed out because no user session was injected.
