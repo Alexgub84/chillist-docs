@@ -262,16 +262,16 @@ After sign-in, the Supabase client provides a `session` object with user profile
 
 ## User Management & Auth-Gated Access
 
-The app gates UI elements based on three levels of user identity. All checks are UX-only — the BE enforces real access control via JWT.
+The app gates UI elements based on four levels of user identity. All checks are UX-only — the BE enforces real access control via JWT.
 
 ### Access levels
 
 | Level | How detected | What's visible |
 |-------|-------------|---------------|
-| **Unauthenticated** | `!user` from `useAuth()` | Read-only plan view. Plans list shows "Sign In" / "Sign Up" instead of "Create New Plan". Invite page shows "Sign in to join" / "Create an account". No edit buttons anywhere. |
-| **Authenticated (non-owner)** | `user` exists but `user.id !== owner.userId` | Can view plans they have access to. Plans list shows "Create New Plan". Invite page shows "Go to plan". No edit buttons on other owners' plans or participant preferences. |
-| **Authenticated (owner)** | `user.id === owner.userId` (derived from `plan.participants`) | Full edit access: "Edit Plan" button, "Edit" buttons on participant preferences, RSVP status badges visible, manage participants modal. |
-| **Admin** | `isAdmin` from `useAuth()` (reads `app_metadata.role`) | All of the above + delete buttons on every plan in the plans list. |
+| **Unauthenticated** | `!user` from `useAuth()` | Read-only plan view. Plans list shows "Sign In" / "Sign Up" instead of "Create New Plan". Invite page shows "Sign in to join" / "Create an account". Plan form only allows `public` visibility. No edit/delete buttons anywhere. |
+| **Authenticated (non-owner)** | `user` exists but `user.id !== owner.userId` | Can view plans they have access to. Plans list shows "Create New Plan". Invite page shows "Go to plan". No edit buttons on other owners' plans or participant preferences. No "Edit Plan" button. |
+| **Authenticated (owner)** | `user.id === owner.userId` (derived from `plan.participants`) | Full edit access: "Edit Plan" button (opens `EditPlanForm` modal), "Edit" buttons on participant preferences, RSVP and invite status badges visible, manage participants modal with invite link sharing. Plan form allows `private` and `invite_only` visibility. |
+| **Admin** | `isAdmin` from `useAuth()` (reads `app_metadata.role`) | All of the above + red delete buttons on every plan card in the plans list, with a confirmation modal before deletion. |
 
 ### Deriving ownership
 
@@ -283,6 +283,25 @@ const isOwner = !!user && !!owner?.userId && user.id === owner.userId;
 
 The `userId` field on participants is populated by the BE when a JWT is present during participant creation (opportunistic user tracking). For older plans created before auth, `userId` may be `null` — in that case `isOwner` is `false` and the edit UI is hidden.
 
+### Edit plan (owner only)
+
+The plan detail page shows an "Edit Plan" pencil button (top-right) only when `isOwner` is true. Clicking it opens the `EditPlanForm` modal where the owner can update title, description, dates, location, tags, and status. The mutation uses `useUpdatePlan` (`PATCH /plans/:planId`). Non-owners and unauthenticated users see no edit button.
+
+### Admin delete
+
+Admins (`isAdmin` from `useAuth()`) see a red trash button on every plan card in the plans list. Clicking it opens a confirmation modal. Confirming calls `useDeletePlan` (`DELETE /plans/:planId`). Non-admin users never see delete buttons.
+
+### Plan visibility & auth gating
+
+The plan form gates visibility options by auth state:
+
+| Auth state | Available visibility options |
+|------------|----------------------------|
+| Unauthenticated | `public` only |
+| Authenticated | `private`, `invite_only` |
+
+Default visibility is `private` for authenticated users, `public` for unauthenticated.
+
 ### RSVP status
 
 Each participant has an `rsvpStatus` field (`pending` | `confirmed` | `not_sure`). This is displayed as a colored badge next to the participant's name:
@@ -293,9 +312,23 @@ Each participant has an `rsvpStatus` field (`pending` | `confirmed` | `not_sure`
 
 RSVP badges are only visible to the plan owner (gated by `isOwner`). The owner's own card never shows an RSVP badge. Badges appear in both the Group Details section and the Manage Participants modal.
 
+### Invite status
+
+Each participant has an `inviteStatus` field (`pending` | `invited` | `accepted`):
+
+- `pending` — participant created but no invite sent yet
+- `invited` — invite token generated and link shared
+- `accepted` — participant claimed the invite via `POST /plans/:planId/claim/:inviteToken`
+
+The claim endpoint links the authenticated user's `userId` to the participant record and sets `inviteStatus` to `accepted`. It requires a valid JWT and returns 401 if unauthenticated, 404 if the token is invalid, and 400 if already claimed.
+
 ### Public API (invite endpoint)
 
 The invite landing page (`/invite/:planId/:inviteToken`) uses `publicRequest()` instead of `request()` to fetch plan data without authentication. This endpoint returns PII-stripped participant data (only `participantId`, `displayName`, `role` — no phone, email, or preferences). See `src/core/api.ts > publicRequest()` and `src/hooks/useInvitePlan.ts`.
+
+### Invite link sharing
+
+The plan detail page (owner view) includes a "Copy invite link" button next to each participant and in the manage participants modal. The link format is `/invite/:planId/:inviteToken`. The link can be copied to clipboard or shared via the Web Share API (on supported devices). After adding a new participant, the invite link is automatically copied to clipboard.
 
 ## Google Maps (Location Picker + Map Display)
 
