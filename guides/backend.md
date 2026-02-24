@@ -186,13 +186,16 @@ Every commit triggers:
 
 1. `npm run typecheck` — fails on TypeScript errors
 2. ESLint + Prettier on staged `.ts` files (`lint-staged`)
-3. `npm run test:run` — typecheck + lint + tests in CI mode
+3. `npm run openapi:generate` + `git add docs/openapi.json` — regenerates and stages the OpenAPI spec so it's always in sync with code
+4. `npm run openapi:validate` — verifies the spec matches
+5. `npm run test:run` — typecheck + lint + tests in CI mode
 
 ### Recommended manual checks before commit
 
 ```bash
 npm run typecheck
 npm run lint:fix
+npm run openapi:generate
 npm run test:run
 ```
 
