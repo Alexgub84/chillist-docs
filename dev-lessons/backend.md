@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-be`.
 
 <!-- Add new entries at the top -->
 
+### [Config] Missing SUPABASE_URL Silently Disables All JWT Verification
+**Date:** 2026-02-24
+**Problem:** `SUPABASE_URL` was never set on Railway. The env var was `optional()` in Zod validation and the auth plugin silently returned early when it was missing, logging only at `warn` level. The app started successfully with JWT verification completely disabled — every request with a Bearer token got `request.user = null`, causing 401s on all authenticated endpoints. Appeared as "token expires after seconds" but was actually "verification never runs."
+**Solution:** (1) Made `SUPABASE_URL` required in production via Zod `.refine()` — app crashes on startup if missing. (2) Added startup log at `info` level showing the JWKS URL and expected issuer so config is visible in Railway logs on every deploy. (3) Added `errorType` to JWT failure logs to distinguish signature/issuer/expiry failures. (4) Added 30s `clockTolerance` to `jwtVerify` as defensive measure.
+**Prevention:** Any env var that silently disables a critical feature (auth, payments, etc.) must be required in production. Use Zod `.refine()` for environment-conditional requirements. Always log the resolved configuration at startup so misconfigurations are visible in deploy logs.
+
+---
+
 ### [Arch] Silent JWT Failure Creates Ownerless Private Plans
 **Date:** 2026-02-24
 **Problem:** The auth plugin catches JWT verification errors at `debug` level (invisible in production where `LOG_LEVEL=info`). When verification fails, `request.user` stays null and route handlers silently create resources without user association. Combined with FE defaulting visibility to `private`, plans become permanently inaccessible — private plan with no `createdByUserId` means `checkPlanAccess()` denies everyone.

@@ -119,6 +119,7 @@ The backend is the **single source of truth** for all enum values (units, status
 - Always read the access token from `supabase.auth.getSession()` right before making BE API calls. Do NOT cache tokens in variables or state — they expire and auto-refresh.
 - Pre-fill owner info from `session.user` (email, `user_metadata.full_name`) when creating plans via `POST /plans/with-owner`.
 - Do NOT make authorization decisions client-side. The BE enforces access via JWT verification. Client-side checks are for UX only (e.g., hiding an "Edit" button), not security.
+- **Plan visibility is gated by auth state in `PlanForm`:** signed-in users see `private` (default) and `invite_only`; not-signed-in users see only `public`. The `useAuth` hook determines auth state.
 - Never log access tokens or refresh tokens to the browser console in production.
 
 ### JWT 401 Retry and Auth Error Modal

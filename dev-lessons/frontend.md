@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Sign-out used window.location.reload() instead of router navigation + cache clear
+**Date:** 2026-02-24
+**Problem:** After sign-out, the app called `window.location.reload()` to reset state. This caused a full page reload — jarring UX, threw away the entire React tree, and re-fetched all static assets. It also bypassed the router, so the user stayed on whatever page they were on (potentially an auth-gated page).
+**Solution:** Replaced `window.location.reload()` with `queryClient.clear()` (removes all React Query cached data from the previous user's session) + `navigate({ to: '/' })` (redirects to home via TanStack Router). The Supabase `onAuthStateChange` listener already clears `user` and `session` state on `SIGNED_OUT`, so all auth-aware components re-render automatically.
+**Prevention:** Never use `window.location.reload()` for state cleanup in an SPA. Use the framework's tools: clear the query cache for data, and use the router for navigation. Hard reloads are only justified when you suspect the app is in a fundamentally broken state (e.g., corrupted service worker).
+
+---
+
 ### [Arch] AuthProvider called /auth/me on every SIGNED_IN event — 8+ redundant 401s on page load
 **Date:** 2026-02-24
 **Problem:** Production console showed 8+ `GET /auth/me 401` errors on every page load. `AuthProvider.onAuthStateChange` called `fetchAuthMe()` on every `SIGNED_IN` event to get the user's email for a toast. Supabase fires `SIGNED_IN` multiple times (session restore, tab focus, auto-refresh), and each call with an expired/missing token triggered the 401 retry cascade in `request()` (original call → 401 → `refreshSession()` → retry → another 401).
