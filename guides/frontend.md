@@ -482,7 +482,15 @@ Every commit triggers:
 4. `npm run test:integ` — integration tests (auth flows, cross-boundary checks)
 5. `npx playwright test` — E2E tests (all 4 browsers, with `VITE_AUTH_MOCK=true`)
 
-Pre-commit runs all browsers for thorough local validation. CI runs Chrome only as the required gate. Ensure all browsers installed: `npx playwright install`.
+### Testing layers summary
+
+| Layer | Browsers | Purpose |
+|-------|----------|---------|
+| Pre-commit (Husky) | All 4 (Chrome, Firefox, Safari, Mobile Safari) | Thorough local validation before push |
+| CI (`ci.yml`, on PR) | Chrome only | Required gate — blocks merge |
+| Deploy (`deploy.yml`, on push to main) | None | Build + deploy only — trusts CI |
+
+Ensure all browsers installed locally: `npx playwright install`.
 
 ## CI/CD (GitHub Actions → Cloudflare Pages)
 
@@ -502,18 +510,15 @@ Single job (Chrome only):
 
 ### `deploy.yml` — runs on push to `main`
 
-Single job (Chrome E2E included as a final gate before deploy):
+Single job (build + deploy only — no tests, CI already validated on the PR):
 
 1. Validate required environment variables
 2. Install dependencies
 3. Fetch OpenAPI spec from backend
-4. Lint
-5. Type check
-6. Unit tests
-7. Integration tests
-8. Install Chromium + run E2E tests (Desktop Chrome only)
-9. Build (with production env vars)
-10. Deploy to Cloudflare Pages
+4. Build (with production env vars)
+5. Deploy to Cloudflare Pages
+
+**Prerequisite:** Branch protection on `main` must require PR + passing CI checks before merge. This ensures no untested code reaches `main`.
 
 ### Testing all browsers / Safari (Linux-WebKit parity)
 
