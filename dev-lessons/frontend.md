@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Public API endpoints need a separate request helper — no auth, no 401 retry
+**Date:** 2026-02-24
+**Problem:** The invite landing page fetches plan data via a public endpoint (`GET /plans/:planId/invite/:inviteToken`). The existing `request()` helper always calls `getAccessToken()` and has a 401 retry cascade, which is wasteful and incorrect for unauthenticated endpoints.
+**Solution:** Added `publicRequest<T>()` in `api.ts` that calls `doFetch()` directly without auth token injection or 401 retry logic. `fetchPlanByInvite()` uses `publicRequest()`. Unit test verifies no `getSession` call is made.
+**Prevention:** For any future public/unauthenticated API endpoints, use `publicRequest()` instead of `request()`. Never send auth headers to endpoints that don't require them.
+
+---
+
 ### [Deps] Google Places autocomplete — use programmatic API, not PlaceAutocompleteElement
 **Date:** 2026-02-24
 **Problem:** `PlaceAutocompleteElement` renders in a closed Shadow DOM — its input is invisible to accessibility tools and browser automation. It also creates its own input element, making it impossible to integrate with an existing `<input>` field in a form. Additionally, `version="weekly"` on `APIProvider` injects global CSS that breaks form input styles (borders, backgrounds, padding stripped from all inputs).
