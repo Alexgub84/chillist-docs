@@ -479,7 +479,8 @@ Every commit triggers:
 1. `npm run typecheck` — fails on TypeScript errors
 2. ESLint + Prettier on staged files (`lint-staged`)
 3. `npm run test:unit` — unit tests in CI mode
-4. `npx playwright test` — E2E tests (all 4 browsers, with `VITE_AUTH_MOCK=true`)
+4. `npm run test:integ` — integration tests (auth flows, cross-boundary checks)
+5. `npx playwright test` — E2E tests (all 4 browsers, with `VITE_AUTH_MOCK=true`)
 
 Pre-commit runs all browsers for thorough local validation. CI runs Chrome only as the required gate. Ensure all browsers installed: `npx playwright install`.
 
