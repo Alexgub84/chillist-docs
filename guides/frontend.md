@@ -328,19 +328,26 @@ When a guest clicks "Sign in to join" or "Create an account" on the invite page:
 
 1. **Store:** `storePendingInvite(planId, inviteToken)` saves to `localStorage('chillist-pending-invite')`
 2. **Navigate:** Guest goes to `/signin?redirect=/plan/:planId` or `/signup?redirect=/plan/:planId`
-3. **Auth completes:** `AuthProvider.onAuthStateChange` fires `SIGNED_IN`
-4. **Auto-claim (fallback):** AuthProvider checks `getPendingInvite()` — if found, calls `claimInvite(planId, inviteToken)` (POST with JWT), then clears localStorage. This is a **fallback** for OAuth flows where browser handles the redirect.
-5. **Redirect:** The `?redirect` param navigates to `/plan/:planId` — the plan is now accessible because the user's `userId` is linked to the participant record
+3. **Auth completes** — two paths:
 
-Files: `src/core/pending-invite.ts` (store/get/clear), `src/core/api.ts` (`claimInvite`), `src/contexts/AuthProvider.tsx` (auto-claim on SIGNED_IN).
+**Email auth (sign-in/sign-up):**
+1. Auth succeeds → `signin.lazy.tsx` / `signup.lazy.tsx` checks `getPendingInvite()`
+2. If found: **awaits** `claimInvite(planId, inviteToken)` (POST with JWT), clears localStorage, invalidates React Query cache
+3. Navigates to `/plan/:planId` — plan is accessible because `userId` is now linked
 
-> **Known bug (issue #109):** The `AuthProvider` claim is fire-and-forget — `signin.lazy.tsx` navigates immediately after auth without awaiting the claim. This race condition means the plan page may fetch data before the user is linked. Fix: await `claimInvite()` in the sign-in/sign-up pages before navigating, and keep the `AuthProvider` claim as an OAuth fallback only.
+**OAuth (Google):**
+1. OAuth `redirectTo` is set to `/invite/:planId/:inviteToken` (the public invite page) instead of `/plan/:planId`
+2. After Google redirect, the invite page loads (works without claim via public API)
+3. `AuthProvider.onAuthStateChange` fires `SIGNED_IN` → checks `getPendingInvite()` → calls `claimInvite()` in background → invalidates query cache on success
+4. User clicks "Go to plan" → by then the claim is complete and the plan is accessible
+
+Files: `src/core/pending-invite.ts` (store/get/clear), `src/core/api.ts` (`claimInvite`), `src/routes/signin.lazy.tsx` / `src/routes/signup.lazy.tsx` (email claim + OAuth redirect), `src/contexts/AuthProvider.tsx` (OAuth fallback claim).
 
 ### Guest continue without signing in
 
-Unauthenticated users on the invite landing page can click "Continue without signing in" to open a preferences modal (adults, kids, food preferences, allergies, notes). On submit, preferences are saved via `PATCH /plans/:planId/invite/:inviteToken/preferences` (public endpoint, no JWT required — the invite token identifies the participant). See `saveGuestPreferences()` in `src/core/api.ts`.
+Unauthenticated users on the invite landing page can click "Continue without signing in" to open a preferences modal (adults, kids, food preferences, allergies, notes). On submit, preferences are saved via `PATCH /plans/:planId/invite/:inviteToken/preferences` (public endpoint, no JWT required — the invite token identifies the participant). See `saveGuestPreferences()` in `src/core/api.ts`. After submit or skip, the modal closes and the guest stays on the invite page.
 
-> **Known bug (issue #109):** On submit or skip, the guest is currently redirected to `/plan/:planId` which requires authentication. This should redirect back to `/invite/:planId/:inviteToken` (the invite page shows full plan details via the public API and works without auth).
+> **Note:** The `PATCH /plans/:planId/invite/:inviteToken/preferences` endpoint is not yet implemented in the production backend — guest preference saves will return 404 until it is added.
 
 ### Public API (invite endpoint)
 

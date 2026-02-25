@@ -14,20 +14,20 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
-### [Bug] Invite claim race condition — claimInvite() not awaited before navigation (OPEN — issue #109)
+### [Bug] Invite claim race condition — claimInvite() not awaited before navigation (FIXED — issue #109)
 **Date:** 2026-02-25
-**Problem:** Guest signs in from invite link → redirected to plan page → "plan not found". The BE returns data correctly; the FE calls `claimInvite()` in `AuthProvider.onAuthStateChange` as fire-and-forget (`.catch(() => {})`), while `signin.lazy.tsx` immediately navigates to `/plan/:planId`. The plan page's `GET /plans/:planId` runs before the claim POST completes, so the user's `userId` is not yet linked to the participant record.
-**Root Cause:** `AuthProvider` calls `claimInvite()` asynchronously without awaiting it. The sign-in/sign-up pages navigate immediately after successful auth, creating a race between the claim API call and the plan fetch.
-**Solution (proposed):** In `signin.lazy.tsx` and `signup.lazy.tsx`, after successful auth, check `getPendingInvite()`. If found, **await** `claimInvite()` before calling `navigate()`. Keep the `AuthProvider` claim as a fallback for OAuth flows. After claim success, invalidate React Query cache.
-**Prevention:** When a flow requires an API call to complete before navigation (linking, claiming, syncing), always await the call in the component that triggers the navigation — never rely on a fire-and-forget side effect in a context/provider.
+**Problem:** Guest signs in from invite link → redirected to plan page → "plan not found" (0 plans). The participant record still has `userId = null` because `claimInvite()` hasn't completed. `GET /plans` only returns plans where the user is the creator, admin, or a linked participant.
+**Root Cause:** `AuthProvider` calls `claimInvite()` as fire-and-forget. The sign-in/sign-up pages navigate immediately after auth, creating a race between the claim POST and the plan fetch.
+**Solution:** Two-path fix: (1) **Email auth:** In `signin.lazy.tsx` and `signup.lazy.tsx`, after successful auth, check `getPendingInvite()` — if found, **await** `claimInvite()`, clear localStorage, invalidate React Query cache, then navigate. (2) **OAuth (Google):** Change the OAuth `redirectTo` to the invite page (`/invite/:planId/:inviteToken`) instead of `/plan/:planId` when a pending invite exists. The invite page works via the public API without the claim being done. `AuthProvider` fires the claim in the background — by the time the user clicks "Go to plan", the claim is complete. `AuthProvider` also invalidates the query cache after successful claim.
+**Prevention:** When a flow requires an API call to complete before navigation (linking, claiming, syncing), always await the call in the component that triggers the navigation — never rely on a fire-and-forget side effect in a context/provider. For OAuth flows where you can't control post-redirect behavior, redirect to a page that works without the pending operation (e.g., the public invite page).
 
 ---
 
-### [Bug] Unauthenticated guest redirected to authenticated route after preferences (OPEN — issue #109)
+### [Bug] Unauthenticated guest redirected to authenticated route after preferences (FIXED — issue #109)
 **Date:** 2026-02-25
 **Problem:** Unauthenticated guest clicks "Continue without signing in" on invite page → fills preferences modal → redirected to `/plan/:planId` → plan not found (401 or empty). The `/plan/:planId` route requires JWT authentication which the guest doesn't have.
-**Root Cause:** `handleGuestPreferences` and `handleSkipPreferences` in `invite.$planId.$inviteToken.lazy.tsx` navigate to `/plan/$planId` instead of back to the invite page.
-**Solution (proposed):** Change both handlers to navigate to `/invite/$planId/$inviteToken` instead of `/plan/$planId`. The invite page already shows the full plan details via the public API and works without authentication.
+**Root Cause:** `handleGuestPreferences` and `handleSkipPreferences` in `invite.$planId.$inviteToken.lazy.tsx` navigate to `/plan/$planId` instead of staying on the invite page.
+**Solution:** Removed the `navigate()` calls from both handlers. After preferences submit or skip, the modal simply closes and the guest stays on the invite page (`/invite/:planId/:inviteToken`) which already shows the full plan details via the public API.
 **Prevention:** When building flows for unauthenticated users, always verify the redirect target is accessible without auth. Authenticated routes (`/plan/:id`, `/plans`) require JWT — unauthenticated guests should stay on public routes (`/invite/:planId/:token`).
 
 ---
