@@ -433,3 +433,19 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 2. Use specific route patterns — when mocking API calls with `page.route()`, use specific URL patterns (e.g., `**/localhost:3333/plans`) to avoid intercepting page navigation
 3. Test final outcomes, not intermediate states — wait for content/errors to appear, not loading spinners
 
+---
+
+## 2026-02-25: Invite flow shipped without integration tests (retro)
+
+**Problem**: The invite claim flow (issue #109) was implemented across multiple sessions but no integration test was written to verify the full chain. Each piece (pending-invite storage, claimInvite API, AuthProvider handler, sign-in/up page logic) passed its own unit test, but the race condition between claim and navigation was invisible without a cross-boundary test.
+
+**Root Cause**: Integration tests were scoped to the auth feature, not the invite feature. When invite logic was added into auth components, the test surface wasn't extended. The dev-lessons entry documented the bug as "proposed fix" rather than requiring a test to close it.
+
+**Solution**: Wrote 24 integration tests covering all invite flows (public access, claim endpoint, email sign-in/up with pending invite, OAuth with pending invite, guest preferences). Added an async side-effect ordering rule to the frontend rules.
+
+**Lessons**:
+1. Every cross-boundary feature (>1 component/layer) must ship with an integration test in the same PR — never defer it
+2. Never log a bug as "proposed fix" without either fixing it with tests or creating a tracked issue
+3. When adding async side effects to auth flows, the integration test must verify ordering (side effect completes BEFORE navigation), not just that both occurred
+4. Fire-and-forget patterns (`.then()` / `.catch()` without await) are red flags for race conditions — if ordering matters, await it and test it
+
