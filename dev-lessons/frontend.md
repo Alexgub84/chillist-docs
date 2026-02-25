@@ -457,3 +457,19 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 3. When adding async side effects to auth flows, the integration test must verify ordering (side effect completes BEFORE navigation), not just that both occurred
 4. Fire-and-forget patterns (`.then()` / `.catch()` without await) are red flags for race conditions — if ordering matters, await it and test it
 
+---
+
+## 2026-02-25: Guest invite flow redesign — use API as source of truth
+
+**Problem**: The original guest invite flow used `localStorage` to track whether a guest had filled preferences. This was fragile — clearing browser data reset state, and there was no way to pre-populate preferences on revisit.
+
+**Root Cause**: The invite API response didn't include the guest's own data (RSVP status, preferences, participant ID). The FE had to rely on client-side state.
+
+**Solution**: Extended the invite API response (`GET /plans/:planId/invite/:inviteToken`) to include `myParticipantId`, `myRsvpStatus`, and `myPreferences`. The FE now uses these fields as single source of truth. RSVP (confirmed/not_sure) was added to the PreferencesForm as a styled radio group. The invite page is RSVP-gated: guests see only plan details until they respond, then items section appears with add/edit capability. An edit button next to the guest's name allows re-opening preferences.
+
+**Lessons**:
+1. Never use `localStorage` as source of truth for server-owned state — always prefer API response data
+2. When adding fields to an API response, update the Zod schema first, then the mock server, then the FE consumers — this order catches type mismatches early
+3. RSVP-gating (showing content progressively) is a better UX than showing everything upfront with a blocking modal
+4. Guest item CRUD should scope permissions server-side (guests can only edit their own items) — enforce in mock server too for realistic testing
+

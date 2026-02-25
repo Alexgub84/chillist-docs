@@ -10,17 +10,19 @@
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Plans CRUD | Done | Full REST API + FE screens |
-| Participants CRUD | Done | Scoped to plans, role-based |
+| Plans CRUD | Done | Full REST API + FE screens. Delete plan UI with owner-only visibility + confirmation modal (issue #29). Admin delete button on plans list with confirmation modal (issue #103). Plans list auth-aware CTA: signed-in users see "Create New Plan" link; unauthenticated users see "Sign In" / "Sign Up" buttons instead. |
+| Participants CRUD | Done | Scoped to plans, role-based. Owner-only participant edit: only the plan owner sees "Edit" buttons on participant preference cards; non-owners and unauthenticated users see a read-only list. RSVP status badges (Pending/Confirmed/Not sure) displayed next to non-owner participants, visible only to the plan owner in both Group Details and Manage Participants modal. |
 | Items CRUD | Done | Equipment/food categories, inline editing |
 | Item status flow | Done | pending → purchased → packed → canceled |
 | Status filtering | Done | Filter items by status on plan screen |
 | Category grouping | Done | Items grouped by equipment/food |
 | SEO & sharing metadata | Done | OG tags, Twitter Card, favicon, web manifest, logo in header |
-| Share link | Done | Invite token per participant, public `GET /plans/:planId/invite/:inviteToken` endpoint |
+| Share link | Done | Invite token per participant, public `GET /plans/:planId/invite/:inviteToken` endpoint. FE: copy/share buttons in Manage Participants modal and Group Details section. Invite landing page at `/invite/:planId/:inviteToken` — read-only plan view with auth-aware CTA: unauthenticated users see "Sign in to join" / "Create an account" linking to `/signin?redirect=/plan/:planId`; authenticated users see "Go to plan" linking directly to `/plan/:planId`. Sign-in and sign-up pages support `?redirect` search param for post-auth navigation. Mock server + E2E tests. Issue #60, #101. **Invite claim flow (issue #109 — fixed):** Email auth awaits `claimInvite()` before navigation. OAuth redirects to invite page (public, works without claim), AuthProvider claims in background. Guest preferences modal stays on invite page (no redirect to auth-gated route). **Remaining:** `PATCH /plans/:planId/invite/:inviteToken/preferences` endpoint not yet implemented in BE (guest preferences save returns 404 in production). |
+| Guest invite flow redesign | Done | Invite API returns `myParticipantId`, `myRsvpStatus`, `myPreferences` (single source of truth, no localStorage). RSVP field (confirmed/not_sure) added to PreferencesForm as styled radio buttons. RSVP-gated flow: unauthenticated guests see plan details only until they respond; after RSVP, items section appears with add/edit capability. Edit button next to guest's name in participants list to re-open preferences. Guest item CRUD via `POST/PATCH /plans/:planId/invite/:inviteToken/items[/:itemId]` — items auto-assigned to guest, guests can only edit their own. Mock server endpoints + FE API helpers implemented. i18n keys added (en + he). |
+| Participant preferences | Done | Preferences modal (adults, kids, food prefs, allergies, notes) after plan creation for owner + edit per participant on plan detail page. Group Details section shows all participants' preferences. |
 | Assignments | Partial | DB table exists (`item_assignments`), API routes not implemented |
 | Weather | Not started | Optional forecast for plan location |
-| Auth | In progress | Phase 1 (invite tokens) done. Phase 2 (BE JWT via JWKS) done. Phase 3 (FE sign-up/sign-in/OAuth + JWT injection) done. Phase 4 (user management schema) done: `guest_profiles`, `user_details`, `plan_invites` tables added; `createdByUserId` on plans, `userId`/`guestProfileId`/`inviteStatus` on participants; Supabase is single PII store. Phase 5 (opportunistic user tracking) done: records userId when JWT present. Phase 6 (profile endpoints + security hardening) done: `GET/PATCH /auth/profile`, `@fastify/rate-limit` (100/min global, 10/min auth), `@fastify/helmet`. Phase 7 (plan ownership + access control) done: JWT-created plans default to `invite_only`, all read routes enforce visibility via `checkPlanAccess()`, `GET /plans` filters by user's plans + public, 29 access control tests (PR #84, v1.8.0). Phase 8 (guest auth plugin, v1.11.0) done: `X-Invite-Token` header auth, `rsvpStatus`/`lastActivityAt` columns, guest permission boundaries. Phase 9 (claim-via-invite, v1.12.0) done: `POST /plans/:planId/claim/:inviteToken` links authenticated user to participant. Phase 10 (invite preferences, v1.13.0) done: `PATCH /plans/:planId/invite/:inviteToken/preferences` lets guests update per-plan preferences via invite link. Google OAuth on sign-in and sign-up. Profile completion page. Owner pre-fill from session. FE issue #92: send JWT on all requests. E2E tests deferred (#67). |
+| Auth | In progress | Phase 1 (invite tokens) done. Phase 2 (BE JWT via JWKS) done. Phase 3 (FE sign-up/sign-in/OAuth + JWT injection) done. Phase 4 (user management schema) done: `guest_profiles`, `user_details`, `plan_invites` tables added; `createdByUserId` on plans, `userId`/`guestProfileId`/`inviteStatus` on participants; Supabase is single PII store. Phase 5 (opportunistic user tracking) done: records userId when JWT present. Phase 6 (profile endpoints + security hardening) done: `GET/PATCH /auth/profile`, `@fastify/rate-limit` (100/min global, 10/min auth), `@fastify/helmet`. Phase 7 (plan ownership + access control) — FE done: JWT sent on all API requests, 401 retry with token refresh, AuthErrorModal for session expiry, 404 handling for access-denied plans, visibility gating by auth state (authed: private/invite_only, unauthed: public only), plans list auth-aware CTA (signed-in: "Create New Plan"; unauthenticated: "Sign In"/"Sign Up"), owner-only participant edit (non-owners see read-only preferences), RSVP status display (owner-only). BE: `unlisted` renamed to `invite_only` in visibility enum. Google OAuth on sign-in and sign-up. Profile completion page. Owner pre-fill from session. E2E tests deferred (#67). |
 | i18n (Hebrew + English) | Done | i18next + react-i18next. All UI text translated. Language toggle in header. RTL support for Hebrew. Language persisted to localStorage. Unit + E2E tests. |
 | Home / Landing page | Done | Hero section with campfire photo, 3-step "How it works" onboarding (Create a plan → Add gear/food → Track together) with mobile app screenshots per language (EN/HE), scroll-reveal animations, auth-aware CTAs. Screenshot script: `npm run screenshots`. |
 
@@ -57,8 +59,7 @@
 ## 2. Core Entities
 
 - **Participant**
-  - `participantId`, `displayName`, `name`, `lastName`, `role` ("owner" | "participant" | "viewer"), optional: `avatarUrl`, `contactEmail`, `contactPhone`
-  - Plan-specific preferences (override user/guest defaults): optional `adultsCount`, `kidsCount`, `foodPreferences`, `allergies`, `notes`
+  - `participantId`, `displayName`, `name`, `lastName`, `role` ("owner" | "participant" | "viewer"), optional: `avatarUrl`, `contactEmail`, `contactPhone`, `adultsCount`, `kidsCount`, `foodPreferences`, `allergies`, `notes`
   - Scoped to a plan via `planId`
   - Timestamps: `createdAt`, `updatedAt`
 - **Plan**
@@ -72,15 +73,10 @@
 - **ItemAssignment** (DB table exists, API routes not yet implemented)
   - `assignmentId`, `planId`, `itemId`, `participantId`, optional: `quantityAssigned`, `notes`, `isConfirmed`
   - Timestamps: `createdAt`, `updatedAt`
-- **UserDetails** (app-specific preferences for registered users)
-  - `userId` (UUID reference to Supabase), `foodPreferences`, `allergies`, `defaultEquipment`
-  - These are the user's **default** preferences. FE pre-fills participant fields from these during onboarding; the user can override per plan.
-- **GuestProfile** (temporary PII for unregistered participants)
-  - `guestId`, `name`, `lastName`, `phone`, optional: `email`, `foodPreferences`, `allergies`, `adultsCount`, `kidsCount`
-  - Same defaults pattern: FE pre-fills, user overrides per plan on the participant record.
 - **User** (managed by Supabase Auth, not stored in our DB)
   - `id` (UUID, from Supabase `auth.users`), `email`, `role` ("authenticated"), `user_metadata` (display name, avatar from Google OAuth)
   - Identity lives in Supabase. BE verifies JWTs via JWKS. FE reads user profile from Supabase session.
+  - No `users`/`profiles` table in our DB yet. Will add when needed (Step 3: Permissions) to link users to plans/participants.
 - **Weather** (not yet implemented)
   - `WeatherBundle` (current + daily forecast) fetched for plan.location; non-blocking.
 
@@ -107,6 +103,8 @@
 ### 4.2 Participants
 - Add/remove participants to a plan.
 - Role: "owner" (full edit), "participant" (update items & self-assign), "viewer" (read-only).
+- Only the plan owner can edit participant preferences (adults, kids, food prefs, allergies, notes). Non-owners and unauthenticated users see a read-only participant list.
+- RSVP status (`pending` | `confirmed` | `not_sure`) is displayed as a badge next to each non-owner participant. Only the plan owner can see RSVP statuses (in Group Details and Manage Participants modal).
 
 ### 4.3 Items
 - Add item (name, category, quantity, unit, notes, status).
@@ -189,8 +187,15 @@ Base URL: `/` (versioning can be added later: `/v1`)
 ## 8. Sharing & Access
 
 - **Share links** (done): Each participant has a unique `inviteToken`. Public `GET /plans/:planId/invite/:inviteToken` returns plan data with PII stripped.
+- **Invite landing page** (done): `/invite/:planId/:inviteToken` — read-only plan preview. Auth-aware CTA: unauthenticated users see "Sign in to join" / "Create an account" linking to `/signin?redirect=/plan/:planId`, plus "Continue without signing in" which opens a preferences modal (adults, kids, food, allergies, notes) — on submit/skip the modal closes and the guest stays on the invite page. Authenticated users see "Go to plan". Sign-in and sign-up pages support `?redirect` search param for post-auth navigation. **Invite claim flow:** clicking sign-in/sign-up from the invite page stores `{ planId, inviteToken }` in localStorage. Email auth: sign-in/sign-up pages await `claimInvite()` before navigating to the plan. OAuth: redirects back to the invite page (public), AuthProvider claims in background. **Remaining BE work:** `PATCH /plans/:planId/invite/:inviteToken/preferences` endpoint not yet implemented (guest preference saves return 404).
 - **Supabase JWT auth** (in progress): FE signs up/in via Supabase directly (email+password or Google OAuth). BE verifies JWTs via JWKS. `GET /auth/me` proves the auth chain works.
-- **Plans remain public** for now. No route-level permission enforcement until Step 3 (Permissions + Privacy).
+- **Auth-gated UI** (done):
+  - **Plans list:** Signed-in users see "Create New Plan" link. Unauthenticated users see "Sign In" / "Sign Up" buttons with a prompt "Sign in to create and manage plans".
+  - **Plan detail — edit plan:** Only the plan owner sees the "Edit Plan" button.
+  - **Plan detail — participant preferences:** Only the plan owner sees "Edit" buttons on participant cards. Non-owners and unauthenticated users see read-only preferences.
+  - **Plan detail — RSVP status:** RSVP status badges are visible only to the plan owner, shown next to non-owner participants.
+  - **Plan detail — admin delete:** Only admin users (detected via `app_metadata.role`) see the delete button.
+  - These checks are UX-only. The BE enforces access control via JWT verification.
 - **Future:** Route-level permissions, plan ownership linked to Supabase user, visibility enforcement (public/invite_only/private).
 
 ---
