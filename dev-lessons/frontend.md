@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [i18n] Zod validation error messages appear in English regardless of active language
+**Date:** 2026-02-25
+**Problem:** In PreferencesForm, Zod validation errors (e.g., "Expected number, received nan", "Number must be greater than or equal to 1") appeared in English even when Hebrew was active. The schema was defined at module level with no custom error messages, so Zod used its English defaults.
+**Solution:** Converted the module-level `preferencesFormSchema` to a factory function `buildPreferencesSchema(t)` that accepts the `t` translation function. Added translated error messages via Zod's `invalid_type_error` and `message` params (e.g., `z.coerce.number({ invalid_type_error: t('validation.adultsCountInvalid') }).min(1, t('validation.adultsCountMin'))`). Defined `PreferencesFormValues` as an explicit type since the schema is now dynamic.
+**Prevention:** When a Zod schema is used with `zodResolver` in a form that supports i18n, never rely on Zod's default English error messages. Use a schema factory function that takes `t` and passes translated messages to every validator that can fail. Define the form values type explicitly rather than inferring from a dynamic schema.
+
+---
+
 ### [Test] Removed "edits item quantity via form" E2E test — unreliable on Mobile Safari
 **Date:** 2026-02-25
 **Problem:** The `edits item quantity via form` E2E test failed consistently on Mobile Safari (WebKit) during pre-commit hooks. After clicking "Update Item" (`force: true`), the Headless UI modal stayed visible and `toBeHidden({ timeout: 10000 })` timed out. Passed on Chrome, Firefox, and Desktop Safari every time. All documented mitigations were already applied. The test only verified a single-field quantity edit — the broader `edits all item fields via modal form` test already covers opening the edit modal, changing fields, submitting, and verifying the modal closes and values update.
