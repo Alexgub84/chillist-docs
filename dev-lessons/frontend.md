@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Test] act(...) warnings — async state updates in tests must be wrapped properly
+**Date:** 2026-02-25
+**Problem:** Unit tests produced ~30 `act(...)` warnings and ~6 Headless UI `getAnimations` polyfill warnings. Four sources: (1) `router.navigate()` triggering async `Transitioner` state updates in TanStack Router, (2) `AuthProvider` calling `getSession()` on mount (Promise resolves outside act), (3) Headless UI Combobox (`Mo` component) updating after `setTimeout`, (4) jsdom missing `Element.prototype.getAnimations` causing Headless UI to polyfill and warn.
+**Solution:** (1) Wrap `router.navigate()` in `act(async () => { ... })`. (2) Wrap `renderHook()` in `act()` or use `waitFor()` for sync assertions after rendering components with async `useEffect`. (3) Wrap `setTimeout` waits in `act()`. (4) Polyfill `getAnimations` in `tests/setup.ts` with `Element.prototype.getAnimations = () => []` — do NOT use `jsdom-testing-mocks` `mockAnimationsApi()` as it breaks TanStack Router rendering.
+**Prevention:** When writing tests that trigger async state updates (navigation, provider mounts with async init, timers), always wrap the triggering code in `act()`. For Headless UI/jsdom gaps, add lightweight polyfills to `tests/setup.ts` — avoid full mock libraries that change DOM behavior beyond what's needed.
+
+---
+
 ### [Arch] Invite claim — guest must link to participant after sign-in via localStorage handoff
 **Date:** 2026-02-24
 **Problem:** Guest opens invite link → signs up → redirected to plan page → "plan not found". The BE only returns plans where the user is the owner, a linked participant (`participants.userId` matches), or the plan is public. A newly signed-up user has `participants.userId = null` — the participant record isn't linked to their Supabase account yet.

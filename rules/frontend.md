@@ -99,6 +99,33 @@ The backend is the **single source of truth** for all enum values (units, status
 - All tests live under `tests/` with sub-folders: `tests/unit/`, `tests/integration/`, `tests/e2e/`
 - Test assertions must verify value **format correctness** (e.g. ISO 8601 dates end with `Z`), not just structural presence
 - **Cross-boundary rule:** When a feature flow involves more than one component/layer (e.g. auth form → context → API → server → UI), unit tests alone are NOT sufficient. You MUST also add an integration or E2E test that verifies the full flow end-to-end. Unit tests prove each piece works alone; integration tests prove they work together. Never use independent hardcoded values across unit tests for data that should be consistent (e.g. the same email appearing in the Header and the toast).
+
+### Unit Tests — Avoiding `act(...)` Warnings
+
+React warns when state updates happen outside of `act()` during tests. These warnings indicate the test isn't properly accounting for async behavior. Follow these rules to prevent them:
+
+1. **Router navigation** — Wrap `router.navigate()` calls in `act()`:
+   ```typescript
+   await act(async () => {
+     router.navigate({ to: '/plans' });
+   });
+   ```
+
+2. **Components with async `useEffect`** (e.g., `AuthProvider` calls `getSession()` on mount) — When a component updates state asynchronously on mount, either:
+   - Use `await waitFor(() => { ... })` after render to let the async update settle before asserting
+   - Wrap `renderHook()` in `act(async () => { ... })` when testing hooks inside such providers
+
+3. **Timers that trigger state updates** — When using `setTimeout` or `new Promise` to wait for component state changes, wrap in `act()`:
+   ```typescript
+   await act(async () => {
+     await new Promise(r => setTimeout(r, 100));
+   });
+   ```
+
+4. **Headless UI animations** — `tests/setup.ts` polyfills `Element.prototype.getAnimations` to prevent Headless UI's own polyfill warnings. Do NOT use `jsdom-testing-mocks` `mockAnimationsApi()` — it breaks TanStack Router rendering in tests.
+
+5. **Global test setup** (`tests/setup.ts`) — When adding a new context or module with side effects at import time, add a global mock to `tests/setup.ts` immediately. Current global mocks: `useLanguage`, `@vis.gl/react-google-maps`, `supabase`, `getAnimations` polyfill.
+
 - **E2E (Playwright):**
   - Use `page.route()` for all API mocking — no external mock server dependency
   - Use the shared fixtures in `tests/e2e/fixtures.ts` (`buildPlan`, `mockPlanRoutes`, etc.) to set up mock data
