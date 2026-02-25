@@ -37,6 +37,22 @@ The **backend** owns the OpenAPI spec. The frontend only **consumes** it.
 - To update the spec, make changes in the backend first, then run `npm run api:sync` to pull + regenerate types
 - If you need a new field or endpoint, it must be implemented in the backend first
 
+### NEVER Build FE Ahead of the BE (CRITICAL)
+
+The FE must **never** contain fields, endpoints, or response shapes that don't exist in the BE OpenAPI spec. This applies to **all** FE layers:
+
+- **Zod schemas** (`src/core/schemas/`) — every field must exist in the OpenAPI response schema. No "future" fields, no "optional just in case" fields.
+- **Mock server** (`api/server.ts`) — response shapes must match the OpenAPI spec exactly. The mock server is a stand-in for the real BE, not a preview of a future BE.
+- **E2E fixtures** (`tests/e2e/fixtures.ts`) — mock responses must match the OpenAPI spec. If the BE doesn't return a field, the fixture must not include it.
+- **Component code** — never destructure, read, or render fields that the BE doesn't return. If a feature needs a field the BE doesn't have, **STOP** and tell the user it requires BE work first.
+
+**When asked to build a feature that needs new BE fields or endpoints:**
+1. **STOP** — do not write any FE code that depends on the missing field/endpoint
+2. Tell the user: "This feature requires BE changes first: [list the fields/endpoints needed]"
+3. Only after the BE ships the change and `npm run api:sync` pulls the updated spec should the FE be updated
+
+**Why this is critical:** When the FE adds fields the BE doesn't return, the mock server masks the problem locally. Everything works in dev and tests. Then the page breaks on production because the real BE response doesn't match the FE schema. This is invisible until a real user hits it.
+
 ### Layer Checklist (update in this order when spec changes)
 
 1. **Frontend Zod schemas** (`src/core/schemas/`) — mirror OpenAPI format constraints (`date-time` → `.datetime()`, `nullable` → `.nullish()`, `integer` → `.int()`, `maxLength` → `.max()`)

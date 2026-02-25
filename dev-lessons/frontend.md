@@ -6,11 +6,12 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
-### [Types] FE Zod schema required fields that the BE doesn't return yet — invite page broken in production
+### [Arch] FE built ahead of BE — added fields/endpoints that don't exist in the OpenAPI spec, broke production
 **Date:** 2026-02-25
-**Problem:** The invite page (`/invite/:planId/:inviteToken`) showed "Invalid or expired invite link" on production. Console showed `ZodError: myParticipantId is Required, myRsvpStatus is Required`. The real BE response only included core plan fields (`planId`, `title`, `status`, `items`, `participants`, etc.) but the FE Zod schema required `myParticipantId` (string) and `myRsvpStatus` (enum) — fields the BE doesn't return yet.
-**Solution:** Made `myParticipantId` and `myRsvpStatus` optional in `invitePlanResponseSchema` (`.optional()` instead of required). Updated the invite page component to resolve `myRsvpStatus` with a default of `'pending'` when the field is absent, preserving existing UX behavior (auth modal shows for guests, items hidden until RSVP).
-**Prevention:** When building FE features ahead of the BE, always make new response fields **optional** in Zod schemas until the BE is confirmed to return them. Required fields in response schemas should only be added after verifying the production BE includes them. This is especially important for the invite endpoint which uses `publicRequest()` with `safeParse` + throw — a single missing required field breaks the entire page.
+**Problem:** The invite page (`/invite/:planId/:inviteToken`) showed "Invalid or expired invite link" on production. Console showed `ZodError: myParticipantId is Required, myRsvpStatus is Required`. The FE Zod schema, mock server, E2E fixtures, and component code all included `myParticipantId`, `myRsvpStatus`, and `myPreferences` — fields that **do not exist** in the BE OpenAPI spec (`def-28` / `InvitePlanResponse`). The mock server returned them, so dev and tests passed. Production broke because the real BE only returns the fields defined in its spec.
+**Root Cause:** The guest invite flow redesign was implemented entirely on the FE without the BE being updated first. The mock server was extended to return the new fields, masking the fact that the real BE doesn't have them. This violated the "BE owns the spec, FE only consumes" rule. The same pattern as the 2026-02-12 OpenAPI Spec Drift incident — FE added fields the BE doesn't have, mock server hid the mismatch, production broke.
+**Solution:** Remove `myParticipantId`, `myRsvpStatus`, `myPreferences` from all FE layers (Zod schema, mock server response, E2E fixtures, component code). Revert the invite page to a read-only plan preview that works with what the BE actually returns. The guest RSVP/item features must wait until the BE implements the required fields and endpoints.
+**Prevention:** NEVER build FE features ahead of the BE. Every field in the FE Zod schema, mock server response, and E2E fixture must exist in the BE OpenAPI spec. If a feature needs new fields or endpoints, STOP and tell the user it requires BE work first. The mock server must mirror the real BE exactly — it is a stand-in, not a preview of a future BE. See rule: "NEVER Build FE Ahead of the BE" in frontend.md.
 
 ---
 
@@ -475,17 +476,17 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
-## 2026-02-25: Guest invite flow redesign — use API as source of truth
+## 2026-02-25: Guest invite flow redesign — built FE ahead of BE (REVERTED)
 
 **Problem**: The original guest invite flow used `localStorage` to track whether a guest had filled preferences. This was fragile — clearing browser data reset state, and there was no way to pre-populate preferences on revisit.
 
-**Root Cause**: The invite API response didn't include the guest's own data (RSVP status, preferences, participant ID). The FE had to rely on client-side state.
+**What was done (WRONG)**: Extended the FE invite schema, mock server, E2E fixtures, and component code to include `myParticipantId`, `myRsvpStatus`, and `myPreferences` — but the real BE was never updated. The mock server masked the mismatch. Production broke because the real BE doesn't return these fields.
 
-**Solution**: Extended the invite API response (`GET /plans/:planId/invite/:inviteToken`) to include `myParticipantId`, `myRsvpStatus`, and `myPreferences`. The FE now uses these fields as single source of truth. RSVP (confirmed/not_sure) was added to the PreferencesForm as a styled radio group. The invite page is RSVP-gated: guests see only plan details until they respond, then items section appears with add/edit capability. An edit button next to the guest's name allows re-opening preferences.
+**What should have been done**: Stopped and told the user that the guest invite flow redesign requires BE work first. The BE must extend the `GET /plans/:planId/invite/:inviteToken` response to include `myParticipantId`, `myRsvpStatus`, and `myPreferences`. Only after the BE ships these changes and `npm run api:sync` pulls the updated spec should the FE be updated.
 
 **Lessons**:
-1. Never use `localStorage` as source of truth for server-owned state — always prefer API response data
-2. When adding fields to an API response, update the Zod schema first, then the mock server, then the FE consumers — this order catches type mismatches early
-3. RSVP-gating (showing content progressively) is a better UX than showing everything upfront with a blocking modal
-4. Guest item CRUD should scope permissions server-side (guests can only edit their own items) — enforce in mock server too for realistic testing
+1. NEVER build FE features that depend on fields/endpoints the BE doesn't have — the mock server hides the mismatch and production breaks
+2. The correct response to "add new fields to an API response" is: the BE must do it first, then `api:sync`, then FE
+3. The UX design (RSVP gating, guest items, preferences edit) is sound, but it must wait for the BE to implement the required fields and endpoints
+4. This is the same class of bug as the 2026-02-12 OpenAPI Spec Drift — FE added what the BE doesn't have
 
