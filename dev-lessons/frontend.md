@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Types] FE Zod schema required fields that the BE doesn't return yet — invite page broken in production
+**Date:** 2026-02-25
+**Problem:** The invite page (`/invite/:planId/:inviteToken`) showed "Invalid or expired invite link" on production. Console showed `ZodError: myParticipantId is Required, myRsvpStatus is Required`. The real BE response only included core plan fields (`planId`, `title`, `status`, `items`, `participants`, etc.) but the FE Zod schema required `myParticipantId` (string) and `myRsvpStatus` (enum) — fields the BE doesn't return yet.
+**Solution:** Made `myParticipantId` and `myRsvpStatus` optional in `invitePlanResponseSchema` (`.optional()` instead of required). Updated the invite page component to resolve `myRsvpStatus` with a default of `'pending'` when the field is absent, preserving existing UX behavior (auth modal shows for guests, items hidden until RSVP).
+**Prevention:** When building FE features ahead of the BE, always make new response fields **optional** in Zod schemas until the BE is confirmed to return them. Required fields in response schemas should only be added after verifying the production BE includes them. This is especially important for the invite endpoint which uses `publicRequest()` with `safeParse` + throw — a single missing required field breaks the entire page.
+
+---
+
 ### [i18n] Zod validation error messages appear in English regardless of active language
 **Date:** 2026-02-25
 **Problem:** In PreferencesForm, Zod validation errors (e.g., "Expected number, received nan", "Number must be greater than or equal to 1") appeared in English even when Hebrew was active. The schema was defined at module level with no custom error messages, so Zod used its English defaults.
