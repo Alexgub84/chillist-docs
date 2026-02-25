@@ -235,9 +235,10 @@ Done:
 Done (continued):
 - ~~Guest auth plugin~~ (Phase 3 Step 1, v1.11.0) — `X-Invite-Token` header auth, `rsvpStatus` + `lastActivityAt` columns, guest permission boundaries, 51 tests
 - ~~Claim-via-invite~~ (Phase 3 Step 3, v1.12.0) — `POST /plans/:planId/claim/:inviteToken` links authenticated user to participant record, pre-fills preferences from `user_details` defaults, 13 tests
+- ~~Invite preferences~~ (v1.13.0) — `PATCH /plans/:planId/invite/:inviteToken/preferences` lets guests update per-plan preferences (displayName, group size, dietary info) via invite link, 8 tests
 
 Current:
-- Guest endpoints (Phase 3 Step 2) — RSVP, preferences, plan view, item interaction via `X-Invite-Token`
+- Remaining guest endpoints (Phase 3 Step 2) — RSVP, plan view, item interaction via `X-Invite-Token`
 
 Future:
 - JWT-based per-plan preferences for signed-up participants

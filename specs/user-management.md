@@ -1,6 +1,6 @@
 # User & Participant Management — Spec
 
-> **Status:** In Progress (Phase 3 — Step 1 done, Step 3 claim endpoint done)
+> **Status:** In Progress (Phase 3 — Step 1 done, Step 3 claim endpoint done, invite preferences endpoint done)
 > **Last updated:** 2026-02-25
 > **Depends on:** Supabase Auth (done), existing plans/participants/items schema
 
@@ -491,8 +491,6 @@ Registered user clicks invite link → FE detects user is logged in
 
 After claiming, the user accesses the plan via their JWT (no invite token needed).
 
-> **Known FE bug (issue #109):** The FE calls `claimInvite()` asynchronously (fire-and-forget) in `AuthProvider` while the sign-in page navigates immediately. This creates a race condition where the plan page fetches data before the claim completes. Fix: await the claim in `signin.lazy.tsx`/`signup.lazy.tsx` before navigation. See dev-lessons for details.
-
 ### 6.6 Authenticated Plan Access (Registered User)
 
 ```
@@ -539,6 +537,7 @@ Registered user opens a plan they're linked to
 |--------|------|------|-------------|--------|
 | PATCH | `/guest/rsvp` | X-Invite-Token | Update RSVP status (pending/confirmed/not_sure) | Step 2 |
 | PATCH | `/guest/preferences` | X-Invite-Token | Update own per-plan preferences | Step 2 |
+| PATCH | `/plans/:planId/invite/:inviteToken/preferences` | Token in URL | Update guest per-plan preferences via invite link | ✅ Done |
 | GET | `/guest/plan` | X-Invite-Token | Get plan data (sanitized, filtered items, guest view) | Step 2 |
 | PATCH | `/guest/items/:itemId` | X-Invite-Token | Edit an item assigned to this guest (all fields) | Step 2 |
 | POST | `/guest/items/:itemId/assign` | X-Invite-Token | Self-assign to an unassigned item | Step 2 |
@@ -661,6 +660,21 @@ Registered user opens a plan they're linked to
 - Action: `UPDATE participants SET userId = jwt.sub WHERE inviteToken = :token`. Pre-fills participant preferences from `user_details` defaults if they exist.
 - Response: full participant object (now shows `userId` set)
 - Errors: 404 (invalid token or plan), 400 (already claimed or user already in plan), 401 (missing/invalid JWT)
+
+**`PATCH /plans/:planId/invite/:inviteToken/preferences`** ✅ (v1.13.0)
+- Auth: Invite token in URL path (no header required, no API key required)
+- URL params: `planId` (UUID), `inviteToken` (string, 64-char hex)
+- Body (all optional — send only fields to update, send null to clear):
+  - `displayName` (string | null, maxLength 255)
+  - `adultsCount` (integer | null, minimum 0)
+  - `kidsCount` (integer | null, minimum 0)
+  - `foodPreferences` (string | null)
+  - `allergies` (string | null)
+  - `notes` (string | null)
+- Validation: Body must have at least one field. Token + planId must match a participant record.
+- Action: Updates the matched participant record with the provided fields.
+- Response: `{ participantId, displayName, role, rsvpStatus, adultsCount, kidsCount, foodPreferences, allergies, notes }` — no PII fields exposed.
+- Errors: 400 (empty body), 404 (invalid token or plan), 500/503 (server/db error)
 
 ---
 
@@ -859,22 +873,7 @@ Each endpoint must:
 - 13 integration tests: happy path, plan list visibility after claim, idempotency, preference pre-fill, preference preservation, auth errors (no JWT, expired JWT, wrong key), invalid token, cross-plan token, already claimed by other, user already in plan, owner self-claim.
 - Added `inviteStatus` to Participant response schema.
 
-**FE claim flow: Partially implemented (issue #109 — two bugs open)**
-
-The FE stores `{ planId, inviteToken }` in localStorage when the guest clicks sign-in/sign-up from the invite page, and `AuthProvider` auto-claims on `SIGNED_IN`. However, two bugs prevent the flow from working end-to-end:
-
-1. **Race condition:** `claimInvite()` is called asynchronously (fire-and-forget) in `AuthProvider` while the sign-in page navigates immediately to `/plan/:planId`. The plan page's `GET /plans/:planId` runs before the claim POST completes, so the user is not yet linked → 404.
-   - **Fix:** Await `claimInvite()` in `signin.lazy.tsx`/`signup.lazy.tsx` before navigation. Keep `AuthProvider` claim as OAuth fallback.
-
-2. **Guest redirect to authenticated route:** Unauthenticated guests using "Continue without signing in" are redirected to `/plan/:planId` (requires JWT) instead of back to the invite page (public).
-   - **Fix:** Redirect to `/invite/:planId/:inviteToken` after guest preferences.
-
-**FE logging: Improved (2026-02-25)**
-
-All FE error paths now include structured console logs with planId, token prefix, endpoint, and error details. See `AuthProvider`, `pending-invite.ts`, `api.ts`, `signin.lazy.tsx`, `signup.lazy.tsx`, `invite.lazy.tsx`.
-
 **Remaining:**
-- Fix the two FE bugs above (issue #109)
 - Endpoint for signed-up participants to update their own per-plan preferences via JWT (same fields as guest preferences, but authenticated via JWT instead of invite token).
 
 #### Step 4: Invite Route Reduction (BREAKING)
