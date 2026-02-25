@@ -375,6 +375,25 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+## 2026-02-25: Strict Zod `.datetime()` Breaks Production Responses
+
+**Problem**: The invite page showed "Invalid or expired invite link" even though the BE returned valid data. The plan was invisible to guests on production.
+
+**Root Cause**: All response Zod schemas used `z.string().datetime()` for date fields. Zod's `.datetime()` requires an exact ISO 8601 format with timezone offset (`Z` or `+HH:MM`). The real BE (PostgreSQL + Fastify) returned dates in a slightly different format that Zod silently rejected, causing `invitePlanResponseSchema.parse()` to throw. React Query caught this as an error, and the component displayed the error state instead of the plan.
+
+**Solution**:
+- Changed all **response** schemas to use `z.string()` for date fields (item, participant, plan, invite schemas).
+- Kept `z.string().datetime()` only in **create/patch** schemas where we validate user input before sending to the BE.
+- Added `safeParse` + `console.error` logging in `fetchPlanByInvite` so schema failures are visible in the console instead of silently swallowed.
+
+**Lessons**:
+1. **Response schemas should be lenient**: We trust the BE to send valid data. Overly strict Zod validation on responses causes silent production failures.
+2. **Input schemas should be strict**: Keep `.datetime()`, `.int()`, etc. on create/patch schemas that validate user input.
+3. **Use `safeParse` + logging** on critical API parsing paths so schema mismatches produce visible console errors instead of opaque "not found" UX.
+4. **This supersedes the "always use `.datetime()`" guidance**: The 2026-02-04 lesson was correct for input validation but wrong for response parsing.
+
+---
+
 ## 2026-02-05: E2E Testing Best Practices
 
 **Problem**: Playwright E2E tests were flaky — checking for "Loading..." state was unreliable because data loads too fast.
