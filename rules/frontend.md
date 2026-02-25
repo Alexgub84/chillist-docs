@@ -85,7 +85,7 @@ The backend is the **single source of truth** for all enum values (units, status
 
 ### Field-Level Checklist
 
-- `format: "date-time"` → `z.string().datetime()` everywhere
+- `format: "date-time"` → `z.string().datetime()` in **create/patch schemas** (input validation); `z.string()` in **response schemas** (BE may return non-strict ISO formats). See dev-lessons 2026-02-25 "Strict Zod .datetime() Breaks Production Responses".
 - `nullable: true` + not required → `.nullish()` in frontend, `.nullable().optional()` in mock server and e2e fixtures
 - `type: "integer"` → `.int()` everywhere
 - `minLength` / `maxLength` → `.min()` / `.max()` everywhere
@@ -140,6 +140,15 @@ React warns when state updates happen outside of `act()` during tests. These war
   - **Testing layers:** Pre-commit (Husky) runs all 4 browsers for thorough local validation. CI (`ci.yml`) runs Chrome only as the required gate (blocks merge). Deploy (`deploy.yml`) runs no tests — build + deploy only, trusts CI. Branch protection on `main` ensures no untested code is deployed
   - **Auth-gated UI tests** must cover 3 states: owner (authenticated + owns plan), non-owner (authenticated + different userId), unauthenticated (no `injectUserSession`). Any E2E test that interacts with auth-gated elements must call `injectUserSession(page)` first
   - **Locator scoping:** When header and main content share identical links (e.g., both have "Sign In"), scope locators to `page.getByRole('main')` to avoid strict mode violations from multiple matches
+
+## Logging and Error Handling
+
+- **Every `catch` block must log the error** with enough context to reproduce the issue: function/module name, relevant IDs (planId, participantId, itemId, endpoint), and the error message. Never use empty `catch {}`.
+- **Log format:** `[Module] What happened — key="value", token="first8…". Error: message`
+- **Log levels:** `console.error` for failures that break functionality; `console.warn` for recoverable issues and fallbacks; `console.info` for important flow events (auth attempts, claims, invite storage); `console.debug` for no-op/skip paths.
+- **Security:** Truncate tokens/secrets to first 8 characters in logs. Never log full JWTs or invite tokens.
+- **Critical API paths** (auth, invite, claim) should log both success and failure so you can trace the full flow in the console.
+- When `toast.error()` is shown to the user, also `console.error()` the full error details (the toast only shows a friendly message, the console log helps debugging).
 
 ## Auth and User Data
 

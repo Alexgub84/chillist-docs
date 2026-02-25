@@ -6,6 +6,32 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Logging must include context — silent catches and vague messages make production debugging impossible
+**Date:** 2026-02-25
+**Problem:** When the invite page failed in production, logs showed only `[invite] Schema validation failed:` with Zod issues — no `planId`, no token, no raw data keys. `AuthProvider.claimInvite()` had a completely silent `.catch(() => {})`. `pending-invite.ts` store/get/clear had empty catch blocks. Multiple `catch` blocks across the codebase swallowed errors with no logging at all (geocoding, clipboard, localStorage, form submissions). This made it extremely hard to trace what happened when users reported bugs.
+**Solution:** Reviewed every `console.log/error/warn`, every `catch` block, and every `toast.error` across the entire FE codebase (15 files). Added structured logs with context at every error boundary: `[Module] What happened — key="value", token="first8chars…". Error: message`. Used `console.error` for failures, `console.warn` for recoverable issues, `console.info` for important flow events (sign-in attempts, claim calls, pending invite storage), `console.debug` for no-op paths.
+**Prevention:** Every `catch` block must log the error with enough context to reproduce the issue: the function name, all relevant IDs (planId, participantId, itemId), the endpoint, and the error message. Never use empty `catch {}` — at minimum log a `console.warn`. For critical paths (auth, invite, API), log both success and failure. Truncate tokens to 8 chars for security. See issue #109.
+
+---
+
+### [Bug] Invite claim race condition — claimInvite() not awaited before navigation (OPEN — issue #109)
+**Date:** 2026-02-25
+**Problem:** Guest signs in from invite link → redirected to plan page → "plan not found". The BE returns data correctly; the FE calls `claimInvite()` in `AuthProvider.onAuthStateChange` as fire-and-forget (`.catch(() => {})`), while `signin.lazy.tsx` immediately navigates to `/plan/:planId`. The plan page's `GET /plans/:planId` runs before the claim POST completes, so the user's `userId` is not yet linked to the participant record.
+**Root Cause:** `AuthProvider` calls `claimInvite()` asynchronously without awaiting it. The sign-in/sign-up pages navigate immediately after successful auth, creating a race between the claim API call and the plan fetch.
+**Solution (proposed):** In `signin.lazy.tsx` and `signup.lazy.tsx`, after successful auth, check `getPendingInvite()`. If found, **await** `claimInvite()` before calling `navigate()`. Keep the `AuthProvider` claim as a fallback for OAuth flows. After claim success, invalidate React Query cache.
+**Prevention:** When a flow requires an API call to complete before navigation (linking, claiming, syncing), always await the call in the component that triggers the navigation — never rely on a fire-and-forget side effect in a context/provider.
+
+---
+
+### [Bug] Unauthenticated guest redirected to authenticated route after preferences (OPEN — issue #109)
+**Date:** 2026-02-25
+**Problem:** Unauthenticated guest clicks "Continue without signing in" on invite page → fills preferences modal → redirected to `/plan/:planId` → plan not found (401 or empty). The `/plan/:planId` route requires JWT authentication which the guest doesn't have.
+**Root Cause:** `handleGuestPreferences` and `handleSkipPreferences` in `invite.$planId.$inviteToken.lazy.tsx` navigate to `/plan/$planId` instead of back to the invite page.
+**Solution (proposed):** Change both handlers to navigate to `/invite/$planId/$inviteToken` instead of `/plan/$planId`. The invite page already shows the full plan details via the public API and works without authentication.
+**Prevention:** When building flows for unauthenticated users, always verify the redirect target is accessible without auth. Authenticated routes (`/plan/:id`, `/plans`) require JWT — unauthenticated guests should stay on public routes (`/invite/:planId/:token`).
+
+---
+
 ### [Test] act(...) warnings — async state updates in tests must be wrapped properly
 **Date:** 2026-02-25
 **Problem:** Unit tests produced ~30 `act(...)` warnings and ~6 Headless UI `getAnimations` polyfill warnings. Four sources: (1) `router.navigate()` triggering async `Transitioner` state updates in TanStack Router, (2) `AuthProvider` calling `getSession()` on mount (Promise resolves outside act), (3) Headless UI Combobox (`Mo` component) updating after `setTimeout`, (4) jsdom missing `Element.prototype.getAnimations` causing Headless UI to polyfill and warn.

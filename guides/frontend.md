@@ -329,14 +329,18 @@ When a guest clicks "Sign in to join" or "Create an account" on the invite page:
 1. **Store:** `storePendingInvite(planId, inviteToken)` saves to `localStorage('chillist-pending-invite')`
 2. **Navigate:** Guest goes to `/signin?redirect=/plan/:planId` or `/signup?redirect=/plan/:planId`
 3. **Auth completes:** `AuthProvider.onAuthStateChange` fires `SIGNED_IN`
-4. **Auto-claim:** AuthProvider checks `getPendingInvite()` — if found, calls `claimInvite(planId, inviteToken)` (POST with JWT), then clears localStorage
+4. **Auto-claim (fallback):** AuthProvider checks `getPendingInvite()` — if found, calls `claimInvite(planId, inviteToken)` (POST with JWT), then clears localStorage. This is a **fallback** for OAuth flows where browser handles the redirect.
 5. **Redirect:** The `?redirect` param navigates to `/plan/:planId` — the plan is now accessible because the user's `userId` is linked to the participant record
 
 Files: `src/core/pending-invite.ts` (store/get/clear), `src/core/api.ts` (`claimInvite`), `src/contexts/AuthProvider.tsx` (auto-claim on SIGNED_IN).
 
+> **Known bug (issue #109):** The `AuthProvider` claim is fire-and-forget — `signin.lazy.tsx` navigates immediately after auth without awaiting the claim. This race condition means the plan page may fetch data before the user is linked. Fix: await `claimInvite()` in the sign-in/sign-up pages before navigating, and keep the `AuthProvider` claim as an OAuth fallback only.
+
 ### Guest continue without signing in
 
-Unauthenticated users on the invite landing page can click "Continue without signing in" to open a preferences modal (adults, kids, food preferences, allergies, notes). On submit, preferences are saved via `PATCH /plans/:planId/invite/:inviteToken/preferences` (public endpoint, no JWT required — the invite token identifies the participant). On submit or skip, the guest is redirected to `/plan/:planId`. See `saveGuestPreferences()` in `src/core/api.ts`.
+Unauthenticated users on the invite landing page can click "Continue without signing in" to open a preferences modal (adults, kids, food preferences, allergies, notes). On submit, preferences are saved via `PATCH /plans/:planId/invite/:inviteToken/preferences` (public endpoint, no JWT required — the invite token identifies the participant). See `saveGuestPreferences()` in `src/core/api.ts`.
+
+> **Known bug (issue #109):** On submit or skip, the guest is currently redirected to `/plan/:planId` which requires authentication. This should redirect back to `/invite/:planId/:inviteToken` (the invite page shows full plan details via the public API and works without auth).
 
 ### Public API (invite endpoint)
 

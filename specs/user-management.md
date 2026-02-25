@@ -491,6 +491,8 @@ Registered user clicks invite link → FE detects user is logged in
 
 After claiming, the user accesses the plan via their JWT (no invite token needed).
 
+> **Known FE bug (issue #109):** The FE calls `claimInvite()` asynchronously (fire-and-forget) in `AuthProvider` while the sign-in page navigates immediately. This creates a race condition where the plan page fetches data before the claim completes. Fix: await the claim in `signin.lazy.tsx`/`signup.lazy.tsx` before navigation. See dev-lessons for details.
+
 ### 6.6 Authenticated Plan Access (Registered User)
 
 ```
@@ -857,7 +859,22 @@ Each endpoint must:
 - 13 integration tests: happy path, plan list visibility after claim, idempotency, preference pre-fill, preference preservation, auth errors (no JWT, expired JWT, wrong key), invalid token, cross-plan token, already claimed by other, user already in plan, owner self-claim.
 - Added `inviteStatus` to Participant response schema.
 
+**FE claim flow: Partially implemented (issue #109 — two bugs open)**
+
+The FE stores `{ planId, inviteToken }` in localStorage when the guest clicks sign-in/sign-up from the invite page, and `AuthProvider` auto-claims on `SIGNED_IN`. However, two bugs prevent the flow from working end-to-end:
+
+1. **Race condition:** `claimInvite()` is called asynchronously (fire-and-forget) in `AuthProvider` while the sign-in page navigates immediately to `/plan/:planId`. The plan page's `GET /plans/:planId` runs before the claim POST completes, so the user is not yet linked → 404.
+   - **Fix:** Await `claimInvite()` in `signin.lazy.tsx`/`signup.lazy.tsx` before navigation. Keep `AuthProvider` claim as OAuth fallback.
+
+2. **Guest redirect to authenticated route:** Unauthenticated guests using "Continue without signing in" are redirected to `/plan/:planId` (requires JWT) instead of back to the invite page (public).
+   - **Fix:** Redirect to `/invite/:planId/:inviteToken` after guest preferences.
+
+**FE logging: Improved (2026-02-25)**
+
+All FE error paths now include structured console logs with planId, token prefix, endpoint, and error details. See `AuthProvider`, `pending-invite.ts`, `api.ts`, `signin.lazy.tsx`, `signup.lazy.tsx`, `invite.lazy.tsx`.
+
 **Remaining:**
+- Fix the two FE bugs above (issue #109)
 - Endpoint for signed-up participants to update their own per-plan preferences via JWT (same fields as guest preferences, but authenticated via JWT instead of invite token).
 
 #### Step 4: Invite Route Reduction (BREAKING)
