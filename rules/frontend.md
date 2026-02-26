@@ -178,6 +178,7 @@ React warns when state updates happen outside of `act()` during tests. These war
 - The Supabase client (`@supabase/supabase-js`) is the source of truth for auth state. Do NOT duplicate session data in separate state stores.
 - Use `supabase.auth.onAuthStateChange()` to react to session changes (login, logout, token refresh). Update app-level auth context from this listener.
 - Always read the access token from `supabase.auth.getSession()` right before making BE API calls. Do NOT cache tokens in variables or state — they expire and auto-refresh.
+- After `supabase.auth.updateUser(...)` profile changes, handle `USER_UPDATED` by calling `supabase.auth.refreshSession()` first, then `POST /auth/sync-profile` with the refreshed JWT. The sync call should be non-blocking (fire-and-forget) and failures should be logged without breaking UX.
 - Pre-fill owner info from `session.user` (email, `user_metadata.full_name`) when creating plans via `POST /plans/with-owner`.
 - Do NOT make authorization decisions client-side. The BE enforces access via JWT verification. Client-side checks are for UX only (e.g., hiding an "Edit" button), not security.
 - **Plan visibility is gated by auth state in `PlanForm`:** signed-in users see `private` (default) and `invite_only`; not-signed-in users see only `public`. The `useAuth` hook determines auth state.
@@ -228,6 +229,19 @@ The app conditionally renders UI elements based on authentication state and plan
 - API enum values (status, visibility, roles, units, categories) must be translated at display time with `t('namespace.${value}')` — never render raw API strings directly
 - Language context: `useLanguage()` hook provides `language` and `setLanguage`. `LanguageProvider` wraps the app in `__root.tsx`
 - Language is persisted to `localStorage('chillist-lang')`
+
+## Changelog (`src/data/changelog.ts`)
+
+Before every push, update the changelog with entries for any **user-visible** changes included in the branch:
+
+- New features, UI changes, new pages/routes, new language support, layout improvements — anything a user would notice.
+- Do **NOT** add entries for: refactors, test-only changes, dependency bumps, docs updates, or purely internal fixes with no visible effect.
+
+Each entry has `date` (YYYY-MM-DD), `title` (short feature name), and `description` (1–2 sentences explaining the change from a user's perspective).
+
+**Newest entries go at the top** of the `changelog` array.
+
+The changelog is displayed on the admin-only `/admin/last-updated` page (English-only, hardcoded strings — no `t()` calls). The page is excluded from tests.
 
 ## Finalization
 

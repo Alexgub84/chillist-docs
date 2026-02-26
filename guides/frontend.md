@@ -68,6 +68,8 @@ npm run dev
 
 > `npm run dev` runs `predev` which fetches the OpenAPI spec from the backend GitHub repo.
 
+**Note:** The "Add as owner" feature (promoting a participant to owner) requires the mock server. The real backend does not yet accept `role: 'owner'` in PATCH /participants. Use `npm run mock:server` to test this locally.
+
 ## Available Scripts
 
 | Script | Description |
@@ -200,6 +202,8 @@ await supabase.auth.updateUser({
 Email changes are handled separately via `updateUser({ email: '...' })` which triggers Supabase's email verification flow — a confirmation link is sent to the new address.
 
 `updateUser` merges into existing metadata (preserves Google's `full_name`, `avatar_url`). For Google users, the form pre-fills first/last name from `full_name`. The email field is pre-filled from `user.email`. The page is skippable — users can go straight to `/plans`.
+
+After `updateUser` succeeds, the frontend refreshes the Supabase session (`supabase.auth.refreshSession()`) and calls `POST /auth/sync-profile` with the refreshed JWT so participant records in existing plans are updated immediately. This call is fire-and-forget and does not block navigation.
 
 ### Session management
 

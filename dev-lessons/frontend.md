@@ -6,6 +6,15 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Config] Add as owner returns 400 when using real backend
+**Date:** 2026-02-26
+**Problem:** "Add as owner" fails with 400 "body/role must be equal to one of the allowed values" when the real backend (chillist-be) is running on localhost:3333.
+**Root Cause:** The real backend's PATCH /participants schema only allows `role: 'participant' | 'viewer'`. It does not support `role: 'owner'` yet. The mock server was extended to accept it for local dev.
+**Solution:** Use `npm run mock:server` for local development when testing the Add as owner feature. For production, the backend must be updated to allow `role: 'owner'` in the participant PATCH body.
+**Prevention:** When a FE feature extends beyond the OpenAPI spec (e.g., new enum values), the mock server can support it for local dev, but production will fail until the BE ships. Document which features require mock vs real backend.
+
+---
+
 ### [Logic] Add owner vs transfer ownership — multiple owners supported
 **Date:** 2026-02-26
 **Problem:** Initial implementation treated "Make owner" as a transfer — demoting the current owner to participant when promoting another. User wanted to add another owner, not replace.
