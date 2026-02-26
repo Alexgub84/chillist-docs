@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] ItemsList component — plan item list grouped by subcategory
+**Date:** 2026-02-26
+**Problem:** Plan detail page, items page, and invite page each had duplicated logic for grouping items by category and rendering CategorySection.
+**Solution:** Created ItemsList component that receives filtered items and renders CategorySection per category. Extended CategorySection with `groupBySubcategory` prop — when true, groups items by subcategory (from taxonomy), shows subcategory headers with item counts, and falls back to "Other" for items without subcategory. Added `groupBySubcategory()` helper in `src/core/utils/items.ts`. ItemsList used in plan.$planId.lazy.tsx, ItemsView, and invite page.
+**Prevention:** Extract repeated item-list rendering into a shared component. Use taxonomy-defined order for subcategory headers (equipment/food subcategories first, "Other" last).
+
+---
+
 ### [Test] E2E admin delete modal — waitForResponse times out on Mobile Safari
 **Date:** 2026-02-26
 **Problem:** `admin can delete a plan via confirmation modal` timed out on Mobile Safari (60s). The test used `Promise.all([page.waitForResponse((r) => r.request().method() === 'DELETE'), page.getByTestId('admin-delete-confirm').click({ force: true })])`. The DELETE response never arrived — likely a race or Mobile WebKit interaction quirk with Headless UI modals.

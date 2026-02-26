@@ -6,7 +6,7 @@
 
 ## Implementation Status
 
-> Last updated: 2026-02-24
+> Last updated: 2026-02-26
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -15,7 +15,7 @@
 | Items CRUD | Done | Equipment/food categories, inline editing, permission-gated edit controls (`canEdit` prop) |
 | Item status flow | Done | pending → purchased → packed → canceled |
 | Status filtering | Done | Filter items by status on plan screen |
-| Category grouping | Done | Items grouped by equipment/food |
+| Category grouping | Done | Items grouped by equipment/food. Subcategory grouping: Category → Subcategory → Items (plan items list, items page, invite page). Items without subcategory go under "Other". |
 | SEO & sharing metadata | Done | OG tags, Twitter Card, favicon, web manifest, logo in header |
 | Share link | Done | Invite token per participant, public `GET /plans/:planId/invite/:inviteToken` endpoint. FE: copy/share buttons in Manage Participants modal and Group Details section. Invite landing page at `/invite/:planId/:inviteToken` — read-only plan view with auth-aware CTA: unauthenticated users see "Sign in to join" / "Create an account" linking to `/signin?redirect=/plan/:planId`; authenticated users are auto-redirected to `/plan/:planId` (invite is claimed automatically). Sign-in and sign-up pages support `?redirect` search param for post-auth navigation. Mock server + E2E tests. Issue #60, #101. **Invite claim flow (issue #109 — fixed):** Email auth awaits `claimInvite()` before navigation. OAuth redirects to `/plan/:planId` directly; AuthProvider claims in background. Invite page auto-claims and redirects authenticated users. Guest preferences modal stays on invite page (no redirect to auth-gated route). **Remaining:** `PATCH /plans/:planId/invite/:inviteToken/preferences` endpoint not yet implemented in BE (guest preferences save returns 404 in production). |
 | Guest invite flow redesign | Done | Invite API returns `myParticipantId`, `myRsvpStatus`, `myPreferences` (single source of truth, no localStorage). RSVP field (confirmed/not_sure) added to PreferencesForm as styled radio buttons. RSVP-gated flow: unauthenticated guests see plan details only until they respond; after RSVP, items section appears with add/edit capability. Edit button next to guest's name in participants list to re-open preferences. Guest item CRUD via `POST/PATCH /plans/:planId/invite/:inviteToken/items[/:itemId]` — items auto-assigned to guest, guests can only edit their own. Mock server endpoints + FE API helpers implemented. i18n keys added (en + he). |
