@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Test] E2E Participant Preferences — Edit button locator; Invite — auth modal blocks Participants click
+**Date:** 2026-02-26
+**Problem:** Two E2E tests failed: (1) `owner can see edit buttons on participant preferences` — Edit buttons were not found; `detailsSection = page.getByText('Group Details').locator('..')` only selected the DisclosureButton, but Edit lives in DisclosurePanel (sibling). (2) `shows plan details for valid invite link` — click on "Participants" timed out because a Headless UI auth modal (`myRsvpStatus: 'pending'`) was covering the page and intercepting pointer events.
+**Solution:** (1) Changed locator to `locator('../..')` so detailsSection is the full Disclosure div containing both button and panel. (2) Added `mockInviteRoute(..., { myRsvpStatus: 'confirmed' })` so the invite page skips the auth modal and shows plan details directly.
+**Prevention:** When asserting on elements inside a Headless UI Disclosure, ensure the locator scope includes the DisclosurePanel (use `../..` from the button text to get the Disclosure container). For invite E2E, use `myRsvpStatus: 'confirmed'` when testing plan details to avoid auth modal blocking interactions.
+
+---
+
 ### [UX] Invite page did not auto-redirect authenticated users to the plan
 **Date:** 2026-02-26
 **Problem:** After signing in from the invite page (especially via Google OAuth), users landed back on the invite page and had to manually click "Go to plan" instead of being redirected directly to `/plan/:planId`. The OAuth flow deliberately redirected to the invite page as a workaround for a claim race condition (issue #109). Same for already-signed-in users opening an invite link.
