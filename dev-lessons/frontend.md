@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Test] Headless UI Dialog invisible to `getByRole('dialog')` — use `data-testid` instead
+**Date:** 2026-02-26
+**Problem:** E2E test `owner can add another participant as owner` failed across all browsers. `await expect(page.getByRole('dialog')).toBeVisible()` reported the dialog as `hidden` even though it was open. Headless UI's `Dialog` + `Transition` renders the dialog element in the DOM during transitions with styles (opacity, transform) that make Playwright consider it hidden for `toBeVisible()` checks.
+**Solution:** Added a `testId` prop to the shared `Modal` component that passes through as `data-testid` on `DialogPanel`. Used `data-testid="add-owner-dialog"` on the transfer ownership modal. Updated the E2E test to use `page.getByTestId('add-owner-dialog')` which targets the visible `DialogPanel` inside the transition, not the outer `Dialog` wrapper.
+**Prevention:** Always use `data-testid` attributes on Headless UI dialog panels for E2E test selectors. Never rely on `getByRole('dialog')` — it matches the outer Dialog element which may be in a transitioning (hidden) state. Add `testId` to Modal when creating new modals, and use `getByTestId` in E2E tests.
+
+---
+
 ### [Config] Add as owner returns 400 when using real backend
 **Date:** 2026-02-26
 **Problem:** "Add as owner" fails with 400 "body/role must be equal to one of the allowed values" when the real backend (chillist-be) is running on localhost:3333.

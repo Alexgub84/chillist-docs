@@ -163,6 +163,7 @@ React warns when state updates happen outside of `act()` during tests. These war
   - **Testing layers:** Pre-push (Husky) runs all 4 browsers for thorough local validation. CI (`ci.yml`) runs Chrome only as the required gate (blocks merge). Deploy (`deploy.yml`) runs no tests — build + deploy only, trusts CI. Branch protection on `main` ensures no untested code is deployed
   - **Auth-gated UI tests** must cover 3 states: owner (authenticated + owns plan), non-owner (authenticated + different userId), unauthenticated (no `injectUserSession`). Any E2E test that interacts with auth-gated elements must call `injectUserSession(page)` first
   - **Locator scoping:** When header and main content share identical links (e.g., both have "Sign In"), scope locators to `page.getByRole('main')` to avoid strict mode violations from multiple matches
+  - **Always use `data-testid` for E2E selectors** — prefer `getByTestId()` over `getByRole()`, `getByText()`, or CSS selectors. Add `data-testid` attributes to all interactive elements and containers that E2E tests need to target. For Headless UI dialogs/modals, always use `data-testid` on the `DialogPanel` (via `Modal`'s `testId` prop) — never use `getByRole('dialog')` because Headless UI transitions make the outer Dialog element appear hidden to Playwright even when the modal is visually open
 
 ## Logging and Error Handling
 
