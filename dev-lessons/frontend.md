@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [UX] Invite page did not auto-redirect authenticated users to the plan
+**Date:** 2026-02-26
+**Problem:** After signing in from the invite page (especially via Google OAuth), users landed back on the invite page and had to manually click "Go to plan" instead of being redirected directly to `/plan/:planId`. The OAuth flow deliberately redirected to the invite page as a workaround for a claim race condition (issue #109). Same for already-signed-in users opening an invite link.
+**Solution:** (1) Added `useEffect` in the invite page that detects authenticated users, calls `claimInvite()` (catches errors for already-claimed), then navigates to `/plan/:planId`. (2) Changed OAuth redirect in `signin.lazy.tsx` and `signup.lazy.tsx` to use the `redirectTo` param (plan page) instead of the invite page. The `AuthProvider.onAuthStateChange` handler still claims the invite in the background as a fallback.
+**Prevention:** When building invite/auth flows, prefer auto-redirect over manual navigation buttons. If an intermediate page exists only as a race-condition safety net, replace it with auto-redirect logic that handles the race internally (claim then navigate).
+
+---
+
 ### [Arch] FE built ahead of BE — added fields/endpoints that don't exist in the OpenAPI spec, broke production
 **Date:** 2026-02-25
 **Problem:** The invite page (`/invite/:planId/:inviteToken`) showed "Invalid or expired invite link" on production. Console showed `ZodError: myParticipantId is Required, myRsvpStatus is Required`. The FE Zod schema, mock server, E2E fixtures, and component code all included `myParticipantId`, `myRsvpStatus`, and `myPreferences` — fields that **do not exist** in the BE OpenAPI spec (`def-28` / `InvitePlanResponse`). The mock server returned them, so dev and tests passed. Production broke because the real BE only returns the fields defined in its spec.

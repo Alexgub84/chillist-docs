@@ -197,7 +197,7 @@ The app conditionally renders UI elements based on authentication state and plan
 **Authentication state** (signed in vs not):
 - Use `const { user } = useAuth()` → `const isAuthenticated = !!user`
 - Example: Plans list shows "Create New Plan" for signed-in users, "Sign In" / "Sign Up" for guests
-- Example: Invite page shows "Go to plan" for signed-in users, "Sign in to join" / "Create an account" for guests
+- Example: Invite page auto-redirects to the plan for signed-in users, shows "Sign in to join" / "Create an account" for guests
 
 **Plan ownership** (owner vs non-owner):
 - Derive from participants: `const owner = plan.participants.find(p => p.role === 'owner')` → `const isOwner = !!user && !!owner?.userId && user.id === owner.userId`

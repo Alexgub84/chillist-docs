@@ -269,7 +269,7 @@ The app gates UI elements based on four levels of user identity. All checks are 
 | Level | How detected | What's visible |
 |-------|-------------|---------------|
 | **Unauthenticated** | `!user` from `useAuth()` | Read-only plan view. Plans list shows "Sign In" / "Sign Up" instead of "Create New Plan". Invite page shows "Sign in to join" / "Create an account". Plan form only allows `public` visibility. No edit/delete buttons anywhere. |
-| **Authenticated (non-owner)** | `user` exists but `user.id !== owner.userId` | Can view plans they have access to. Plans list shows "Create New Plan". Invite page shows "Go to plan". No edit buttons on other owners' plans or participant preferences. No "Edit Plan" button. |
+| **Authenticated (non-owner)** | `user` exists but `user.id !== owner.userId` | Can view plans they have access to. Plans list shows "Create New Plan". Invite page auto-redirects to `/plan/:planId` (claims invite first). No edit buttons on other owners' plans or participant preferences. No "Edit Plan" button. |
 | **Authenticated (owner)** | `user.id === owner.userId` (derived from `plan.participants`) | Full edit access: "Edit Plan" button (opens `EditPlanForm` modal), "Edit" buttons on participant preferences, RSVP and invite status badges visible, manage participants modal with invite link sharing. Plan form allows `private` and `invite_only` visibility. |
 | **Admin** | `isAdmin` from `useAuth()` (reads `app_metadata.role`) | All of the above + red delete buttons on every plan card in the plans list, with a confirmation modal before deletion. |
 
@@ -336,12 +336,15 @@ When a guest clicks "Sign in to join" or "Create an account" on the invite page:
 3. Navigates to `/plan/:planId` — plan is accessible because `userId` is now linked
 
 **OAuth (Google):**
-1. OAuth `redirectTo` is set to `/invite/:planId/:inviteToken` (the public invite page) instead of `/plan/:planId`
-2. After Google redirect, the invite page loads (works without claim via public API)
-3. `AuthProvider.onAuthStateChange` fires `SIGNED_IN` → checks `getPendingInvite()` → calls `claimInvite()` in background → invalidates query cache on success
-4. User clicks "Go to plan" → by then the claim is complete and the plan is accessible
+1. OAuth `redirectTo` is set to `/plan/:planId` (via the `?redirect` search param)
+2. `AuthProvider.onAuthStateChange` fires `SIGNED_IN` → checks `getPendingInvite()` → calls `claimInvite()` in background → invalidates query cache on success
+3. User lands on `/plan/:planId` — by the time the page mounts and fetches, the claim is typically complete
 
-Files: `src/core/pending-invite.ts` (store/get/clear), `src/core/api.ts` (`claimInvite`), `src/routes/signin.lazy.tsx` / `src/routes/signup.lazy.tsx` (email claim + OAuth redirect), `src/contexts/AuthProvider.tsx` (OAuth fallback claim).
+**Already-authenticated user visiting invite link:**
+1. Invite page detects `isAuthenticated` → calls `claimInvite()` automatically
+2. On completion (or error for already-claimed), redirects to `/plan/:planId`
+
+Files: `src/core/pending-invite.ts` (store/get/clear), `src/core/api.ts` (`claimInvite`), `src/routes/signin.lazy.tsx` / `src/routes/signup.lazy.tsx` (email claim + OAuth redirect), `src/contexts/AuthProvider.tsx` (OAuth fallback claim), `src/routes/invite.$planId.$inviteToken.lazy.tsx` (auto-redirect for authenticated users).
 
 ### Guest continue without signing in
 
