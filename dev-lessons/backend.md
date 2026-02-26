@@ -6,6 +6,22 @@ A log of bugs fixed and problems solved in `chillist-be`.
 
 <!-- Add new entries at the top -->
 
+### [Auth] API Key Removal Exposes Routes Protected Only by API Key
+**Date:** 2026-02-26
+**Problem:** Removing the API key from `app.ts` meant that items and participants routes on public plans became fully open — any unauthenticated request could read/write data. The API key had been acting as a blanket gate for these routes, masking the fact that they had no JWT enforcement.
+**Solution:** After removing the API key, added `onRequest` JWT hooks to `itemsRoutes` and `participantsRoutes` (same pattern as `plansRoutes`). Invite routes remain token-based and unaffected. Updated 7 test files (integration + unit + e2e) to provide JWT headers.
+**Prevention:** When removing a global auth mechanism (API key, session cookie, etc.), audit every route group to confirm it has its own auth enforcement. Don't assume individual routes are protected — verify with tests that unauthenticated requests return 401.
+
+---
+
+### [Arch] Hardcoded Enum Values Duplicated Across Schemas and Routes
+**Date:** 2026-02-25
+**Problem:** Unit (`'pcs' | 'kg' | ...`), category (`'equipment' | 'food'`), and item status enum values were hardcoded in 7+ places: DB schema, JSON validation schemas (`item.schema.ts`, `invite.schema.ts`), and route type annotations (`items.route.ts`, `invite.route.ts`). Adding or renaming a value required changing every location — easy to miss one.
+**Solution:** Exported `UNIT_VALUES`, `ITEM_CATEGORY_VALUES`, `ITEM_STATUS_VALUES` arrays and `Unit`, `ItemCategory`, `ItemStatus` types from `db/schema.ts` using Drizzle's `pgEnum.enumValues`. Schemas use `[...UNIT_VALUES]` spreads, routes use the types.
+**Prevention:** Never hardcode enum values outside the DB schema definition. Derive const arrays and TypeScript types from the Drizzle `pgEnum` and import them everywhere. One source of truth for each enum.
+
+---
+
 ### [Config] Missing SUPABASE_URL Silently Disables All JWT Verification
 **Date:** 2026-02-24
 **Problem:** `SUPABASE_URL` was never set on Railway. The env var was `optional()` in Zod validation and the auth plugin silently returned early when it was missing, logging only at `warn` level. The app started successfully with JWT verification completely disabled — every request with a Bearer token got `request.user = null`, causing 401s on all authenticated endpoints. Appeared as "token expires after seconds" but was actually "verification never runs."

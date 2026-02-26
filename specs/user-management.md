@@ -1,14 +1,14 @@
 # User & Participant Management — Spec
 
-> **Status:** In Progress (Phase 3 — Step 1 done, Step 3 claim endpoint done, invite preferences endpoint done)
-> **Last updated:** 2026-02-25
+> **Status:** In Progress (Phase 3 — Step 1 done, Step 2 done, Step 3 claim endpoint done. Phase 7+8 done — JWT enforced on all routes, API key removed)
+> **Last updated:** 2026-02-26
 > **Depends on:** Supabase Auth (done), existing plans/participants/items schema
 
 ---
 
 ## 1. Overview
 
-Add user identity, participant linking, guest access, and access control to Chillist. Currently all plans and participants are public — anyone with an API key can read/write everything. This spec introduces:
+Add user identity, participant linking, guest access, and access control to Chillist. This spec introduces:
 
 - **Registered users** (profiles linked to Supabase Auth)
 - **Guest access via persistent invite token** (no OTP, no session expiry)
@@ -65,31 +65,20 @@ All tables (including new tables) stay in the existing Railway PostgreSQL instan
 - PII protection comes from authorization logic in route handlers, not from which PostgreSQL instance hosts the data
 - No migration effort, no deployment changes, no Supabase DB vendor lock-in
 
-### 2.4 Plan Creation: Open But Fail-Fast on Bad JWT
+### 2.4 Plan Creation: JWT Required
 
-Anyone can create plans without a JWT (plan gets `visibility: public`, `createdByUserId: null`). If a valid JWT is present, the plan gets `visibility: invite_only` (default) and `createdByUserId` set to the user's Supabase UUID.
-
-**Fail-fast rule:** If an `Authorization: Bearer` header IS present but JWT verification fails, the BE returns **401** immediately — it does NOT silently create an ownerless plan. This prevents the FE from getting a 201 success for a plan that will be inaccessible (private plan with no owner = 404 for everyone).
-
-This fail-fast guard applies to all write endpoints: `POST /plans/with-owner`, `PATCH /plans/:planId`, `DELETE /plans/:planId`.
+All plan routes require JWT authentication (enforced via `onRequest` hook since v1.14.1). Plans created by authenticated users default to `visibility: invite_only` with `createdByUserId` set to the user's Supabase UUID.
 
 #### Visibility Rules (enforced on both create and update)
 
 | Auth state | Allowed visibility values | Default (when not sent) |
 |---|---|---|
 | JWT present (signed-in) | `invite_only`, `private` | `invite_only` |
-| No JWT (anonymous) | `public` | `public` |
+| Admin (JWT with admin role) | `public`, `invite_only`, `private` | `invite_only` |
 
-The BE enforces these rules on `POST /plans/with-owner` and `PATCH /plans/:planId`. Sending a disallowed value returns **400** with a descriptive message:
+The BE enforces these rules on `POST /plans` and `PATCH /plans/:planId`. Sending a disallowed value returns **400** with a descriptive message.
 
-| Scenario | HTTP | Error message |
-|---|---|---|
-| Signed-in user sets `public` on create | 400 | `Signed-in users cannot create public plans. Use invite_only or private.` |
-| Anonymous user sets `invite_only` or `private` on create | 400 | `Anonymous users can only create public plans. Sign in to use invite_only or private visibility.` |
-| Signed-in user updates visibility to `public` | 400 | `Signed-in users cannot set visibility to public. Use invite_only or private.` |
-| Anonymous user updates visibility to `invite_only` or `private` | 400 | `Anonymous users can only set visibility to public. Sign in to use invite_only or private.` |
-
-**FE guidance:** The FE does not need to send a `visibility` field — the server applies the correct default. If the FE offers a visibility picker, only show the allowed options based on whether the user is signed in.
+**FE guidance:** The FE does not need to send a `visibility` field — the server applies the correct default. If the FE offers a visibility picker, only show the allowed options based on the user's role.
 
 ### 2.5 PII Stripping: Always on the BE
 
@@ -311,10 +300,8 @@ plans    1 ←──── * items                (existing, via items.plan_id)
 |----------|-----------|-------------------|---------------------|---------------|---------------|----------------|---------------------------|-----------------|------------------------|
 | Admin | JWT (`app_metadata.role = 'admin'`) | All plans, all items (bypasses visibility) | Yes | Yes | All items | N/A | Yes | N/A | Yes |
 | Owner (registered) | JWT | Yes | Yes | Yes | All items | N/A | Yes | N/A | Yes |
-| Owner (unregistered) | API key (legacy) | Yes | Yes | Yes | All items | N/A | No | N/A | Yes |
 | Participant (linked) | JWT | Yes | Yes | Yes | Own assigned only | Yes | Yes | Yes | No |
-| Guest (invite token) | X-Invite-Token | Own assigned + unassigned only | displayName + role only | No | Own assigned only (all fields) | Yes (assign + unassign) | Yes (anytime) | Yes | No |
-| Guest (unverified) | Invite token in URL | Own assigned + unassigned only (PII stripped) | No | No | No | No | No | No | No |
+| Guest (invite token) | Invite token in URL | Own assigned + unassigned only (PII stripped) | displayName + role only | Yes (auto-assigned) | Own assigned only (all fields) | N/A | Yes (anytime) | Yes | No |
 | Anonymous | None | No (401) | No | No | No | No | No | No | No |
 
 ### 5.2 PII Fields (Hidden from Guests)
@@ -332,48 +319,29 @@ The existing invite route (`GET /plans/:planId/invite/:inviteToken`) already imp
 
 ### 5.3 Auth Detection in Route Handlers
 
-Each protected route checks auth in this order:
+Each route checks auth as follows:
 
-1. **JWT present** (`Authorization: Bearer`, `request.user` is set) → registered user flow (look up relationship to plan: owner? linked participant? unrelated?)
-2. **Invite token present** (`X-Invite-Token` header, `request.guestParticipant` is set) → guest flow (validate token against participants, check plan membership)
-3. **Invite token in URL** → landing page / verification flow only (minimal plan info, no full data)
-4. **Neither** → 401 Unauthorized
+1. **Plans, items, participants routes** — `onRequest` hook requires JWT (`Authorization: Bearer`). Returns 401 without valid token. Route handlers use `request.user` for access control.
+2. **Invite routes** (`/plans/:planId/invite/:inviteToken/*`) — Token in URL path. No JWT required. BE validates token against participants table.
+3. **Auth routes** (`/auth/*`) — JWT required (route-level check).
+4. **Health** — Public, no auth.
 
-The API key remains as a legacy fallback during transition and will be deprecated later.
+### 5.4 API Key: Removed (v1.14.1)
 
-### 5.4 API Key: Legacy Auth (Temporary)
+The API key (`x-api-key` header) was a legacy auth mechanism used before JWT was introduced. It has been fully removed:
 
-**What it is:** A single shared secret string stored in the `API_KEY` environment variable on the server. The FE includes it as the `x-api-key` HTTP header on every request. It has no user identity, no expiration, and no per-user distinction — anyone with the key gets full access to everything.
+- `API_KEY` env var removed from `env.ts`, `config.ts`, `.env.example`, and Railway
+- Global `onRequest` API key check removed from `app.ts`
+- `apiKey` option removed from `BuildAppOptions` (test DI)
+- All tests updated to use JWT instead of API key
 
-**Why it exists:** Before JWT was introduced, there was no user authentication. The API key was added as a basic gate so that random bots and strangers couldn't hit the API. It's not real auth — it just proves "this request comes from the legitimate frontend app."
-
-**How it works today:** The `onRequest` hook in `app.ts` checks every request (except exempt routes). A request passes if it has **either** a valid `x-api-key` header **or** a valid JWT. A guest with only `X-Invite-Token` has neither, so they get 401 on protected routes and can only access exempt routes.
-
-**End state (after Phase 7):** Every protected route requires JWT. The API key is removed entirely. The auth model becomes:
+**Current auth model:**
 
 | User type | Auth mechanism | Routes |
 |---|---|---|
-| Signed-in user (owner/participant) | JWT (`Authorization: Bearer`) | All protected routes |
-| Guest | `X-Invite-Token` header | `/guest/*` routes only |
-| Anonymous | None | `/health`, invite landing page only |
-
-**FE prerequisites before API key removal:**
-- Every request from a signed-in user sends `Authorization: Bearer <jwt>`
-- FE handles 401 (redirect to login) and 403 (show "not allowed") gracefully
-- No `x-api-key` header anywhere in FE code
-- All owner actions (create/edit/delete plans, manage participants, manage items) work via JWT
-
-### 5.5 API Key Bypass Rules (Current)
-
-The `onRequest` hook enforces API key or JWT on all routes **except** these prefixes (which handle their own auth):
-
-| Route prefix | Auth mechanism | Reason |
-|---|---|---|
-| `/health` | None | Public health check |
-| `/auth/` | JWT (route-level) | Auth routes validate JWT internally |
-| `/guest/` | `X-Invite-Token` (route-level) | Guest endpoints validate invite token internally |
-| `/invite/` | None / rate-limited | Invite verification endpoints (public, rate-limited) |
-| `/plans/:id/invite/:token` | Token in URL | Existing invite landing page |
+| Signed-in user (owner/participant) | JWT (`Authorization: Bearer`) | All plans, items, participants routes |
+| Guest | Invite token in URL path | `/plans/:planId/invite/:inviteToken/*` routes |
+| Anonymous | None | `/health` only |
 
 ---
 
@@ -514,7 +482,7 @@ Registered user opens a plan they're linked to
 | Signed-in user | `Authorization: Bearer <jwt>` | `supabase.auth.getSession()` → `session.access_token` |
 | Guest (invite token) | `X-Invite-Token: <inviteToken>` | Extracted from the invite link URL |
 | Unverified guest | None (invite token is in the URL path) | From the shared invite link |
-| Legacy (current FE) | `x-api-key: <key>` | Environment variable. Will be deprecated. |
+| ~~Legacy~~ | ~~`x-api-key: <key>`~~ | Removed in v1.14.1. No longer accepted. |
 
 **Error responses — all endpoints use the same shape:**
 
@@ -525,7 +493,7 @@ Registered user opens a plan they're linked to
 | Status | Meaning | FE action |
 |--------|---------|-----------|
 | 400 | Validation error (bad input) | Show message to user |
-| 401 | Not authenticated (missing/invalid/expired token). Also returned on write endpoints (`POST /plans/with-owner`, `PATCH/DELETE /plans/:planId`) when JWT header is present but verification failed — prevents creating broken resources. | Redirect to sign-in, refresh Supabase token, or re-verify |
+| 401 | Not authenticated (missing/invalid/expired JWT). All plans, items, and participants routes require JWT. Invite routes use token in URL. | Redirect to sign-in, refresh Supabase token |
 | 404 | Not found OR not authorized (same response to prevent leaking existence) | Show "not found" screen |
 | 429 | Rate limited | Show "too many requests, try again later" |
 | 500 | Server error | Show generic error |
@@ -567,7 +535,6 @@ Registered user opens a plan they're linked to
 |----------|--------|
 | `GET /health` | Public, no auth |
 | `GET /auth/me` | Already requires JWT |
-| `POST /plans` / `POST /plans/with-owner` | Open without JWT. **If JWT header is present but invalid, returns 401** (fail-fast — prevents ownerless plans). See Section 2.4. |
 
 ### 7.4 New Endpoint Details
 
@@ -662,7 +629,7 @@ Registered user opens a plan they're linked to
 - Errors: 404 (invalid token or plan), 400 (already claimed or user already in plan), 401 (missing/invalid JWT)
 
 **`PATCH /plans/:planId/invite/:inviteToken/preferences`** ✅ (v1.13.0)
-- Auth: Invite token in URL path (no header required, no API key required)
+- Auth: Invite token in URL path (no header required)
 - URL params: `planId` (UUID), `inviteToken` (string, 64-char hex)
 - Body (all optional — send only fields to update, send null to clear):
   - `displayName` (string | null, maxLength 255)
@@ -700,13 +667,13 @@ Internet → Fastify BE (Railway, public) → PostgreSQL (Railway private networ
 |-------|---------|--------|
 | SQL injection | Drizzle ORM parameterized queries | Done |
 | Input validation | Zod schemas on all request bodies | Done |
-| Auth | JWT via Supabase JWKS + API key fallback + X-Invite-Token for guests | Done (being enhanced) |
+| Auth | JWT via Supabase JWKS on all protected routes + invite token for guests | Done (v1.14.1) |
 | CORS | Restricted to `FRONTEND_URL` in production | Done |
 | Credential storage | DB password in Railway env vars only, JWT verified via public keys | Done |
 | Rate limiting | `@fastify/rate-limit` — 100 req/min global, 10 req/min on auth endpoints | Done (Phase 2) |
 | Security headers | `@fastify/helmet` — X-Content-Type-Options, HSTS, X-Frame-Options, etc. | Done (Phase 2) |
 | Request size | Fastify default 1MB body limit | Done (default) |
-| Guest permission boundary | API key hook rejects guest-only requests on protected routes (29 tests) | Done (Phase 3 Step 1) |
+| Guest permission boundary | JWT hooks reject unauthenticated requests on protected routes (354 tests) | Done (v1.14.1) |
 
 ---
 
@@ -754,9 +721,9 @@ Adapted from original spec:
 
 **Goal:** Record Supabase user ID on plans/participants when JWT is present. No enforcement.
 
-- `POST /plans/with-owner` sets `createdByUserId` and owner `userId` from `request.user?.id`
-- No route requires JWT — API key still works for everything
-- If no JWT present, fields remain null
+- `POST /plans` (originally `/plans/with-owner`) sets `createdByUserId` and owner `userId` from `request.user?.id`
+- At time of implementation, no route required JWT — API key worked for everything (API key later removed in Phase 8)
+- If no JWT present, fields remained null
 
 ### Phase 2: Profile Endpoints + Security Hardening ✅
 
@@ -778,7 +745,7 @@ Adapted from original spec:
 
 **Step A — Core access control: Done (PR #84)**
 
-- `POST /plans/with-owner` with JWT defaults `visibility` to `invite_only`
+- `POST /plans` (originally `/plans/with-owner`) with JWT defaults `visibility` to `invite_only`
 - `checkPlanAccess()` utility in `src/utils/plan-access.ts`: checks visibility + user relationship (owner via `createdByUserId`, participant via `participants.userId`)
 - `GET /plans/:planId` enforces access control (returns 404 for unauthorized access to non-public plans — same response as nonexistent plan to prevent information leakage)
 - 17 integration tests: visibility defaults, owner/participant/viewer access, expired JWT, orphaned plans, response shape identity, invite route compatibility
@@ -796,7 +763,7 @@ Adapted from original spec:
 **Step C — JWT fail-fast + logging: Done (PR #84)**
 
 - JWT verification failure log level upgraded from `debug` to `warn` in `src/plugins/auth.ts` — failures now visible in production logs
-- Fail-fast guard on write endpoints (`POST /plans/with-owner`, `PATCH /plans/:planId`, `DELETE /plans/:planId`): if `Authorization: Bearer` header is present but `request.user` is null, return 401 instead of creating broken resources
+- Fail-fast guard on write endpoints (`POST /plans`, `PATCH /plans/:planId`, `DELETE /plans/:planId`): if `Authorization: Bearer` header is present but `request.user` is null, return 401 instead of creating broken resources
 - 5 integration tests: invalid JWT on create/patch/delete returns 401, no JWT creates public plan, valid JWT creates invite_only plan with owner
 
 ### Phase 3: Guest Access via Invite Token 🔄
@@ -824,7 +791,7 @@ Adapted from original spec:
 - `src/types/fastify.d.ts` — Extended `FastifyRequest` with `guestParticipant: GuestParticipant | null`
 
 **Modified files:**
-- `src/app.ts` — Registers `guest-auth` plugin, adds `hasInviteToken` to request logging, bypasses API key check for `/guest/` and `/invite/` prefixes, adds `apiKey` DI option for test isolation
+- `src/app.ts` — Registers `guest-auth` plugin, adds `hasInviteToken` to request logging
 - `src/db/schema.ts` — Added `rsvpStatusEnum`, `rsvpStatus` and `lastActivityAt` columns to participants
 - `src/schemas/participant.schema.ts` — Added `rsvpStatus` and `lastActivityAt` to JSON schema
 
@@ -833,35 +800,32 @@ Adapted from original spec:
 `tests/integration/guest-auth.test.ts` (22 tests):
 - Valid token: `lastActivityAt` updated, selective update, incremental timestamps, correct plan resolution
 - Invalid/missing token: no `lastActivityAt` update for missing header, nonexistent token, empty/short/long/XSS/SQL-injection tokens
-- API key bypass: `/guest/` and `/invite/` routes return 404 not 401
+- Route bypass: `/guest/` and `/invite/` routes return 404 not 401
 - `rsvpStatus`: defaults to 'pending' on creation (both endpoints), included in list/get/patch responses
 - `lastActivityAt`: null on creation, null in list, updated after guest access
 
 `tests/integration/guest-permissions.test.ts` (29 tests):
-- Baseline: owner with API key can access protected routes
+- Baseline: owner with JWT can access protected routes
 - Guest with X-Invite-Token cannot: list plans, create plans, get/update/delete plans, list/create/get/update/delete participants, list/create/update items, access auth endpoints
-- Guest CAN: access invite route, health endpoint, `/guest/` and `/invite/` paths bypass API key
+- Guest CAN: access invite route, health endpoint, `/guest/` and `/invite/` paths (no JWT required)
 - No auth at all: rejected on all protected routes
 
-#### Step 2: Guest Endpoints (next)
+#### Step 2: Guest Endpoints (Done — v1.14.0, issue #98)
 
-**Goal:** Implement all guest interaction endpoints. Each requires `X-Invite-Token` header and checks `request.guestParticipant`.
+**Goal:** Implement guest interaction endpoints via invite token URL.
 
-Endpoints to build:
-- `PATCH /guest/rsvp` — Update RSVP status
-- `PATCH /guest/preferences` — Update per-plan preferences (displayName, adultsCount, kidsCount, foodPreferences, allergies, notes)
-- `GET /guest/plan` — View plan with filtered items (own assigned + unassigned) and sanitized participants (displayName + role + rsvpStatus only)
-- `PATCH /guest/items/:itemId` — Edit own assigned item (all fields)
+**Approach:** Rather than `/guest/*` routes with `X-Invite-Token` header, guest endpoints use the invite token in the URL path (`/plans/:planId/invite/:inviteToken/...`). This aligns with how the FE invite page already works — the token is in the URL, not a header.
+
+**Done:**
+- `GET /plans/:planId/invite/:inviteToken` — Extended response with `myParticipantId`, `myRsvpStatus`, `myPreferences` (identity + RSVP + preferences for the token's participant)
+- `PATCH /plans/:planId/invite/:inviteToken/preferences` — Now accepts `rsvpStatus` (confirmed | not_sure) in request body alongside existing preference fields
+- `POST /plans/:planId/invite/:inviteToken/items` — Create item auto-assigned to the token's participant. Equipment defaults to pcs; food requires unit.
+- `PATCH /plans/:planId/invite/:inviteToken/items/:itemId` — Update an item. Returns 403 if item is not assigned to the token's participant.
+- 26 new integration tests (49 total for invite routes)
+
+**Remaining from original plan (deferred):**
 - `POST /guest/items/:itemId/assign` — Self-assign to unassigned item
 - `POST /guest/items/:itemId/unassign` — Self-unassign from own item
-
-Each endpoint must:
-1. Check `request.guestParticipant` is set (401 if null)
-2. Validate plan membership (item belongs to same plan as participant)
-3. Strip PII from any participant data in responses
-4. Return appropriate error codes (400 validation, 401 auth, 404 not found)
-
-**FE issue:** Generate invite link from token (copy & share). Depends on Step 1 being deployed.
 
 #### Step 3: Claim + Signed-Up Preferences 🔄
 
@@ -898,10 +862,9 @@ Migration plan:
 - Modify `GET /plans/:planId`: check JWT → full data if authorized; 401 if not
 - Modify `GET /plans/:planId/participants`: filter PII based on auth
 - Modify `GET /plans`: return only user's plans (where they're owner or linked participant)
-- Keep API key as legacy fallback (full access) during transition
 - Write integration tests for each access pattern (owner, participant, guest, anonymous)
 
-**Risk:** Medium. Changes existing behavior — routes that were public become restricted. Must keep API key fallback to avoid breaking existing FE until FE is updated.
+**Risk:** Medium. Changes existing behavior — routes that were public become restricted.
 
 ### Phase 7: Edit Permissions (JWT Users)
 
@@ -916,25 +879,23 @@ Migration plan:
 
 **Risk:** Medium. Changes write behavior. Must coordinate with FE to handle 403 responses.
 
-### Phase 8: Remove API Key
+### Phase 8: Remove API Key ✅
+
+**Status:** Done. Version 1.14.1.
 
 **Goal:** Every protected route requires JWT. Remove the API key entirely.
 
-**Prerequisites (all must be true before starting):**
-- FE sends `Authorization: Bearer <jwt>` on every request from a signed-in user
-- FE handles 401 (redirect to login) and 403 ("not allowed") gracefully
-- FE no longer sends `x-api-key` header on any request
-- All Phases 1–7 are deployed and stable in production
+**Done:**
+- Removed `API_KEY` environment variable from Railway, `.env`, `.env.example`
+- Removed `API_KEY` from `env.ts` schema and `config.ts`
+- Removed the global `onRequest` API key check from `app.ts`
+- Added per-route `onRequest` JWT enforcement hooks to `items.route.ts`, `participants.route.ts`, and `plans.route.ts`
+- Removed `apiKey` option from `BuildAppOptions` (test DI)
+- Updated all tests to use JWT instead of `x-api-key` header
+- Removed deprecated `POST /plans` (no owner) and promoted `POST /plans/with-owner` to `POST /plans` (closes #61)
+- Removed `CreatePlanBodyLegacy` schema
 
-**Changes:**
-- Remove `API_KEY` environment variable from Railway and `.env`
-- Remove `API_KEY` from `env.ts` schema and `config.ts`
-- Remove the API key check from the `onRequest` hook in `app.ts` — replace with: if no `request.user` (JWT) and route is not exempt → 401
-- Remove `apiKey` option from `BuildAppOptions` (test DI)
-- Update `guest-permissions.test.ts` — API key tests become JWT tests
-- Update any other tests that rely on `x-api-key` header → switch to JWT
-
-**Risk:** High. This is the final breaking change. Must verify FE is fully migrated first.
+> **Note:** Phase 8 was implemented before Phases 6 and 7 because the FE was already using JWT for all requests. Phases 6 and 7 (response filtering and fine-grained edit permissions) remain pending and will build on the JWT-only auth model.
 
 ---
 
@@ -942,9 +903,9 @@ Migration plan:
 
 | # | Question | Impact | When to Decide |
 |---|----------|--------|----------------|
-| 1 | What happens to unregistered plan owners after auth enforcement? They can't use API key forever. Should they get an owner-specific invite token? Or must they sign up? | Phase 6 | Before Phase 6 |
-| 2 | Should `GET /plans` (list all plans) require auth? Currently returns all plans to anyone. | Phase 6 | Before Phase 6 |
-| 3 | ~~When should the API key be deprecated?~~ **Decided:** Phase 8 (after Phase 7). See Section 5.4 for full plan and FE prerequisites. | Phase 8 | Decided |
+| 1 | ~~What happens to unregistered plan owners after auth enforcement?~~ **Decided:** All plan creation now requires JWT (Phase 8 done). Unregistered owners no longer supported. | Phase 8 | Decided |
+| 2 | Should `GET /plans` (list all plans) require auth? Currently returns all plans to anyone with JWT. | Phase 6 | Before Phase 6 |
+| 3 | ~~When should the API key be deprecated?~~ **Done:** API key removed in Phase 8 (v1.14.1). See Section 5.4. | Phase 8 | Done |
 | 4 | Should a registered user be able to "unclaim" a participant spot? | Phase 3 Step 3 | Before Step 3 |
 | 5 | If a participant is linked to a user, should editing their profile (displayName) auto-update the participant's displayName? Or keep them separate? | Phase 3 Step 3 | Before Step 3 |
 | 6 | ~~Should plan `visibility` field (public/invite_only/private) be enforced now, or deferred?~~ **Decided:** Enforcing now in Phase 2.5. Authenticated plan creation defaults to `invite_only`. | Phase 2.5 | Decided |
@@ -966,11 +927,11 @@ Since all new columns are nullable (or have safe defaults) and all new tables ar
 3. ~~Deploy profile endpoints + security hardening (Phase 2)~~ — Done (PR #81)
 4. ~~Deploy plan ownership + access control (Phase 2.5)~~ — Done (PR #84)
 5. ~~Deploy guest auth plugin + DB migration (Phase 3 Step 1)~~ — Done (v1.11.0)
-6. Deploy guest endpoints (Phase 3 Step 2) — **FE: generate invite link, guest UI**
+6. ~~Deploy guest endpoints (Phase 3 Step 2)~~ — Done (v1.14.0, issue #98). **FE: run `npm run api:sync` to update schemas**
 7. Deploy claim + signed-up preferences (Phase 3 Step 3) — Claim endpoint done (v1.12.0). **FE: claim flow after sign-up.** JWT preferences endpoint remaining.
 8. Deploy invite route reduction (Phase 3 Step 4) — **BREAKING: FE must use /guest/plan first**
-9. Deploy response filtering enhancements (Phase 6) with API key fallback
+9. Deploy response filtering enhancements (Phase 6)
 10. Deploy edit permissions (Phase 7) — FE must handle 403s by this point
-11. **Remove API key entirely (Phase 8)** — FE must be fully migrated to JWT first. Every protected route requires JWT after this. See Section 5.4 for prerequisites.
+11. ~~Remove API key entirely (Phase 8)~~ — Done (v1.14.1). JWT enforced on all routes. Deprecated `POST /plans` removed, `POST /plans/with-owner` promoted to `POST /plans`.
 
-Each step is a separate PR with its own tests. Steps 1-3 have no breaking changes. Step 4 and Phase 8 are breaking and require FE coordination.
+Each step is a separate PR with its own tests.

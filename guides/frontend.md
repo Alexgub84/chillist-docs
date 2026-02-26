@@ -525,6 +525,7 @@ Each item has these fields:
 | `id` | `string` | Stable unique kebab-case identifier (e.g. `sleeping-bag`) |
 | `name` | `string` | Canonical display name (e.g. `Sleeping Bag`) |
 | `category` | `"equipment" \| "food"` | Item category |
+| `subcategory` | `string` | Subcategory from taxonomy (see `src/data/subcategories.ts`). Use `"Other"` only when no taxonomy entry fits. |
 | `unit` | `string` | Default unit (`pcs`, `pack`, `set`, `kg`, `g`, `lb`, `oz`, `l`, `ml`) |
 | `aliases` | `string[]` | Alternative names users might type (plurals, regional variants, brand-as-generic) |
 | `tags` | `string[]` | Intent-based search keywords (not naming variations) |
@@ -535,12 +536,27 @@ Equipment tags: `shelter`, `sleep`, `cooking`, `lighting`, `water`, `hygiene`, `
 
 Food tags: `drink`, `snack`, `breakfast`, `fruit`, `vegetables`, `protein`, `pantry`, `condiments`, `frozen`, `kids`, `baby`, `pets`
 
+### Subcategory (required)
+
+Every item must have a `subcategory` assigned from the controlled vocabulary in `src/data/subcategories.ts`:
+
+- **Equipment:** 21 subcategories (e.g. Venue Setup and Layout, First Aid and Safety, Kids and Baby Gear)
+- **Food:** 30 subcategories (e.g. Fresh Vegetables, Meat and Poultry, Beverages (non-alcoholic))
+- **Other:** Use only when no taxonomy entry fits; avoid when a more specific subcategory exists
+
+**Confirm for each item that subcategory is assigned and fitting.** Run the enrichment script to bulk-assign, then review items in `"Other"` and refine manually or via script patterns.
+
+```bash
+npx tsx scripts/enrich-common-items-with-subcategory.ts
+```
+
 ### How to add or update items
 
-1. Edit `src/data/common-items.json` directly
+1. Edit `src/data/common-items.json` (EN) and `src/data/common-items.he.json` (HE) as needed
 2. Follow these rules:
    - `id`: lowercase the name, replace spaces/punctuation with hyphens, remove leading/trailing hyphens. Must be unique.
    - `category`: only `equipment` or `food`. Non-food supplies (foil, paper plates, plastic cups, disposable cutlery, etc.) are `equipment`, not `food`.
+   - `subcategory`: must exist in `src/data/subcategories.ts` (or `"Other"`). Must fit the item’s purpose; review and adjust as needed.
    - `aliases`: add plurals, common alternative words (Flashlight → Torch), regional variants (Chips → Crisps), brand-as-generic (Hydration Pack → Camelback). Keep short — no full sentences.
    - `tags`: use only the vocabulary above. Tags are for intent-based search, not naming variations. An item can have multiple tags or zero tags.
    - Deduplication: if two items are the same real thing, keep one as canonical and put the other name(s) in `aliases`. Do not have two entries for the same item.
@@ -549,6 +565,7 @@ Food tags: `drink`, `snack`, `breakfast`, `fruit`, `vegetables`, `protein`, `pan
    - No empty strings in `aliases` or `tags`
    - No duplicate aliases within the same item
    - `category` is only `equipment` or `food`
+   - `subcategory` is assigned and exists in taxonomy (run enrichment script or unit test)
    - `unit` is from the allowed list
 
 ### How the app uses it

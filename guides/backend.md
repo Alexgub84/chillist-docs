@@ -211,7 +211,6 @@ NODE_ENV=production
 LOG_LEVEL=info
 DATABASE_URL=<railway-postgres-url>
 FRONTEND_URL=<your-frontend-url>
-API_KEY=<generated-key>
 SUPABASE_URL=<your-supabase-project-url>
 ```
 
@@ -270,17 +269,13 @@ npm run test:run
 
 `@fastify/cors` restricts origins to `FRONTEND_URL` in production. Explicitly allows GET, HEAD, POST, PATCH, DELETE, OPTIONS.
 
-### API Key (legacy fallback)
-
-`onRequest` hook checks `x-api-key` header on non-auth routes. Skips OPTIONS preflight, `/health`, invite routes, and `/auth/*` routes. Will be removed after FE fully migrates to JWT.
-
-### Supabase JWT Auth (current)
+### Supabase JWT Auth
 
 - **Architecture:** FE signs up/in directly with Supabase. BE only verifies JWTs — no Supabase client on the BE.
 - **JWKS verification:** `jose` library fetches public keys from `${SUPABASE_URL}/auth/v1/.well-known/jwks.json` (asymmetric ES256 keys). No secrets stored on the BE.
 - **`request.user`:** Decorated on every request when a valid `Authorization: Bearer <jwt>` header is present. Contains `{ id, email, role }` from JWT claims.
 - **PII separation:** Supabase is the single store for registered user PII (name, email, phone). Railway DB stores only Supabase UUIDs as references — no user PII. `user_details` table holds app-specific preferences (food prefs, equipment). `guest_profiles` table holds temporary PII for unregistered participants.
-- **Protected routes:** `GET /auth/me`, `GET /auth/profile`, `PATCH /auth/profile` require JWT (return 401 without valid token). All other routes still accept API key (legacy fallback).
+- **Protected routes:** All plans, items, and participants routes require JWT (return 401 without valid token). Auth routes (`GET /auth/me`, `GET /auth/profile`, `PATCH /auth/profile`) also require JWT. Invite routes use token-based auth (no JWT needed). `/health` is public.
 - **Rate limiting:** `@fastify/rate-limit` active — 100 req/min global, 10 req/min on `/auth/*` endpoints.
 - **Security headers:** `@fastify/helmet` active — standard HTTP security headers (CSP disabled in dev for Swagger UI).
 - **Auth plugin DI:** Tests inject a fake JWKS via `BuildAppOptions.auth` — no real Supabase calls in integration tests.
@@ -299,9 +294,10 @@ Done:
 
 Done (continued):
 - ~~Guest auth plugin~~ (Phase 3 Step 1, v1.11.0) — `X-Invite-Token` header auth, `rsvpStatus` + `lastActivityAt` columns, guest permission boundaries, 51 tests
-- ~~Claim-via-invite~~ (Phase 3 Step 3, v1.12.0) — `POST /plans/:planId/claim/:inviteToken` links authenticated user to participant record, pre-fills preferences from `user_details` defaults, 13 tests
+- ~~Claim-via-invite~~ (Phase 3 Step 3, v1.12.0) — `POST /plans/:planId/claim/:inviteToken` links authenticated user to participant record, pre-fills preferences from `user_details` defaults, nullifies invite token on claim (link stops working after claim), 13 tests
 - ~~Invite preferences~~ (v1.13.0) — `PATCH /plans/:planId/invite/:inviteToken/preferences` lets guests update per-plan preferences (displayName, group size, dietary info) via invite link, 8 tests
 - ~~Guest invite flow extensions~~ (v1.14.0) — GET invite returns `myParticipantId`, `myRsvpStatus`, `myPreferences`; PATCH preferences accepts `rsvpStatus`; guest item CRUD via `POST/PATCH /plans/:planId/invite/:inviteToken/items[/:itemId]`, 26 new tests (issue #98)
+- ~~JWT enforcement on all routes + API key removal~~ (v1.14.1) — `onRequest` JWT hooks on plans, items, and participants routes. API key removed entirely from env, config, and app hooks. Invite routes remain token-based. 354 tests passing.
 
 Current:
 - JWT-based per-plan preferences for signed-up participants
@@ -310,9 +306,7 @@ Future:
 - JWT-based per-plan preferences for signed-up participants
 - Invite route reduction (Phase 3 Step 4, BREAKING)
 - Response filtering enhancements (Phase 6)
-- JWT enforcement on all routes + edit permissions (Phase 7)
-- FE migration from API key to JWT
-- Remove API key bypass (Phase 8)
+- Edit permissions for linked participants (Phase 7)
 
 ## Cost Estimate
 

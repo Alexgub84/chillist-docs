@@ -14,6 +14,12 @@ Rules specific to the `chillist-fe` repository. Use alongside [common rules](com
 - Every API mutation function (`create*`, `update*`) must validate input with `.parse()` before sending — catch bad data client-side, not on the server
 - If multiple API functions follow the same pattern, audit them all for consistency when fixing one
 
+## Common Items Data (`src/data/common-items.json`)
+
+- Every item must have a `subcategory` assigned from the taxonomy in `src/data/subcategories.ts`.
+- Confirm for each new or edited item that the subcategory is assigned and fitting — avoid `"Other"` when a specific subcategory exists.
+- Run `npx tsx scripts/enrich-common-items-with-subcategory.ts` to bulk-assign; then review and refine items in `"Other"`.
+
 ## Component Architecture
 
 - **Self-contained features get their own component.** When a feature has its own data fetching, loading/error states, or distinct UI (e.g., weather forecast, map, share panel), extract it into a dedicated component. The parent route/page should only pass minimal props (e.g., coordinates, an ID) — not orchestrate the feature's data or state.
