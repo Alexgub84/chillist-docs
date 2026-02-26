@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Logic] Add owner vs transfer ownership — multiple owners supported
+**Date:** 2026-02-26
+**Problem:** Initial implementation treated "Make owner" as a transfer — demoting the current owner to participant when promoting another. User wanted to add another owner, not replace.
+**Solution:** When promoting a participant to owner via PATCH, do not demote the previous owner. Update `isOwner` derivation to use `participants.some(p => p.role === 'owner' && p.userId === user.id)` instead of `participants.find`. Mock server and E2E fixtures updated to support multiple owners.
+**Prevention:** Clarify add vs replace semantics before implementing ownership changes. Multiple owners require `.some()` for permission checks, not `.find()`.
+
+---
+
 ### [Arch] CollapsibleSection — reusable Disclosure pattern
 **Date:** 2026-02-26
 **Problem:** CategorySection, SubcategorySection, ParticipantDetails, and the invite route each duplicated the Headless UI Disclosure pattern (button + chevron + panel).

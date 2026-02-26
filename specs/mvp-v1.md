@@ -104,8 +104,9 @@
 ### 4.2 Participants
 - Add/remove participants to a plan.
 - Role: "owner" (full edit), "participant" (update items & self-assign), "viewer" (read-only).
-- Only the plan owner can edit participant preferences (adults, kids, food prefs, allergies, notes). Non-owners and unauthenticated users see a read-only participant list.
-- RSVP status (`pending` | `confirmed` | `not_sure`) is displayed as a badge next to each non-owner participant. Only the plan owner can see RSVP statuses (in Group Details and Manage Participants modal).
+- Plans can have multiple owners. The current owner can promote another participant to owner via "Make owner" (confirmation modal). Both keep owner privileges.
+- Only plan owners can edit participant preferences (adults, kids, food prefs, allergies, notes). Non-owners and unauthenticated users see a read-only participant list.
+- RSVP status (`pending` | `confirmed` | `not_sure`) is displayed as a badge next to each non-owner participant. Only plan owners can see RSVP statuses (in Group Details and Manage Participants modal).
 
 ### 4.3 Items
 - Add item (name, category, quantity, unit, notes, status).
