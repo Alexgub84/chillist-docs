@@ -34,6 +34,17 @@ Shared workflow rules for both frontend and backend repos.
 2. **Wait for Approval:** Do not implement until reviewed
 3. **One by One:** Implement each function individually — never generate large code blocks unless explicitly asked
 
+## Change → Test → Run → Confirm (Mandatory)
+
+Every code change must follow this sequence before moving on:
+
+1. **Make the change** — edit the source file(s)
+2. **Update tests** — immediately update any tests affected by the change (assertions, locators, mock data, expected values). If the change alters behavior, the tests must reflect the new behavior
+3. **Run the tests** — execute the relevant test suite and verify all updated tests pass
+4. **Confirm** — only after tests pass, report completion to the user
+
+**NEVER** make a code change and present it as done without updating and running the affected tests. A change is not complete until the tests prove it works.
+
 ## Code Standards
 
 - No comments in code (exception: complex "why" logic that is non-obvious)

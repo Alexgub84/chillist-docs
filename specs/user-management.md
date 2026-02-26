@@ -530,7 +530,7 @@ Registered user opens a plan they're linked to
 | `DELETE /items/:itemId` | Check JWT → owner only |
 | `POST /plans/:planId/items` | Check JWT → owner and linked participants can add |
 | `POST /plans/:planId/participants` | Check JWT → owner only |
-| `PATCH /participants/:participantId` | Check JWT → owner only |
+| `PATCH /participants/:participantId` | Check JWT → owner/admin can update any participant; linked participant (`userId` match) can update own record only; others get 403. Request body now accepts `rsvpStatus`. |
 | `DELETE /participants/:participantId` | Check JWT → owner only |
 | `GET /plans` | Check JWT → return only plans where user is owner or linked participant |
 
@@ -672,6 +672,31 @@ Registered user opens a plan they're linked to
 - Action: `UPDATE participants SET userId = jwt.sub WHERE inviteToken = :token`. Pre-fills participant preferences from `user_details` defaults if they exist.
 - Response: full participant object (now shows `userId` set)
 - Errors: 404 (invalid token or plan), 400 (already claimed or user already in plan), 401 (missing/invalid JWT)
+
+**`PATCH /participants/:participantId`** ✅ (updated v1.16.0)
+- Auth: `Authorization: Bearer <jwt>` required
+- URL params: `participantId` (UUID)
+- Body (all optional — send only fields to update):
+  - `name` (string, 1–255 chars)
+  - `lastName` (string, 1–255 chars)
+  - `contactPhone` (string, 1–50 chars)
+  - `displayName` (string | null, max 255 chars)
+  - `role` ("participant" | "viewer") — cannot change owner's role
+  - `avatarUrl` (string | null)
+  - `contactEmail` (string | null, max 255 chars)
+  - `adultsCount` (integer | null, minimum 0)
+  - `kidsCount` (integer | null, minimum 0)
+  - `foodPreferences` (string | null)
+  - `allergies` (string | null)
+  - `notes` (string | null)
+  - `rsvpStatus` ("pending" | "confirmed" | "not_sure")
+- Authorization:
+  - **Admin** → can update any participant
+  - **Plan owner** (`plans.createdByUserId` matches JWT `sub`) → can update any participant in their plan
+  - **Linked participant** (`participants.userId` matches JWT `sub`) → can update only their own record
+  - **Others** → 403
+- Response: full participant object. Non-owner/admin requesters receive `inviteToken: null`.
+- Errors: 400 (empty body, invalid role value, changing owner role, invalid rsvpStatus), 403 (not authorized to edit this participant), 404 (participant not found), 500/503 (server/db error)
 
 **`PATCH /plans/:planId/invite/:inviteToken/preferences`** ✅ (v1.13.0)
 - Auth: Invite token in URL path (no header required)
@@ -884,8 +909,10 @@ Adapted from original spec:
 - 13 integration tests: happy path, plan list visibility after claim, idempotency, preference pre-fill, preference preservation, auth errors (no JWT, expired JWT, wrong key), invalid token, cross-plan token, already claimed by other, user already in plan, owner self-claim.
 - Added `inviteStatus` to Participant response schema.
 
-**Remaining:**
-- Endpoint for signed-up participants to update their own per-plan preferences via JWT (same fields as guest preferences, but authenticated via JWT instead of invite token).
+**JWT-based per-plan preferences: Done (v1.16.0, issue #101)**
+
+- `PATCH /participants/:participantId` — Added `rsvpStatus` to request body. Added authorization: owner/admin can update any participant, linked participants can update only their own record, others get 403. 5 new authorization tests + 4 rsvpStatus tests.
+- This completes the "signed-up participant updates own preferences" flow — linked participants can now set their RSVP and edit their own preferences via the standard participant PATCH endpoint.
 
 #### Step 4: Invite Route Reduction (BREAKING)
 

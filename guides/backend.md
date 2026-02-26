@@ -244,17 +244,22 @@ Three workflow files:
 | `RAILWAY_TOKEN` | Secret | Railway API token |
 | `RAILWAY_SERVICE_ID` | Secret | Railway service identifier |
 
-## Pre-Commit Hooks (Husky)
+## Git Hooks (Husky)
 
-Every commit triggers:
+### Pre-commit (fast — runs on every commit)
+
+1. ESLint + Prettier on staged `.ts` files (`lint-staged`)
+
+### Pre-push (full validation — runs before pushing)
 
 1. `npm run typecheck` — fails on TypeScript errors
-2. ESLint + Prettier on staged `.ts` files (`lint-staged`)
-3. `npm run openapi:generate` + `git add docs/openapi.json` — regenerates and stages the OpenAPI spec so it's always in sync with code
-4. `npm run openapi:validate` — verifies the spec matches
-5. `npm run test:run` — typecheck + lint + tests in CI mode
+2. `npm run lint` — full ESLint check
+3. `npm run openapi:generate` — regenerates the OpenAPI spec
+4. Checks if `docs/openapi.json` changed — if so, blocks push until you commit it
+5. `npm run openapi:validate` — verifies the spec is valid
+6. `npm run test:run` — typecheck + lint + tests in CI mode
 
-### Recommended manual checks before commit
+### Recommended manual checks before push
 
 ```bash
 npm run typecheck
@@ -299,11 +304,10 @@ Done (continued):
 - ~~Guest invite flow extensions~~ (v1.14.0) — GET invite returns `myParticipantId`, `myRsvpStatus`, `myPreferences`; PATCH preferences accepts `rsvpStatus`; guest item CRUD via `POST/PATCH /plans/:planId/invite/:inviteToken/items[/:itemId]`, 26 new tests (issue #98)
 - ~~JWT enforcement on all routes + API key removal~~ (v1.14.1) — `onRequest` JWT hooks on plans, items, and participants routes. API key removed entirely from env, config, and app hooks. Invite routes remain token-based. 354 tests passing.
 
-Current:
-- JWT-based per-plan preferences for signed-up participants
+Done (continued):
+- ~~JWT-based per-plan preferences~~ (v1.16.0, issue #101) — `PATCH /participants/:participantId` accepts `rsvpStatus`, authorization enforced (owner/admin → any participant, linked participant → own record only, others → 403), 9 new tests
 
 Future:
-- JWT-based per-plan preferences for signed-up participants
 - Invite route reduction (Phase 3 Step 4, BREAKING)
 - Response filtering enhancements (Phase 6)
 - Edit permissions for linked participants (Phase 7)
