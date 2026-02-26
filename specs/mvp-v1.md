@@ -14,6 +14,7 @@
 | Participants CRUD | Done | Scoped to plans, role-based. Owner-only participant edit: only the plan owner sees "Edit" buttons on participant preference cards; non-owners and unauthenticated users see a read-only list. RSVP status badges (Pending/Confirmed/Not sure) displayed next to non-owner participants, visible only to the plan owner in both Group Details and Manage Participants modal. |
 | Items CRUD | Done | Equipment/food categories, inline editing, permission-gated edit controls (`canEdit` prop) |
 | Item status flow | Done | pending → purchased → packed → canceled |
+| Bulk assign (subcategory) | Done | Owner: assign any items to any participant. Non-owner: assign only unassigned items to themselves via "Assign all to…" per subcategory. |
 | Status filtering | Done | Filter items by status on plan screen |
 | Category grouping | Done | Items grouped by equipment/food. Subcategory grouping: Category → Subcategory → Items (plan items list, items page, invite page). Items without subcategory go under "Other". **Vegan subcategory** added for plant-based/vegan food items (tofu, tempeh, vegan cheese, veggie burgers, etc.); appears in BulkAddModal and plan item grouping. |
 | SEO & sharing metadata | Done | OG tags, Twitter Card, favicon, web manifest, logo in header |

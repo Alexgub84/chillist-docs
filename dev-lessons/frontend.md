@@ -6,11 +6,19 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
-### [UX] Bulk assign button not visible on production — moved from subcategory header
+### [UX] Bulk assign — every participant can assign all, but only unassigned items
+**Date:** 2026-02-26
+**Problem:** Only the plan owner could use the "Assign all to…" button in subcategories. Non-owners could not bulk-assign items to themselves.
+**Solution:** Pass `onBulkAssign` for all participants (owner and non-owner). Add `restrictToUnassignedOnly` and `selfParticipantId` to BulkAssignButton — when set (non-owner mode), filter items to unassigned only, show only the current participant in the dropdown, and assign only unassigned items without a conflict dialog.
+**Prevention:** When expanding a feature from owner-only to participant-wide, consider permission boundaries (e.g. non-owners can only act on unassigned items).
+
+---
+
+### [UX] Bulk assign button not visible on production — moved below subcategory header
 **Date:** 2026-02-26
 **Problem:** The bulk assign button lived in the subcategory header row as a tiny 7×7 icon next to the chevron. It was low-contrast, hard to tap on mobile, and not visible on production.
-**Solution:** Removed BulkAssignButton from SubcategorySection. Added a single visible "Assign all to…" text+icon button above the items list in ItemsList. The button now assigns all items (not per-subcategory). BulkAssignButton trigger changed from icon-only to a styled text+icon button.
-**Prevention:** Avoid placing critical actions as small icons inside nested Headless UI components (Disclosure + Menu). Prefer prominent buttons above primary content.
+**Solution:** Moved BulkAssignButton from the subcategory header row into the DisclosurePanel content, placed below the subcategory header and above the items. Each subcategory gets its own button that assigns all items in that subcategory. BulkAssignButton trigger changed from icon-only to a styled text+icon button.
+**Prevention:** Avoid placing critical actions as small icons inside nested Headless UI components (Disclosure + Menu). Prefer prominent buttons below section headers, above content.
 
 ---
 
