@@ -498,3 +498,21 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 3. The UX design (RSVP gating, guest items, preferences edit) is sound, but it must wait for the BE to implement the required fields and endpoints
 4. This is the same class of bug as the 2026-02-12 OpenAPI Spec Drift — FE added what the BE doesn't have
 
+---
+
+## 2026-02-26: Item edit permissions — non-owners could edit all items
+
+**Problem**: Non-owner authenticated users and guests could see edit controls (pencil button, inline status/quantity/unit selects, cancel button) on ALL items, not just items assigned to them. The backend would reject unauthorized edits with 403, but the UI showed the controls anyway.
+
+**Root cause**: The edit callbacks (`onEdit`, `onUpdate`) were passed unconditionally from page components through `CategorySection` to `ItemCard`. No per-item permission check existed on the frontend.
+
+**Solution**: Added `canEdit` boolean prop to `ItemCard` — when `false`, hides pencil button, inline edit controls, and cancel button, but keeps self-assign working (via `selfAssignParticipantId` + `onUpdate`). Added `canEditItem` callback prop to `CategorySection` that computes `canEdit` per item. Updated all three consumer pages:
+- `plan.$planId.lazy.tsx`: owner gets full edit; non-owners restricted to `assignedParticipantId === currentParticipant.participantId`
+- `invite.$planId.$inviteToken.lazy.tsx`: guests restricted to `assignedParticipantId === myParticipantId`
+- `items.$planId.lazy.tsx` + `ItemsView.tsx`: same logic via `selfParticipantId` prop
+
+**Lessons**:
+1. Always gate edit UI per item based on user permissions — don't rely on backend 403 alone
+2. Separate self-assign from full-edit: `onUpdate` handles both, so use a `canEdit` flag to distinguish
+3. `ItemCard` already handled falsy `onUpdate`/`onEdit` gracefully — the fix was adding the boolean + propagating it from parents
+
