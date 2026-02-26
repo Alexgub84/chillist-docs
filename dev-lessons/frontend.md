@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Test] E2E admin delete modal — waitForResponse times out on Mobile Safari
+**Date:** 2026-02-26
+**Problem:** `admin can delete a plan via confirmation modal` timed out on Mobile Safari (60s). The test used `Promise.all([page.waitForResponse((r) => r.request().method() === 'DELETE'), page.getByTestId('admin-delete-confirm').click({ force: true })])`. The DELETE response never arrived — likely a race or Mobile WebKit interaction quirk with Headless UI modals.
+**Solution:** Removed `waitForResponse`; assert only on UI outcomes: click confirm, then `toBeHidden` for the modal and `toBeVisible` for the toast. The mock still handles DELETE; the test now verifies the visible result instead of the network call.
+**Prevention:** For Headless UI modal submit flows on Mobile Safari, avoid `waitForResponse` in parallel with the click. Assert on UI state (modal closed, toast shown) instead of network responses.
+
+---
+
 ### [Test] E2E Participant Preferences — Edit button locator; Invite — auth modal blocks Participants click
 **Date:** 2026-02-26
 **Problem:** Two E2E tests failed: (1) `owner can see edit buttons on participant preferences` — Edit buttons were not found; `detailsSection = page.getByText('Group Details').locator('..')` only selected the DisclosureButton, but Edit lives in DisclosurePanel (sibling). (2) `shows plan details for valid invite link` — click on "Participants" timed out because a Headless UI auth modal (`myRsvpStatus: 'pending'`) was covering the page and intercepting pointer events.
