@@ -6,6 +6,22 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [UX] Bulk assign button not visible on production — moved from subcategory header
+**Date:** 2026-02-26
+**Problem:** The bulk assign button lived in the subcategory header row as a tiny 7×7 icon next to the chevron. It was low-contrast, hard to tap on mobile, and not visible on production.
+**Solution:** Removed BulkAssignButton from SubcategorySection. Added a single visible "Assign all to…" text+icon button above the items list in ItemsList. The button now assigns all items (not per-subcategory). BulkAssignButton trigger changed from icon-only to a styled text+icon button.
+**Prevention:** Avoid placing critical actions as small icons inside nested Headless UI components (Disclosure + Menu). Prefer prominent buttons above primary content.
+
+---
+
+### [Auth] Profile update needs token refresh before sync-profile
+**Date:** 2026-02-26
+**Problem:** After `supabase.auth.updateUser(...)`, participant records across plans were not updated immediately because the app did not call backend `POST /auth/sync-profile`.
+**Solution:** In `AuthProvider`, handle `USER_UPDATED` by calling `supabase.auth.refreshSession()` first, then call `POST /auth/sync-profile` with the refreshed JWT (`syncProfile` helper in `api.ts`). Keep it fire-and-forget and log failures without blocking profile update UX.
+**Prevention:** Any flow that depends on updated JWT claims (`user_metadata`) must refresh the Supabase session before calling BE endpoints that read those claims.
+
+---
+
 ### [Arch] ItemsList component — plan item list grouped by subcategory
 **Date:** 2026-02-26
 **Problem:** Plan detail page, items page, and invite page each had duplicated logic for grouping items by category and rendering CategorySection.
