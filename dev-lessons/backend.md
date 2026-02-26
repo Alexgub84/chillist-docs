@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-be`.
 
 <!-- Add new entries at the top -->
 
+### [Logic] Guest Cannot Edit Unassigned Items — Deferred Endpoint Gap
+**Date:** 2026-02-26
+**Problem:** Guests got 403 "You can only edit items assigned to you" when trying to edit unassigned items. The spec designed self-assign as a separate `POST /guest/items/:itemId/assign` endpoint, and the PATCH edit endpoint explicitly rejected unassigned items (`assignedParticipantId !== participantId` treats `null` the same as "assigned to someone else"). But the assign endpoint was deferred, so guests had no way to interact with unassigned items at all.
+**Solution:** Changed the PATCH guard to allow editing when `assignedParticipantId` is `null` (unassigned) OR matches the guest's `participantId`. Items assigned to other participants still get 403. Updated spec sections 3.3, 5.1, 6.3a, and 7.4 to reflect the new behavior.
+**Prevention:** When deferring an endpoint that complements another, check whether deferring it creates a dead-end UX. If endpoint A blocks an action and endpoint B (deferred) is the only way to unblock it, either build both or relax endpoint A's guard.
+
+---
+
 ### [Auth] API Key Removal Exposes Routes Protected Only by API Key
 **Date:** 2026-02-26
 **Problem:** Removing the API key from `app.ts` meant that items and participants routes on public plans became fully open — any unauthenticated request could read/write data. The API key had been acting as a blanket gate for these routes, masking the fact that they had no JWT enforcement.

@@ -154,7 +154,7 @@ Not a database entity. A guest is someone accessing a plan via an invite token w
 - Sees plan details and filtered items (own assigned + unassigned only); only `displayName` and `role` for participants (no full names, phones, or emails)
 - Can confirm RSVP status (pending/confirmed/not_sure)
 - Can update per-plan preferences (displayName, adultsCount, kidsCount, foodPreferences, allergies, notes)
-- Can edit items assigned to them (all fields), self-assign/unassign to unassigned items
+- Can edit items assigned to them or unassigned items (all fields). Editing an unassigned item does not auto-assign it — the guest must explicitly self-assign if desired.
 - Cannot add new items, delete items, or manage participants
 - Must keep using the invite link (no JWT, no session)
 
@@ -301,7 +301,7 @@ plans    1 ←──── * items                (existing, via items.plan_id)
 | Admin | JWT (`app_metadata.role = 'admin'`) | All plans, all items (bypasses visibility) | Yes | Yes | All items | N/A | Yes | N/A | Yes |
 | Owner (registered) | JWT | Yes | Yes | Yes | All items | N/A | Yes | N/A | Yes |
 | Participant (linked) | JWT | Yes | Yes | Yes | Own assigned only | Yes | Yes | Yes | No |
-| Guest (invite token) | Invite token in URL | Own assigned + unassigned only (PII stripped) | displayName + role only | Yes (auto-assigned) | Own assigned only (all fields) | N/A | Yes (anytime) | Yes | No |
+| Guest (invite token) | Invite token in URL | Own assigned + unassigned only (PII stripped) | displayName + role only | Yes (auto-assigned) | Own assigned + unassigned (all fields) | N/A | Yes (anytime) | Yes | No |
 | Anonymous | None | No (401) | No | No | No | No | No | No | No |
 
 ### 5.2 PII Fields (Hidden from Guests)
@@ -404,20 +404,21 @@ Guest with active invite token:
 ### 6.3a Guest Item Interaction
 
 ```
-Guest can edit items assigned to them:
-  → FE calls: PATCH /guest/items/:itemId (X-Invite-Token header)
-  → BE validates: item exists, item is assigned to this guest's participant
+Guest can edit items assigned to them OR unassigned items:
+  → FE calls: PATCH /plans/:planId/invite/:inviteToken/items/:itemId
+  → BE validates: item exists in this plan, item is assigned to this guest's participant OR unassigned
+  → Items assigned to other participants → 403
   → BE updates: all item fields (name, status, quantity, unit, notes)
   → BE returns: updated item
 
 Guest can self-assign to an unassigned item:
-  → FE calls: POST /guest/items/:itemId/assign (X-Invite-Token header)
+  → FE calls: POST /guest/items/:itemId/assign (X-Invite-Token header) [deferred]
   → BE validates: item exists, item has no assignedParticipantId (unassigned)
   → BE updates: SET assignedParticipantId = guest's participantId
   → BE returns: updated item
 
 Guest can self-unassign from an item:
-  → FE calls: POST /guest/items/:itemId/unassign (X-Invite-Token header)
+  → FE calls: POST /guest/items/:itemId/unassign (X-Invite-Token header) [deferred]
   → BE validates: item exists, item is assigned to this guest's participant
   → BE updates: SET assignedParticipantId = null
   → BE returns: updated item
@@ -506,10 +507,14 @@ Registered user opens a plan they're linked to
 | PATCH | `/guest/rsvp` | X-Invite-Token | Update RSVP status (pending/confirmed/not_sure) | Step 2 |
 | PATCH | `/guest/preferences` | X-Invite-Token | Update own per-plan preferences | Step 2 |
 | PATCH | `/plans/:planId/invite/:inviteToken/preferences` | Token in URL | Update guest per-plan preferences via invite link | ✅ Done |
-| GET | `/guest/plan` | X-Invite-Token | Get plan data (sanitized, filtered items, guest view) | Step 2 |
-| PATCH | `/guest/items/:itemId` | X-Invite-Token | Edit an item assigned to this guest (all fields) | Step 2 |
-| POST | `/guest/items/:itemId/assign` | X-Invite-Token | Self-assign to an unassigned item | Step 2 |
-| POST | `/guest/items/:itemId/unassign` | X-Invite-Token | Self-unassign from an item | Step 2 |
+| POST | `/plans/:planId/invite/:inviteToken/items` | Token in URL | Create item auto-assigned to guest | ✅ Done |
+| PATCH | `/plans/:planId/invite/:inviteToken/items/:itemId` | Token in URL | Update an item (own assigned or unassigned) | ✅ Done |
+| POST | `/plans/:planId/invite/:inviteToken/items/bulk` | Token in URL | Bulk create items auto-assigned to guest | ✅ Done |
+| PATCH | `/plans/:planId/invite/:inviteToken/items/bulk` | Token in URL | Bulk update items (own assigned or unassigned) | ✅ Done |
+| GET | `/guest/plan` | X-Invite-Token | Get plan data (sanitized, filtered items, guest view) | Deferred |
+| PATCH | `/guest/items/:itemId` | X-Invite-Token | Edit an item assigned to this guest (all fields) | Superseded by invite URL pattern |
+| POST | `/guest/items/:itemId/assign` | X-Invite-Token | Self-assign to an unassigned item | Deferred (guests can edit unassigned items inline) |
+| POST | `/guest/items/:itemId/unassign` | X-Invite-Token | Self-unassign from an item | Deferred |
 | GET | `/auth/profile` | JWT required | Get current user's profile | ✅ Done |
 | PATCH | `/auth/profile` | JWT required | Update display name, avatar | ✅ Done |
 | POST | `/plans/:planId/claim/:inviteToken` | JWT required | Link authenticated user to participant | ✅ Done |
@@ -567,21 +572,60 @@ Registered user opens a plan they're linked to
   - `participants` — array of **sanitized** participants: `{ participantId, displayName, role, rsvpStatus }` only. No PII.
 - Errors: 401 (invalid invite token)
 
-**`PATCH /guest/items/:itemId`**
-- Auth: `X-Invite-Token` header required
-- URL params: `itemId` (UUID)
+**`PATCH /guest/items/:itemId`** (implemented as `PATCH /plans/:planId/invite/:inviteToken/items/:itemId`)
+- Auth: Invite token in URL path (no header required)
+- URL params: `planId` (UUID), `inviteToken` (string), `itemId` (UUID)
 - Body (all optional — send only fields to update):
   - `name` (string)
   - `category` ("equipment" | "food")
   - `quantity` (integer)
   - `unit` ("pcs" | "kg" | "g" | "lb" | "oz" | "l" | "ml" | "m" | "cm" | "pack" | "set")
   - `status` ("pending" | "purchased" | "packed" | "canceled")
+  - `subcategory` (string | null)
   - `notes` (string | null)
-- Validation: item must exist AND `assignedParticipantId` must match the guest's `participantId`. Cannot edit items assigned to other participants or unassigned items.
+- Validation: item must exist in this plan AND (`assignedParticipantId` is null OR matches the guest's `participantId`). Items assigned to other participants return 403.
 - Response: full updated item object
-- Errors: 404 (item not found or not assigned to this guest), 400 (validation), 401 (invalid invite token)
+- Errors: 403 (item assigned to another participant), 404 (item not found or invalid token), 400 (validation/empty body), 500/503 (server/db error)
 
-**`POST /guest/items/:itemId/assign`**
+**`POST /plans/:planId/invite/:inviteToken/items`** ✅ (v1.14.0)
+- Auth: Invite token in URL path (no header required)
+- URL params: `planId` (UUID), `inviteToken` (string, 64-char hex)
+- Body:
+  - `name` (string, required, 1–255 chars)
+  - `category` ("equipment" | "food", required)
+  - `quantity` (integer, required, minimum 1)
+  - `unit` ("pcs" | "kg" | "g" | "lb" | "oz" | "l" | "ml" | "m" | "cm" | "pack" | "set") — required for food, ignored for equipment (defaults to pcs)
+  - `subcategory` (string | null, optional)
+  - `notes` (string | null, optional)
+- Validation: Token + planId must match a participant. Plan must exist. Food items require `unit`.
+- Action: Creates item with `assignedParticipantId` set to the token's participant. Equipment items auto-default `unit` to `pcs`.
+- Response (201): full item object
+- Errors: 400 (food without unit), 404 (invalid token or plan), 500/503 (server/db error)
+
+**`POST /plans/:planId/invite/:inviteToken/items/bulk`** ✅
+- Auth: Invite token in URL path (no header required)
+- URL params: `planId` (UUID), `inviteToken` (string, 64-char hex)
+- Body: `{ items: Array<CreateInviteItemBody> }` — array of items (minItems: 1), each with the same fields as the single create endpoint
+- Validation: Each item validated independently. Food items without `unit` are reported as errors; valid items are still created.
+- Action: Creates all valid items with `assignedParticipantId` set to the token's participant. Equipment defaults to `pcs`.
+- Response (200): `{ items: Item[], errors: [] }` — all succeeded
+- Response (207): `{ items: Item[], errors: Array<{ name, message }> }` — partial success (some items created, some failed validation)
+- Errors: 400 (empty items array), 404 (invalid token or plan), 500/503 (server/db error)
+
+**`PATCH /plans/:planId/invite/:inviteToken/items/bulk`** ✅
+- Auth: Invite token in URL path (no header required)
+- URL params: `planId` (UUID), `inviteToken` (string, 64-char hex)
+- Body: `{ items: Array<{ itemId: UUID, ...updateFields }> }` — array of update entries (minItems: 1). `itemId` is required; all other fields are optional (same as single update).
+- Validation: Each entry validated independently:
+  - Item must exist in this plan (else error: "Item not found")
+  - Entry must have at least one field besides `itemId` (else error: "No fields to update")
+  - Item must be assigned to this guest's participant OR unassigned (else error: "You can only edit items assigned to you")
+- Action: Updates all valid items. Items that fail validation are skipped and reported in errors.
+- Response (200): `{ items: Item[], errors: [] }` — all succeeded
+- Response (207): `{ items: Item[], errors: Array<{ name, message }> }` — partial success
+- Errors: 400 (empty items array), 404 (invalid token or plan), 500/503 (server/db error)
+
+**`POST /guest/items/:itemId/assign`** [deferred]
 - Auth: `X-Invite-Token` header required
 - URL params: `itemId` (UUID)
 - Body: none
@@ -589,8 +633,9 @@ Registered user opens a plan they're linked to
 - Action: `SET assignedParticipantId = guest's participantId`
 - Response: full updated item object (now shows `assignedParticipantId` set)
 - Errors: 404 (item not found), 400 (item already assigned to someone), 401 (invalid invite token)
+- Note: Lower priority — guests can already edit unassigned items via the PATCH endpoint
 
-**`POST /guest/items/:itemId/unassign`**
+**`POST /guest/items/:itemId/unassign`** [deferred]
 - Auth: `X-Invite-Token` header required
 - URL params: `itemId` (UUID)
 - Body: none
@@ -820,11 +865,13 @@ Adapted from original spec:
 - `GET /plans/:planId/invite/:inviteToken` — Extended response with `myParticipantId`, `myRsvpStatus`, `myPreferences` (identity + RSVP + preferences for the token's participant)
 - `PATCH /plans/:planId/invite/:inviteToken/preferences` — Now accepts `rsvpStatus` (confirmed | not_sure) in request body alongside existing preference fields
 - `POST /plans/:planId/invite/:inviteToken/items` — Create item auto-assigned to the token's participant. Equipment defaults to pcs; food requires unit.
-- `PATCH /plans/:planId/invite/:inviteToken/items/:itemId` — Update an item. Returns 403 if item is not assigned to the token's participant.
-- 26 new integration tests (49 total for invite routes)
+- `PATCH /plans/:planId/invite/:inviteToken/items/:itemId` — Update an item. Allows editing items assigned to the token's participant OR unassigned items. Returns 403 if item belongs to a different participant.
+- `POST /plans/:planId/invite/:inviteToken/items/bulk` — Bulk create items auto-assigned to the token's participant. Returns 200 (all ok) or 207 (partial success with errors array).
+- `PATCH /plans/:planId/invite/:inviteToken/items/bulk` — Bulk update items. Same permission logic as single update (own assigned + unassigned). Returns 200 or 207.
+- 52 integration tests for invite routes
 
 **Remaining from original plan (deferred):**
-- `POST /guest/items/:itemId/assign` — Self-assign to unassigned item
+- `POST /guest/items/:itemId/assign` — Explicit self-assign to unassigned item (lower priority — guests can already edit unassigned items inline)
 - `POST /guest/items/:itemId/unassign` — Self-unassign from own item
 
 #### Step 3: Claim + Signed-Up Preferences 🔄
