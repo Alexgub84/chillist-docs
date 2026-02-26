@@ -22,7 +22,7 @@ Setup, development, and deployment guide for `chillist-fe`.
 - Vitest + React Testing Library (unit)
 - Playwright (E2E)
 - ESLint + Prettier
-- Husky (pre-commit hooks)
+- Husky (pre-push hooks)
 
 ## Setup
 
@@ -593,9 +593,9 @@ No `tailwind.config.js` needed. Customize in `src/index.css`:
 }
 ```
 
-## Pre-Commit Hooks (Husky)
+## Pre-Push Hooks (Husky)
 
-Every commit triggers:
+Every push triggers:
 
 1. `npm run typecheck` — fails on TypeScript errors
 2. ESLint + Prettier on staged files (`lint-staged`)
@@ -607,7 +607,7 @@ Every commit triggers:
 
 | Layer | Browsers | Purpose |
 |-------|----------|---------|
-| Pre-commit (Husky) | All 4 (Chrome, Firefox, Safari, Mobile Safari) | Thorough local validation before push |
+| Pre-push (Husky) | All 4 (Chrome, Firefox, Safari, Mobile Safari) | Thorough local validation before push |
 | CI (`ci.yml`, on PR) | Chrome only | Required gate — blocks merge |
 | Deploy (`deploy.yml`, on push to main) | None | Build + deploy only — trusts CI |
 

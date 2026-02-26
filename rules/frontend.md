@@ -157,10 +157,10 @@ React warns when state updates happen outside of `act()` during tests. These war
   - Don't test loading states — they are transient and flaky with fast API responses
   - Test final outcomes: wait for content or errors to appear, not spinners
   - Use specific URL patterns in `page.route()` (e.g. `**/localhost:3333/plans`) — broad patterns can intercept page navigation
-  - **Pre-commit hook runs all browsers** (Chrome, Firefox, Safari, Mobile Safari) for thorough local validation. CI runs Chrome only as the required gate. To test Linux-WebKit parity, run `npm run e2e:docker`
+  - **Pre-push hook runs all browsers** (Chrome, Firefox, Safari, Mobile Safari) for thorough local validation. CI runs Chrome only as the required gate. To test Linux-WebKit parity, run `npm run e2e:docker`
   - **WebKit form submissions** in Headless UI modals require `click({ force: true })` on submit buttons and `toBeHidden({ timeout: 10000 })` — Linux-WebKit behaves differently from macOS-WebKit
   - **Responsive UI tests** must use Playwright's `isMobile` fixture to handle mobile vs desktop paths (e.g., hamburger menu vs desktop nav). Elements hidden behind responsive breakpoints (`hidden sm:flex`) are invisible on mobile viewports
-  - **Testing layers:** Pre-commit (Husky) runs all 4 browsers for thorough local validation. CI (`ci.yml`) runs Chrome only as the required gate (blocks merge). Deploy (`deploy.yml`) runs no tests — build + deploy only, trusts CI. Branch protection on `main` ensures no untested code is deployed
+  - **Testing layers:** Pre-push (Husky) runs all 4 browsers for thorough local validation. CI (`ci.yml`) runs Chrome only as the required gate (blocks merge). Deploy (`deploy.yml`) runs no tests — build + deploy only, trusts CI. Branch protection on `main` ensures no untested code is deployed
   - **Auth-gated UI tests** must cover 3 states: owner (authenticated + owns plan), non-owner (authenticated + different userId), unauthenticated (no `injectUserSession`). Any E2E test that interacts with auth-gated elements must call `injectUserSession(page)` first
   - **Locator scoping:** When header and main content share identical links (e.g., both have "Sign In"), scope locators to `page.getByRole('main')` to avoid strict mode violations from multiple matches
 

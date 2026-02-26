@@ -132,7 +132,7 @@
 - **Deployment:**
   - FE: Cloudflare Pages via GitHub Actions.
   - BE: Railway (staging + production environments).
-- **Quality:** ESLint + Prettier, TypeScript strict, Husky pre-commit hooks, Vitest + Playwright.
+- **Quality:** ESLint + Prettier, TypeScript strict, Husky pre-push hooks, Vitest + Playwright.
 - **Security:** CORS restriction + API key (legacy) + Supabase JWT verification via JWKS. See [Backend Guide — Security](../guides/backend.md#security).
 
 ---

@@ -160,7 +160,7 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 **Date:** 2026-02-23
 **Problem:** E2E test "creates a plan with owner and navigates to detail page" failed in CI. After clicking "Create Plan", the test expected immediate navigation to `/plan/:id`, but the page stayed on `/create-plan`. The participant preferences feature added a modal that appears after plan creation, requiring the user to either fill preferences or skip before navigation happens.
 **Solution:** Added a click on the "Skip for now" button in the E2E test between form submission and the URL assertion.
-**Prevention:** When adding a new step to an existing user flow (e.g., a modal between form submission and navigation), always update the E2E tests that cover that flow in the same PR. Also added E2E tests to the Husky pre-commit hook (`VITE_AUTH_MOCK=true npx playwright test --project="Desktop Chrome"`) so broken E2E tests are caught before pushing.
+**Prevention:** When adding a new step to an existing user flow (e.g., a modal between form submission and navigation), always update the E2E tests that cover that flow in the same PR. Also added E2E tests to the Husky pre-push hook (`VITE_AUTH_MOCK=true npx playwright test --project="Desktop Chrome"`) so broken E2E tests are caught before pushing.
 
 ---
 
