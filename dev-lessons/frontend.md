@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] CollapsibleSection — reusable Disclosure pattern
+**Date:** 2026-02-26
+**Problem:** CategorySection, SubcategorySection, ParticipantDetails, and the invite route each duplicated the Headless UI Disclosure pattern (button + chevron + panel).
+**Solution:** Created `CollapsibleSection` in `src/components/shared/` with configurable `title`, `buttonClassName`, `panelClassName`, `chevronClassName`, `panelContentClassName`, and `buttonAs`. All four consumers now use it.
+**Prevention:** When the same UI pattern appears in 3+ places, extract a reusable component into `shared/`.
+
+---
+
 ### [UX] Bulk assign — every participant can assign all, but only unassigned items
 **Date:** 2026-02-26
 **Problem:** Only the plan owner could use the "Assign all to…" button in subcategories. Non-owners could not bulk-assign items to themselves.
