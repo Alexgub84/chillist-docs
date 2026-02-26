@@ -42,8 +42,7 @@ Key variables:
 | `LOG_LEVEL` | Pino log level | `info` |
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:postgres@localhost:5432/chillist` |
 | `FRONTEND_URL` | Allowed CORS origin | `http://localhost:5173` |
-| `API_KEY` | API key for request auth | (empty for dev) |
-| `SUPABASE_URL` | Supabase project URL for JWKS-based JWT verification | (optional in dev) |
+| `SUPABASE_URL` | Supabase project URL for JWKS-based JWT verification | (optional in dev, required in prod) |
 
 ### Database setup
 
@@ -54,17 +53,83 @@ npm run db:seed       # seed with sample data (optional)
 
 ## Running Locally
 
+### Quick start (one command)
+
+Prerequisites: Docker running, Node 20+.
+
 ```bash
-npm run dev           # starts Fastify with tsx watch
+npm run dev:local
 ```
 
-The server runs on `http://localhost:3333` by default. Swagger UI at `/docs`.
+This single command:
+1. Starts a local PostgreSQL container (`docker compose up -d`)
+2. Runs Drizzle migrations
+3. Seeds the database with sample plans, participants, and items
+4. Starts the dev server with hot reload
+
+The backend runs at `http://localhost:3333`. Swagger UI at `/docs`.
+
+### Environment files
+
+| File | Purpose | Git-tracked |
+|------|---------|-------------|
+| `.env` | Production / Railway config | No (`.gitignore`) |
+| `.env.local` | Local development config | No (`.gitignore`) |
+| `.env.example` | Template with all variable names | Yes |
+
+`npm run dev:local` loads `.env.local` automatically. If you run `npm run dev` directly, it uses whatever is in your shell environment or `.env` (depending on your setup).
+
+### Local development with Supabase auth
+
+The FE authenticates users via Supabase and sends JWTs to the backend. For the BE to verify those tokens locally, `SUPABASE_URL` must be set in `.env.local`:
+
+```
+SUPABASE_URL=https://<your-project>.supabase.co
+```
+
+Without it, the auth plugin is disabled and all JWT-bearing requests return 401.
+
+**Full `.env.local` for local dev with auth:**
+
+```
+PORT=3333
+HOST=0.0.0.0
+NODE_ENV=development
+LOG_LEVEL=info
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/chillist
+FRONTEND_URL=http://localhost:5173
+SUPABASE_URL=https://<your-project>.supabase.co
+```
+
+**How it works:**
+- FE runs at `http://localhost:5173` and handles Supabase sign-up/sign-in directly
+- FE sends `Authorization: Bearer <jwt>` to the local backend
+- BE fetches JWKS public keys from `${SUPABASE_URL}/auth/v1/.well-known/jwks.json` and verifies the JWT
+- `FRONTEND_URL=http://localhost:5173` allows CORS from the local FE
+
+**Resetting the local database:**
+
+```bash
+docker compose down -v        # remove container + data volume
+npm run dev:local             # recreate everything from scratch
+```
+
+### Without Supabase auth
+
+If you only need to test unauthenticated flows (guest/invite routes), you can omit `SUPABASE_URL` from `.env.local`. The server will start with a warning:
+
+```
+WARN: SUPABASE_URL not configured — JWT verification disabled
+```
+
+All routes that require JWT will return 401. Guest invite routes (`/plans/:planId/invite/:inviteToken/*`) work without JWT.
 
 ## Available Scripts
 
 | Script | Description |
 |--------|-------------|
 | `npm run dev` | Start dev server with watch |
+| `npm run dev:local` | Docker DB + migrate + seed + dev server (loads `.env.local`) |
 | `npm run start` | Start production server |
 | `npm run build` | Compile TypeScript |
 | `npm run typecheck` | Type check only |
@@ -236,9 +301,10 @@ Done (continued):
 - ~~Guest auth plugin~~ (Phase 3 Step 1, v1.11.0) — `X-Invite-Token` header auth, `rsvpStatus` + `lastActivityAt` columns, guest permission boundaries, 51 tests
 - ~~Claim-via-invite~~ (Phase 3 Step 3, v1.12.0) — `POST /plans/:planId/claim/:inviteToken` links authenticated user to participant record, pre-fills preferences from `user_details` defaults, 13 tests
 - ~~Invite preferences~~ (v1.13.0) — `PATCH /plans/:planId/invite/:inviteToken/preferences` lets guests update per-plan preferences (displayName, group size, dietary info) via invite link, 8 tests
+- ~~Guest invite flow extensions~~ (v1.14.0) — GET invite returns `myParticipantId`, `myRsvpStatus`, `myPreferences`; PATCH preferences accepts `rsvpStatus`; guest item CRUD via `POST/PATCH /plans/:planId/invite/:inviteToken/items[/:itemId]`, 26 new tests (issue #98)
 
 Current:
-- Remaining guest endpoints (Phase 3 Step 2) — RSVP, plan view, item interaction via `X-Invite-Token`
+- JWT-based per-plan preferences for signed-up participants
 
 Future:
 - JWT-based per-plan preferences for signed-up participants
