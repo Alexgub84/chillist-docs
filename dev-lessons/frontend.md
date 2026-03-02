@@ -681,3 +681,13 @@ Route file dropped from ~600 to ~460 lines, with each extracted module independe
 4. When extracting hooks that depend on other hooks, mock the dependencies (not the internals) in tests — e.g., mock `useCreateItem` rather than `useMutation`
 5. Sign-in/sign-up redirect context: when redirecting users from a plan page to auth, always preserve the `redirect` param when toggling between sign-in and sign-up, and show a contextual message so users understand why they were redirected
 6. When two forms share the same field group (e.g., preferences), extract a shared presentational component (`PreferencesFields`) that accepts `register` and `errors` from the parent form. Use a generic type (`<T extends FieldValues>`) so any parent form shape can use it. This prevents field duplication, keeps validation and styling consistent, and makes both consumers testable independently
+
+## 2026-03-02: OpenAPI def-* schema numbering shift after backend adds new schemas
+
+**Problem**: After the backend added the `PATCH /plans/:planId/join-requests/:requestId` endpoint with a new `UpdateJoinRequestStatusBody` schema, the auto-generated `def-*` numbers in `openapi.json` shifted. `def-28` which was `InvitePlanResponse` became `UpdateJoinRequestStatusBody`, and invite-related schemas moved to `def-33` and `def-36`. This caused TypeScript compilation errors in `src/core/schemas/invite.ts` which referenced the old def numbers.
+
+**Root Cause**: The backend's Fastify auto-schema generator assigns sequential `def-N` numbers. Adding new schemas mid-sequence pushes existing schemas to higher numbers.
+
+**Solution**: After running `npm run api:sync`, checked `tsc --noEmit` immediately. Found the broken references in `invite.ts` and updated `def-25` → `def-33` (InviteParticipant) and `def-28` → `def-36` (InvitePlanResponse).
+
+**Lesson**: After every `api:sync`, always run `tsc --noEmit` before any other work. Schema `def-*` numbers are unstable and can shift when the backend adds/removes schemas. Search for all `components['schemas']['def-` references and verify each matches its expected `"title"` in the spec.

@@ -8,6 +8,12 @@ A log of bugs fixed and problems solved in `chillist-be`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Item change tracking uses separate table and fire-and-forget recording
+**Date:** 2026-03-02
+**Problem:** Needed to persist audit history for every item create/update (status changes, assignments, etc.) without slowing down or breaking the main API response.
+**Solution:** Added `item_changes` table and `src/utils/item-changes.ts`. All 8 item mutation endpoints call `recordItemCreated` / `recordItemUpdated` after successful writes. Recording is fire-and-forget — errors are logged but never thrown, so a failed audit write cannot break the user's request.
+**Prevention:** For audit/change-tracking features, use a separate table (not a JSONB column on the hot table) and fire-and-forget recording. This keeps item reads fast and ensures the main operation always succeeds.
+
 ### [Arch] Decouple business logic from route handlers into services
 **Date:** 2026-03-02
 **Problem:** Business logic (participant creation, user_details pre-fill) was embedded directly in route handlers (plans.route.ts, participants.route.ts, claim.route.ts). When join-request approval needed the same participant creation logic, there was no reusable function to call — only copy-paste from other handlers.

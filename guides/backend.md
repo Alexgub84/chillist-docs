@@ -307,6 +307,7 @@ Done (continued):
 Done (continued):
 - ~~JWT-based per-plan preferences~~ (v1.16.0, issue #101) — `PATCH /participants/:participantId` accepts `rsvpStatus`, authorization enforced (owner/admin → any participant, linked participant → own record only, others → 403), 9 new tests
 - ~~Join request management~~ (v1.17.0, issue #110) — `PATCH /plans/:planId/join-requests/:requestId` owner/admin endpoint. Body `{ status: 'approved' }` creates participant via `addParticipantToPlan()` service (pre-fills from `user_details`), `{ status: 'rejected' }` updates status only. Participant service extracted to `src/services/participant.service.ts` for future extensibility. 21 tests.
+- ~~Item change tracking~~ (v1.18.0) — `item_changes` table + `src/utils/item-changes.ts` records all item creates/updates (status, quantity, assignment, etc.) with `changedByUserId` or `changedByParticipantId`. Fire-and-forget recording (non-blocking). No API changes.
 
 Future:
 - Invite route reduction (Phase 3 Step 4, BREAKING)
