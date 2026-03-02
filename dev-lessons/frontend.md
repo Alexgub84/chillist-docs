@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Minimal frontend execution docs reduce context load and prevent doc-drift mistakes
+**Date:** 2026-03-02
+**Problem:** Frontend tasks repeatedly loaded large rule/guide/spec/lesson files to recover the same execution context, increasing token usage and slowing down task startup. This also increased the chance of opening too many unrelated files before identifying the real task scope.
+**Solution:** Added a README-first documentation flow in `chillist-fe`: expanded `README.md` into a navigation hub (route map, folder map, file-finder playbooks, screen workflow) and created a strict minimal rules file (`rules/frontend.md`).
+**Prevention:** Start each frontend task with local `README.md` + `rules/frontend.md`, then open only relevant files. Use deep docs in `chillist-docs` only when the task requires extra detail beyond the local minimal context.
+
+---
+
 ### [Test] Headless UI Dialog invisible to `getByRole('dialog')` — use `data-testid` instead
 **Date:** 2026-02-26
 **Problem:** E2E test `owner can add another participant as owner` failed across all browsers. `await expect(page.getByRole('dialog')).toBeVisible()` reported the dialog as `hidden` even though it was open. Headless UI's `Dialog` + `Transition` renders the dialog element in the DOM during transitions with styles (opacity, transform) that make Playwright consider it hidden for `toBeVisible()` checks.
@@ -596,4 +604,3 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 1. Always gate edit UI per item based on user permissions — don't rely on backend 403 alone
 2. Separate self-assign from full-edit: `onUpdate` handles both, so use a `canEdit` flag to distinguish
 3. `ItemCard` already handled falsy `onUpdate`/`onEdit` gracefully — the fix was adding the boolean + propagating it from parents
-
