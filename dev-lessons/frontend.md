@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Test] Plan unit tests need Link mock when TanStack Router is not provided
+**Date:** 2026-03-02
+**Problem:** Plan component uses TanStack Router's `Link`. Unit tests render Plan without a router, causing `TypeError: Cannot read properties of null (reading '__store')` because Link expects router context.
+**Solution:** Mock `@tanstack/react-router` in Plan.test.tsx so `Link` renders a plain `<a>` with `href` built from `to` and `params`. Use `vi.mock` with `importOriginal` to keep other exports (e.g. for other tests).
+**Prevention:** When a component uses `Link`, `useNavigate`, or other router hooks, either wrap in `RouterProvider` for integration tests or mock the router module in unit tests. Mocking Link to an anchor is the lightest approach for isolated component tests.
+
+---
+
 ### [Arch] Minimal frontend execution docs reduce context load and prevent doc-drift mistakes
 **Date:** 2026-03-02
 **Problem:** Frontend tasks repeatedly loaded large rule/guide/spec/lesson files to recover the same execution context, increasing token usage and slowing down task startup. This also increased the chance of opening too many unrelated files before identifying the real task scope.
