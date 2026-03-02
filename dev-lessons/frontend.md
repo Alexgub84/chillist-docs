@@ -6,6 +6,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Test] Add item modal toBeHidden flaky on Desktop Safari — increase timeout
+**Date:** 2026-03-03
+**Problem:** E2E test `adds items via UI and verifies they appear in categories` failed on Desktop Safari. After clicking submit, `expect(modal).toBeHidden({ timeout: 10000 })` timed out — the add-item modal stayed "visible" during Headless UI's close transition.
+**Solution:** Increased add-item modal `toBeHidden` timeout from 10s to 20s in `addItemViaUI` helper. Desktop Safari's close animation can exceed 10s.
+**Prevention:** For Headless UI modal submit flows on Safari/WebKit, use 15–20s `toBeHidden` timeouts; 10s may not be enough.
+
+---
+
 ### [Arch] Handle not_participant response from plan API with join request flow
 **Date:** 2026-03-02
 **Problem:** After claiming invite and logging in, user navigates to plan and gets ZodError. Backend returns `200 OK` with `{ status: 'not_participant', preview: {...}, joinRequest: null }` instead of a full plan object, causing Zod to fail.
