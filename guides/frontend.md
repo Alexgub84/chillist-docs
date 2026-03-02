@@ -33,6 +33,11 @@ npm run dev           # starts Vite dev server
 **With real backend:**
 Ensure `chillist-be` is running on localhost:3333, then `npm run dev`.
 
+## Format on Save & Pre-Commit
+
+- **Format on save:** `.vscode/settings.json` enables `source.fixAll.eslint` on save — ESLint (including Prettier) auto-fixes when you save.
+- **Pre-commit:** Husky runs `lint-staged` before each commit (eslint --fix + prettier --write on staged files), so unformatted code is fixed automatically.
+
 ## Key Scripts
 
 - `npm run dev`: Start dev server (auto-fetches OpenAPI spec first)

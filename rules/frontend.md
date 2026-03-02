@@ -37,7 +37,7 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 ## 5) UI, i18n, and Component Rules
 
 - Extract repeated patterns into shared components when used in 3+ places.
-- Use `data-testid` for E2E selectors; do not rely on brittle text/role in complex Headless UI transitions.
+- **Always use `data-testid` for testable elements.** It is the best way to target elements in E2E and unit tests. Add `data-testid` (or a `testId` prop on shared components like Modal) on: buttons, links, dialogs, forms, and any element tests need to interact with or assert on. Prefer `getByTestId` over `getByRole`, `getByText`, or `getByLabel` — test IDs are stable across i18n changes, layout shifts, and Headless UI transitions.
 - For auth-gated UI changes, cover owner, non-owner authenticated, and unauthenticated states.
 - All user-facing strings must use `t()` from `useTranslation()`. Add keys to both `en.json` and `he.json`.
 - API enum values must be translated at display time (`t('namespace.${value}')`), not stored translated.
@@ -45,6 +45,7 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 ## 6) Testing Rules
 
 - Every behavioral change requires matching test updates.
+- **Use `getByTestId` / `data-testid` as the primary way to select elements** in E2E and unit tests. Add test IDs to components when writing tests — do not rely on `getByText`, `getByRole`, or `getByLabel` alone; they are brittle with i18n, layout changes, and Headless UI transitions.
 - Cross-boundary flow change (route + context + API + UI) requires integration or E2E coverage, not only unit tests.
 - E2E should assert final outcomes, not transient loading states.
 - For responsive flows, include mobile/desktop paths when UI differs (use Playwright's `isMobile`).

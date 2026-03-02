@@ -11,6 +11,8 @@ Shared workflow rules for both frontend and backend repos.
 - Every bug must be filed as a GitHub issue before fixing
 - Do NOT start coding without an issue to reference
 
+**When asked to create issues:** Read [Issue Creation and Management](../guides/issue-management.md) first. Follow its breakdown (BE/FE split, projects, dependencies), then create issues in the relevant repos.
+
 ## Starting Work
 
 1. If working on a bug and no issue exists yet, create one first:

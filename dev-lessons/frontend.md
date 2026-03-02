@@ -6,6 +6,31 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [i18n] Hebrew adults/kids count in English — simple singular/plural keys
+**Date:** 2026-03-02
+**Problem:** In ParticipantDetails, adults count and kids count displayed in English when the site was in Hebrew.
+**Root Cause:** i18next pluralization keys (`adults_one`, `adults_other`) trigger language-specific plural rules. Hebrew needs `_two`, `_many` too — when missing, i18next fell back to English.
+**Solution:** Bypass i18next pluralization: use two plain keys (`adult`/`adults`, `kid`/`kids`) and choose in code: `t(count === 1 ? 'participantDetails.adult' : 'participantDetails.adults', { count })`.
+**Prevention:** For simple "X items" strings, prefer manual singular/plural selection over i18next pluralization — avoids per-language plural form complexity.
+
+---
+
+### [Test] Manage Participants E2E — strict mode and Headless UI dialog
+**Date:** 2026-03-02
+**Problem:** E2E tests failed: (1) `getByText('Manage Participants')` strict mode violation — resolved to 2 elements (h1 "Manage Participants Test" substring match + link text). (2) Add participant modal: `getByRole('dialog')` reported hidden (Headless UI Transition issue).
+**Solution:** Use `getByRole('heading', { name: 'Manage Participants' })` for exact page-title assertion. Add `testId="add-participant-modal"` to the Modal and use `getByTestId` in the test (same pattern as add-owner-dialog).
+**Prevention:** Avoid `getByText` when the string is a substring of other visible text — use `getByRole` with `name` or `getByTestId` for disambiguation. For Headless UI modals, always add testId and use getByTestId.
+
+---
+
+### [Test] Manage Participants route unit tests require full supabase mock
+**Date:** 2026-03-02
+**Problem:** Unit tests for manage-participants route using routeTree + RouterProvider failed with "onAuthStateChange is not a function" and redirect to signin. The route's beforeLoad checks supabase.auth.getSession(); AuthProvider uses supabase.auth.onAuthStateChange.
+**Solution:** Test file overrides the global supabase mock with a full auth object: getSession returns a valid session (for beforeLoad to pass), plus signUp, signInWithPassword, signOut, onAuthStateChange, etc. Use `importOriginal` for react-hot-toast to keep Toaster export. Mock useNavigate to assert non-owner redirect.
+**Prevention:** When testing routes that use the full app (routeTree, AuthProvider), either mock all dependencies (supabase, hooks) completely or use E2E with a real browser. Router integration tests need session for auth-gated routes.
+
+---
+
 ### [Test] Plan unit tests need Link mock when TanStack Router is not provided
 **Date:** 2026-03-02
 **Problem:** Plan component uses TanStack Router's `Link`. Unit tests render Plan without a router, causing `TypeError: Cannot read properties of null (reading '__store')` because Link expects router context.
@@ -19,6 +44,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 **Problem:** Frontend tasks repeatedly loaded large rule/guide/spec/lesson files to recover the same execution context, increasing token usage and slowing down task startup. This also increased the chance of opening too many unrelated files before identifying the real task scope.
 **Solution:** Added a README-first documentation flow in `chillist-fe`: expanded `README.md` into a navigation hub (route map, folder map, file-finder playbooks, screen workflow) and created a strict minimal rules file (`rules/frontend.md`).
 **Prevention:** Start each frontend task with local `README.md` + `rules/frontend.md`, then open only relevant files. Use deep docs in `chillist-docs` only when the task requires extra detail beyond the local minimal context. When updating docs, only update existing files — do not create new doc files.
+
+---
+
+### [Test] Guest preferences modal flaky on Mobile Safari — use data-testid and force click
+**Date:** 2026-03-02
+**Problem:** E2E test `guest can skip preferences and redirect to plan` failed on Mobile Safari. After clicking Skip, the "Your Preferences" modal stayed visible (test expected it hidden). Asserting on dialog text during Headless UI transitions can be flaky.
+**Solution:** Added `testId="guest-preferences-modal"` to the invite page's preferences Modal. Updated the test to use `getByTestId('guest-preferences-modal')` instead of `getByText('Your Preferences')`, scroll Skip button into view, and use `click({ force: isMobile })` so the tap registers on mobile.
+**Prevention:** Use data-testid for Headless UI modals in E2E. On mobile viewports, use `scrollIntoViewIfNeeded()` and `click({ force: true })` for buttons that may be at the bottom of scrollable modals.
 
 ---
 
