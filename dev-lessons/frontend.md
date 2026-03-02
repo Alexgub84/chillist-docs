@@ -10,7 +10,7 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 **Date:** 2026-03-02
 **Problem:** Frontend tasks repeatedly loaded large rule/guide/spec/lesson files to recover the same execution context, increasing token usage and slowing down task startup. This also increased the chance of opening too many unrelated files before identifying the real task scope.
 **Solution:** Added a README-first documentation flow in `chillist-fe`: expanded `README.md` into a navigation hub (route map, folder map, file-finder playbooks, screen workflow) and created a strict minimal rules file (`rules/frontend.md`).
-**Prevention:** Start each frontend task with local `README.md` + `rules/frontend.md`, then open only relevant files. Use deep docs in `chillist-docs` only when the task requires extra detail beyond the local minimal context.
+**Prevention:** Start each frontend task with local `README.md` + `rules/frontend.md`, then open only relevant files. Use deep docs in `chillist-docs` only when the task requires extra detail beyond the local minimal context. When updating docs, only update existing files — do not create new doc files.
 
 ---
 

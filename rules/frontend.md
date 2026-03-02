@@ -72,7 +72,11 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 - Update `src/data/changelog.ts` for user-visible changes.
 - Ensure changed behavior is reflected in tests.
 
-## 10) Escalate Instead of Guessing
+## 10) Docs Updates
+
+- Only update existing files. Do not create new docs files.
+
+## 11) Escalate Instead of Guessing
 
 Stop and raise to user when:
 
