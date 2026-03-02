@@ -26,6 +26,7 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
   - `api/server.ts`
   - `tests/e2e/fixtures.ts`
 - If one API function in a pattern is fixed, audit its siblings for the same issue.
+- **Model all response variants.** An endpoint can legitimately return different shapes for the same 2xx status (e.g. `PlanWithDetails` vs `{ status: 'not_participant', preview, joinRequest }`). When implementing or changing any `fetchX` function: (1) check the OpenAPI spec for `oneOf`, `anyOf`, or multiple 2xx response schemas; (2) define a Zod schema for every variant; (3) branch on a discriminant field before parsing. Never assume every successful response is the happy-path shape.
 
 ## 4) Auth and Invite Rules
 
@@ -50,6 +51,8 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 - E2E should assert final outcomes, not transient loading states.
 - For responsive flows, include mobile/desktop paths when UI differs (use Playwright's `isMobile`).
 - Wrap async state updates (navigation, timers, provider mounts) in `act()` in unit tests.
+- **Test every API response variant, not only the happy path.** For each `fetchX` function in `src/core/api.ts`, write a unit test in `tests/unit/core/api.test.ts` for every shape the backend can return — success, access-restricted (e.g. `not_participant`), empty list, and Zod schema mismatch. A function with only a happy-path test has incomplete coverage and is a production risk.
+- **Updating `api/server.ts` is mandatory** whenever any of the following change: a new endpoint is added, an existing endpoint gains a new response shape or access-control state, a field is renamed or removed. The mock server is the test contract — letting it drift from the real API is the most common cause of bugs that pass all tests but fail in production. Treat `api/server.ts` as a first-class code artifact, not a one-time scaffold.
 
 ## 7) Logging and Error Handling
 
@@ -62,6 +65,7 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 - Confirm backend already provides required contract fields/endpoints.
 - Identify route, component, hook, API, and tests that the change touches.
 - Confirm whether auth gating, i18n, and owner/admin conditions are affected.
+- Does the API endpoint return more than one response shape? If yes: are all shapes defined in `src/core/schemas/`? Is each shape tested in `tests/unit/core/api.test.ts`? Is the mock server handler in `api/server.ts` updated to return the alternative shape when appropriate?
 
 ## 9) Pre-Push Checklist
 
@@ -72,6 +76,7 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 - If API contract changed on backend, run `npm run api:sync`.
 - Update `src/data/changelog.ts` for user-visible changes.
 - Ensure changed behavior is reflected in tests.
+- If a new endpoint or response variant was added: confirm `api/server.ts` was updated and a unit test covers the new variant in `tests/unit/core/api.test.ts`.
 
 ## 10) Docs Updates
 

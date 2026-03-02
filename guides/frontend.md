@@ -120,6 +120,19 @@ Static JSON for autocomplete suggestions.
 - **E2E:** Playwright. Pre-push hook runs all 4 browsers. CI runs Chrome only. Use `npm run e2e:docker` for Linux-WebKit parity.
 - **WebKit Quirks:** Use `click({ force: true })` on submit buttons in Headless UI modals and increase `toBeHidden` timeouts for WebKit.
 
+### Mock Server (`api/server.ts`)
+
+The mock server is a Fastify instance that mirrors the real backend API. It is used by E2E tests and local development (`npm run mock:server`). It does **not** auto-sync with the OpenAPI spec — it must be maintained manually.
+
+**Rules for keeping it in sync (treat this as a checklist on every PR):**
+
+- Add a route handler when a new backend endpoint is implemented.
+- When an endpoint gains a new response shape (e.g. an access-restricted 2xx, a different payload based on auth state), add that branch to the mock handler.
+- When a field is renamed or removed from a response schema, update the mock fixture to match.
+- When a new participant/auth state is introduced (e.g. non-participant visitor, pending invite), model it in the mock so tests can reach that state.
+
+**The most common failure mode** is a new backend behavior shipping (e.g. returning `{ status: 'not_participant' }` instead of a full plan) without a matching mock handler. All tests pass because they only ever exercise the happy path. The bug surfaces in production. Before closing a PR, ask: *does the mock server reflect every state the real backend can return for each endpoint I touched?*
+
 ### CI/CD (GitHub Actions → Cloudflare Pages)
 
 - **CI (`ci.yml`):** Runs on PRs. Lints, typechecks, unit tests, integration tests, and E2E tests (Chrome).

@@ -9,9 +9,13 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 ### [Arch] Handle not_participant response from plan API with join request flow
 **Date:** 2026-03-02
 **Problem:** After claiming invite and logging in, user navigates to plan and gets ZodError. Backend returns `200 OK` with `{ status: 'not_participant', preview: {...}, joinRequest: null }` instead of a full plan object, causing Zod to fail.
-**Root Cause:** `fetchPlan` assumed the response was always `PlanWithDetails`. The backend legitimately returns a different shape when the user is not yet a participant.
+**Root Cause:** `fetchPlan` assumed the response was always `PlanWithDetails`. The backend legitimately returns a different shape when the user is not yet a participant. The mock server (`api/server.ts`) only modeled the happy-path response, so no test could ever reach the non-participant state. There were no unit tests for the alternative response branch.
 **Solution:** Added `notParticipantResponseSchema` and `isNotParticipantResponse` type guard to `plan.ts`. Updated `fetchPlan` to return `PlanWithDetails | NotParticipantResponse` — branching on `status === 'not_participant'` before Zod parsing. Updated `usePlan` generic, fixed `useBulkAssign` calls in all routes using `usePlan` (`plan.$planId`, `items.$planId`, `manage-participants.$planId`). Added `RequestToJoinPage` component showing plan preview + form (pre-filled from user metadata) when `joinRequest === null`, or a pending status badge when already submitted.
-**Prevention:** When a route uses `usePlan`, always guard against the union type before accessing `plan.participants` / `plan.items` / `plan.title`. Use `isNotParticipantResponse(plan)` as an early-return type narrowing guard.
+**Prevention:**
+1. When implementing any `fetchX` function, check the OpenAPI spec for multiple 2xx response shapes *before* writing code — not after a production crash.
+2. Add a unit test in `tests/unit/core/api.test.ts` for every response variant the endpoint can return, including access-restricted and error-shaped 2xx responses.
+3. Add the alternative response shape to `api/server.ts` so it can be reached in tests. The mock server must reflect every state the real backend can return.
+4. In consuming routes, add a type-narrowing guard immediately after the null check (e.g. `isNotParticipantResponse(plan)`) before accessing any typed fields — TypeScript will not catch this without an explicit discriminant check.
 
 ---
 
