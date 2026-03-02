@@ -29,6 +29,13 @@ Shared workflow rules for both frontend and backend repos.
 - Identify modules/components affected and design patterns to use
 - Flag potential security risks (OWASP)
 - If less than 90% sure about intent, ask clarifying questions
+- **Documentation step required:** Every plan must include a documentation update step. If the change introduces new architecture patterns, structure decisions, or conventions, update all relevant docs:
+  - `README.md` — file map, "where to find" sections, workflow guidance
+  - `../chillist-docs/rules/backend.md` or `frontend.md` — new conventions or patterns to follow in future work
+  - `../chillist-docs/guides/backend.md` or `frontend.md` — "What's next" progress, setup changes
+  - `../chillist-docs/dev-lessons/backend.md` or `frontend.md` — lessons learned, architecture decisions
+  - `../chillist-docs/specs/mvp-v1.md` — feature status updates
+  - Even if no docs need updating, the plan must explicitly state "No docs changes needed" with reasoning
 
 ## Implementation Flow
 

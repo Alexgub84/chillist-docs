@@ -7,6 +7,8 @@ Strict, minimal instructions for `chillist-be`. Read these before executing any 
 - **Per-Plan Preferences:** Store per-plan data (food prefs, RSVP) on the `participants` table, not global profiles.
 - **Dependency Injection:** Use DI (`buildApp({ db })`). Never import `db` directly in routes. Tests must inject the testcontainer DB.
 - **Enums:** Never hardcode enum values. Derive const arrays and TypeScript types from Drizzle `pgEnum` in `db/schema.ts` and import them everywhere.
+- **Service Layer:** Reusable business logic that may be called from multiple routes belongs in `src/services/`. Services are pure functions that receive `db` (or a transaction handle) as their first argument — no Fastify coupling. Route handlers orchestrate (auth, validation, error handling) and delegate to services. Examples: `participant.service.ts` (participant creation), `profile-sync.ts` (identity field mapping).
+- **Participant Creation:** All new participant creation (join request approval, future invite flows, etc.) should go through `addParticipantToPlan()` in `src/services/participant.service.ts`. This is the single place to add side effects (notifications, activity logs) when a new participant joins a plan.
 
 ## 2. API & Schema Design
 - **API Contract First:** The [user-management spec](../specs/user-management.md) is the FE/BE contract. Update the spec with full endpoint details (request, response, auth, errors) *before* implementing.

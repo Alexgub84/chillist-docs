@@ -658,3 +658,25 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 1. Always gate edit UI per item based on user permissions — don't rely on backend 403 alone
 2. Separate self-assign from full-edit: `onUpdate` handles both, so use a `canEdit` flag to distinguish
 3. `ItemCard` already handled falsy `onUpdate`/`onEdit` gracefully — the fix was adding the boolean + propagating it from parents
+
+---
+
+## 2026-03-02: plan.$planId.lazy.tsx refactoring — 600-line monolith to modular units
+
+**Problem**: `plan.$planId.lazy.tsx` grew to ~600 lines containing role derivation, item counting/filtering, all mutation handlers, modal state, and inline UI components. This made the file hard to navigate, difficult to unit-test individual pieces, and increased merge conflict risk.
+
+**Solution**: Extracted four focused modules:
+- `src/core/utils-plan-items.ts` — pure functions: `countItemsPerParticipant`, `filterItemsByAssignedParticipant`, `countItemsByListTab`, `filterItemsByStatusTab`
+- `src/hooks/usePlanRole.ts` — derives `isOwner`, `currentParticipant`, `canEditItem` from plan participants + auth user
+- `src/hooks/usePlanActions.ts` — wraps all mutation hooks (item CRUD, plan delete/update, preferences, ownership transfer) with consistent error handling
+- `src/components/TransferOwnershipModal.tsx` — extracted modal with its own props
+- `src/components/shared/SectionLink.tsx` — reusable navigation card (Manage Participants, Manage Items links)
+
+Route file dropped from ~600 to ~460 lines, with each extracted module independently testable.
+
+**Lessons**:
+1. Pure utility functions (counting, filtering) should never live in route files — extract to `src/core/` for easy unit testing
+2. Role/permission derivation (`isOwner`, `canEditItem`) is reused across multiple routes (`plan`, `items`, `manage-participants`) — a shared hook prevents duplication
+3. Mutation handlers with toast notifications follow a consistent pattern — centralizing in `usePlanActions` eliminates copy-paste error handling
+4. When extracting hooks that depend on other hooks, mock the dependencies (not the internals) in tests — e.g., mock `useCreateItem` rather than `useMutation`
+5. Sign-in/sign-up redirect context: when redirecting users from a plan page to auth, always preserve the `redirect` param when toggling between sign-in and sign-up, and show a contextual message so users understand why they were redirected
