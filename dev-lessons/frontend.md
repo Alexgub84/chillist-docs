@@ -6,6 +6,15 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Handle not_participant response from plan API with join request flow
+**Date:** 2026-03-02
+**Problem:** After claiming invite and logging in, user navigates to plan and gets ZodError. Backend returns `200 OK` with `{ status: 'not_participant', preview: {...}, joinRequest: null }` instead of a full plan object, causing Zod to fail.
+**Root Cause:** `fetchPlan` assumed the response was always `PlanWithDetails`. The backend legitimately returns a different shape when the user is not yet a participant.
+**Solution:** Added `notParticipantResponseSchema` and `isNotParticipantResponse` type guard to `plan.ts`. Updated `fetchPlan` to return `PlanWithDetails | NotParticipantResponse` — branching on `status === 'not_participant'` before Zod parsing. Updated `usePlan` generic, fixed `useBulkAssign` calls in all routes using `usePlan` (`plan.$planId`, `items.$planId`, `manage-participants.$planId`). Added `RequestToJoinPage` component showing plan preview + form (pre-filled from user metadata) when `joinRequest === null`, or a pending status badge when already submitted.
+**Prevention:** When a route uses `usePlan`, always guard against the union type before accessing `plan.participants` / `plan.items` / `plan.title`. Use `isNotParticipantResponse(plan)` as an early-return type narrowing guard.
+
+---
+
 ### [i18n] Hebrew adults/kids count in English — simple singular/plural keys
 **Date:** 2026-03-02
 **Problem:** In ParticipantDetails, adults count and kids count displayed in English when the site was in Hebrew.
