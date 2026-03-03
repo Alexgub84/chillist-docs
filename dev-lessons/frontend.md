@@ -6,6 +6,34 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Test] Disable CSS transitions in E2E to eliminate Headless UI modal flakiness
+
+**Date:** 2026-03-03
+**Problem:** E2E test `adds items via UI and verifies they appear in categories` failed on Desktop Firefox. After clicking the add-item form submit button, the new item never appeared in the DOM within 20s. The `addItemViaUI` helper also had no mechanism to confirm the POST mutation completed before asserting on UI state. Previous attempts to fix modal flakiness included increasing `toBeHidden` timeouts and asserting on visible items instead, but Firefox-specific timing issues persisted.
+**Root Cause:** Two interacting problems: (1) Headless UI `Transition` leave animations (150ms) create a window where `toBeHidden()` assertions race against the animation, and `toBeVisible()` can match the still-visible transitioning element. On Firefox, the timing is more aggressive and the issue is more likely to hit. (2) The `addItemViaUI` helper clicked submit without waiting for the POST API response, so it couldn't guarantee the mutation (and subsequent React Query refetch) completed before asserting on the item card.
+**Solution:** (1) In `fixtures.ts`, extended the Playwright `test` fixture to inject a `<style>` tag via `addInitScript` that sets `transition-duration: 1ms !important; animation-duration: 1ms !important` on all elements. This makes all CSS transitions effectively instant, eliminating all transition-related flakiness globally. (2) In `addItemViaUI`, used `Promise.all([page.waitForResponse(...), submitBtn.click()])` to ensure the POST response is received before asserting. Added `modal.toBeHidden()` assertion (now reliable with instant transitions) before checking the item card.
+**Prevention:** For E2E tests with Headless UI (or any transition-heavy UI framework), inject a style that sets `transition-duration: 1ms !important` globally in the test fixture. This is a one-time setup that prevents all transition-related flakiness. For mutation flows, always wait for the API response (`page.waitForResponse`) before asserting on the resulting UI state.
+
+---
+
+### [UX] Date/time form flow — chain via blur, not change, for time inputs
+
+**Date:** 2026-03-03
+**Problem:** PlanForm chained start time → end date via the `watch` handler (value change). Native time pickers fire `change` on intermediate steps (hour selection before minutes). This opened the end date picker immediately after hour selection, stealing focus and closing the time picker before the user could select minutes.
+**Solution:** (1) Removed `openPicker(endDateDateRef)` from the `startDateTime` watch handler — watch still syncs values (endDateTime, endDateDate) but does not chain pickers. (2) Added `onBlur` handler on the start time input that calls `openPicker(endDateDateRef)` — blur fires only when the picker fully closes (after both hour and minutes are selected). (3) Removed `showPicker()` from `FormInput`'s handleClick — native pickers open on click by default, and the CSS `appearance: auto !important` rule already fixes the Google Maps interference. Programmatic `showPicker()` is now only used in PlanForm's `openPicker()` for chaining.
+**Prevention:** Never chain pickers from a time input's `change`/watch handler — the browser may fire change on intermediate steps (hour, then minutes). Use `onBlur` to detect when the time picker fully closes, then chain to the next field. For date inputs, `change` fires once on close, so watch-based chaining is fine.
+
+---
+
+### [Test] E2E bulk add wizard + admin delete cancel — scrollIntoViewIfNeeded, testId, timeout
+
+**Date:** 2026-03-03
+**Problem:** Two E2E tests failed: (1) `bulk adds multiple items via wizard modal` on Desktop Chrome — `bulk-item-add-wizard` not found after clicking FAB. (2) `admin can cancel delete via modal` on Mobile Safari — modal stayed visible after cancel click.
+**Solution:** (1) For bulk add: `scrollIntoViewIfNeeded()` and visibility assertion before FAB click; increased wizard `toBeVisible` timeout to 10s for Headless UI transitions. (2) For admin delete cancel: added `testId="admin-delete-modal"` to PlansList delete Modal; use `getByTestId` for modal visibility assertions; `scrollIntoViewIfNeeded()` before cancel click; keep `force: true` for WebKit.
+**Prevention:** For Headless UI modal flows in E2E: use `data-testid` on modals, scroll buttons into view before clicking, use generous timeouts (10s+) for modal visibility. On mobile/WebKit, `force: true` and `scrollIntoViewIfNeeded` improve reliability.
+
+---
+
 ### [UX] Packing list filter = purchased + packed only (not pending)
 
 **Date:** 2026-03-03

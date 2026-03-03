@@ -8,6 +8,12 @@ A log of bugs fixed and problems solved in `chillist-be`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] All-participants item assignment uses groupId + flat duplication
+**Date:** 2026-03-03
+**Problem:** Needed to support assigning equipment items to all participants — each participant gets their own copy with independent status, and the system auto-creates/deletes copies as participants join/leave.
+**Solution:** Added `isAllParticipants` boolean + `allParticipantsGroupId` UUID to items table. When owner assigns to all, the original item is flagged and N-1 copies are created (one per other participant), all sharing the same groupId. Re-toggling reconciles with current participant roster (revives canceled copies, creates new ones for joiners). All multi-write operations use `db.transaction()` for atomicity. Core field updates (name, qty, unit) cascade across the group; status stays local per participant.
+**Prevention:** For "assign to all" patterns, prefer flat duplication with a shared groupId over parent/child hierarchies. Use transactions for multi-write operations. Add idempotency guards (NOT EXISTS checks) for operations that may be retried.
+
 ### [Arch] Item change tracking uses separate table and fire-and-forget recording
 **Date:** 2026-03-02
 **Problem:** Needed to persist audit history for every item create/update (status changes, assignments, etc.) without slowing down or breaking the main API response.
