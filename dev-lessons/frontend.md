@@ -6,6 +6,24 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [UX] Participant filter excludes canceled items from counts
+
+**Date:** 2026-03-04
+**Problem:** Participant filter (All / My Items / Unassigned / person names) showed canceled items in the total and per-participant counts, making the numbers misleading.
+**Solution:** Updated `countItemsPerParticipant` in utils-plan-items.ts to skip items with `status === 'canceled'`; pass `nonCanceledCount` (items.filter(i => i.status !== 'canceled').length) as `total` to ParticipantFilter in plan.$planId.lazy.tsx and ItemsView.tsx.
+**Prevention:** When counting items for filters/tabs, consider whether canceled (or other terminal) statuses should be excluded. Align count logic with user mental model (e.g., "items I'm responsible for" should not include canceled).
+
+---
+
+### [UX] BulkItemAddWizard — merged search + custom item, line layout
+
+**Date:** 2026-03-04
+**Problem:** Users had two separate inputs (main search and custom item) and card layout truncated titles. Confusing UX.
+**Solution:** (1) Merged into single search: type filters common items; when text doesn't match any item, an "Add [name]" row appears and Enter adds it. (2) Switched from card grid to line list with simple design: full-width rows, rounded borders, hover and selected backgrounds (blue-50/blue-100), so full titles are visible.
+**Prevention:** For wizard step lists, prefer line layout with visible full text over compact grids when titles vary in length. Use a single input for both filter and create when the action is additive (e.g. "search or add").
+
+---
+
 ### [Test] Disable CSS transitions in E2E to eliminate Headless UI modal flakiness
 
 **Date:** 2026-03-03
@@ -34,12 +52,12 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
-### [UX] Packing list filter = purchased + packed only (not pending)
+### [UX] Packing list filter = purchased + pending
 
-**Date:** 2026-03-03
-**Problem:** Packing list was showing pending items (not yet bought), which blurred the line between "to buy" and "to pack".
-**Solution:** Updated `filterItemsByStatusTab` and `countItemsByListTab` so packing = `purchased` | `packed` only. Buying = `pending`. E2E and unit tests updated.
-**Prevention:** Buying list = items to buy (pending). Packing list = items bought and ready to pack (purchased, packed).
+**Date:** 2026-03-04
+**Problem:** Packing list previously showed purchased + packed only. Users wanted to plan what to pack before shopping and track bought items in one view.
+**Solution:** Updated `filterItemsByStatusTab` and `countItemsByListTab` so packing = `purchased` | `pending`. Buying = `pending` only. Pending items appear in both tabs.
+**Prevention:** Buying list = items to buy (pending). Packing list = what to pack (pending) + what's bought (purchased).
 
 ---
 
@@ -842,3 +860,23 @@ Route file dropped from ~600 to ~460 lines, with each extracted module independe
 **Solution**: After running `npm run api:sync`, checked `tsc --noEmit` immediately. Found the broken references in `invite.ts` and updated `def-25` → `def-33` (InviteParticipant) and `def-28` → `def-36` (InvitePlanResponse).
 
 **Lesson**: After every `api:sync`, always run `tsc --noEmit` before any other work. Schema `def-*` numbers are unstable and can shift when the backend adds/removes schemas. Search for all `components['schemas']['def-` references and verify each matches its expected `"title"` in the spec.
+
+## 2026-03-04: All-participants assignment feature (issue #146)
+
+**Problem**: Adding new required fields (`isAllParticipants: boolean`, `allParticipantsGroupId: string | null`) to the item Zod schema broke 18 existing tests because mock item objects in test fixtures didn't include the new fields. The schema validation rejected them.
+
+**Root Cause**: When a new required field is added to a Zod schema, every hardcoded mock object across all test files must be updated. The `as Item` cast in some test helpers masked the missing fields at compile time but Zod's `safeParse` caught them at runtime.
+
+**Solution**: Updated all item mock objects in 7 test files (`item-schema.test.ts`, `invite-schema.test.ts`, `api.test.ts`, `server.test.ts`, `utils-plan-items.test.ts`, `usePlanRole.test.ts`, `useBulkAssign.test.ts`) and 2 fixture files (`fixtures.ts`, `mock-data.json`) to include `isAllParticipants: false` and `allParticipantsGroupId: null`.
+
+**Lesson**: When adding required fields to a schema, grep for all test files containing item mock data (`itemId` is a good search term) and update them all. Use `npm run test:unit` early to catch failures before building further. Consider using factory functions (like `makeItem()`) that set defaults — they reduce the number of places to update.
+
+## 2026-03-04: Shared participant options utility (issue #146 follow-up)
+
+**Problem**: Assignment option lists (unassigned, all participants, individual participants) were duplicated across `ItemCard`, `ItemForm`, and `BulkAssignButton` with slightly different implementations. Adding "All participants" to bulk assign required touching each one separately.
+
+**Root Cause**: No shared utility for constructing participant option lists. Each component built its own array inline.
+
+**Solution**: Extracted `buildParticipantOptions(participants, labels, opts)` into `utils-plan-items.ts`. Accepts `includeUnassigned` and `includeAll` flags. All three components now call this function instead of building options inline. `BulkAssignButton` conditionally shows "All participants" when the user is an owner (determined by `!restrictToUnassignedOnly`).
+
+**Lesson**: When the same UI options appear in multiple places, extract a shared builder function early. This prevents drift and makes adding new options a single-point change.

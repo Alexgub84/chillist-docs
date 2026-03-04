@@ -25,6 +25,7 @@ cp .env.example .env
 ```
 
 **With mock server (no backend needed):**
+
 ```bash
 npm run mock:server   # starts mock API on localhost:3333
 npm run dev           # starts Vite dev server
@@ -52,6 +53,7 @@ Ensure `chillist-be` is running on localhost:3333, then `npm run dev`.
 ## API Layer & OpenAPI
 
 The backend owns the OpenAPI spec. The frontend fetches and generates types from it.
+
 - **Primary:** `src/core/api.ts` (custom fetch with Zod validation)
 - **Secondary:** `src/core/api-client.ts` (openapi-fetch)
 - **Sync:** `npm run api:sync` (uses `API_SPEC_TOKEN` or `GITHUB_TOKEN` to fetch from private BE repo)
@@ -68,7 +70,8 @@ Complete this checklist when enabling Google OAuth for a new Supabase environmen
 2. **Supabase Dashboard > Auth > URL Configuration:** Set Site URL to production domain (e.g., `https://chillist.pages.dev`). Add Redirect URLs (`https://.../complete-profile`).
 3. **Google Cloud Console > Credentials:** Create OAuth 2.0 Client ID (Web application). Add Supabase callback URL to Authorized redirect URIs.
 
-*Common errors:*
+_Common errors:_
+
 - `Unsupported provider`: Provider not toggled ON in Supabase.
 - `redirect_uri_mismatch`: Supabase callback URL missing from Google Cloud.
 - Redirects to localhost after OAuth: Supabase Site URL still set to localhost.
@@ -97,20 +100,29 @@ The app gates UI elements based on authentication state and plan ownership. Thes
 ## Features Overview
 
 ### Google Maps (Location Picker + Map Display)
+
 - **Setup:** Requires `VITE_GOOGLE_MAPS_API_KEY`. Enable Maps JavaScript API and Places API (New) in Google Cloud.
 - **Restrictions:** In Google Cloud, add HTTP referrer restrictions for your production domain. Leave unrestricted for local dev.
 - **Library:** Uses `@vis.gl/react-google-maps`. Uses programmatic `fetchAutocompleteSuggestions` API to avoid Shadow DOM/CSS issues.
 
 ### Weather Forecast
+
 - **API:** Open-Meteo (free, no API key). Fetches 7-day forecast if plan has lat/lon coordinates. Non-blocking.
 
 ### i18n (Internationalization)
+
 - **Stack:** `i18next` + `react-i18next`. English (default) and Hebrew (RTL).
 - **Usage:** All user-facing strings use `t()`. Add keys to both `en.json` and `he.json`.
 - **RTL:** Use Tailwind logical properties (`ms-*`, `me-*`, `text-start`) instead of directional ones (`ml-*`, `text-left`).
 
+### Bulk Add Wizard (`src/components/BulkItemAddWizard.tsx`)
+
+3-step wizard (category → subcategory → items). Single search filters common items; when typed text doesn't match, "Add [name]" row appears and Enter adds custom item. Line layout with rounded borders, hover, and selected background for full title visibility.
+
 ### Common Items Data (`src/data/common-items.json`)
+
 Static JSON for autocomplete suggestions.
+
 - **Rules:** Every item must have a unique `id`, `category` (equipment/food), and a valid `subcategory` from `src/data/subcategories.ts`.
 - **Enrichment:** Run `npx tsx scripts/enrich-common-items-with-subcategory.ts` to bulk-assign subcategories.
 
@@ -131,7 +143,7 @@ The mock server is a Fastify instance that mirrors the real backend API. It is u
 - When a field is renamed or removed from a response schema, update the mock fixture to match.
 - When a new participant/auth state is introduced (e.g. non-participant visitor, pending invite), model it in the mock so tests can reach that state.
 
-**The most common failure mode** is a new backend behavior shipping (e.g. returning `{ status: 'not_participant' }` instead of a full plan) without a matching mock handler. All tests pass because they only ever exercise the happy path. The bug surfaces in production. Before closing a PR, ask: *does the mock server reflect every state the real backend can return for each endpoint I touched?*
+**The most common failure mode** is a new backend behavior shipping (e.g. returning `{ status: 'not_participant' }` instead of a full plan) without a matching mock handler. All tests pass because they only ever exercise the happy path. The bug surfaces in production. Before closing a PR, ask: _does the mock server reflect every state the real backend can return for each endpoint I touched?_
 
 ### CI/CD (GitHub Actions → Cloudflare Pages)
 
