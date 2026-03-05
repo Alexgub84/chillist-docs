@@ -880,3 +880,23 @@ Route file dropped from ~600 to ~460 lines, with each extracted module independe
 **Solution**: Extracted `buildParticipantOptions(participants, labels, opts)` into `utils-plan-items.ts`. Accepts `includeUnassigned` and `includeAll` flags. All three components now call this function instead of building options inline. `BulkAssignButton` conditionally shows "All participants" when the user is an owner (determined by `!restrictToUnassignedOnly`).
 
 **Lesson**: When the same UI options appear in multiple places, extract a shared builder function early. This prevents drift and makes adding new options a single-point change.
+
+## 2026-03-05: Remove top-level item `status` field — migrate to `assignmentStatusList`
+
+**Problem**: Top-level `status` field on items was redundant with `assignmentStatusList` entries and caused confusion about which was the source of truth.
+
+**Root Cause**: Original model had a single item-level status, but the per-participant assignment model made it obsolete. Both fields coexisted, creating ambiguity.
+
+**Solution**: Removed `status` from `baseItemSchema`, `itemCreateSchema`, `itemPatchSchema`, all components, hooks, routes, mock server, and tests. Added `getItemStatus(item, participantId?)` and `buildStatusUpdate(item, newStatus, participantId?)` utilities in `utils-plan-items.ts`. Components now receive `participantStatus` and `currentParticipantId` props; status rendering is conditional on having a resolved participant status.
+
+**Lesson**: When migrating a field used across 20+ files, grep for the field name in schemas, components, hooks, routes, mock server, i18n, and every test file. Use utility functions (`getItemStatus`, `buildStatusUpdate`) to centralize the new logic — this limits future changes to a single file. Update mock data schemas (`api/mock.ts`) alongside source schemas to prevent Zod validation failures in tests.
+
+## 2026-03-05: TypeScript closure narrowing and E2E test fixes after status migration
+
+**Problem**: (1) TypeScript error `TS18048: 'plan' is possibly 'undefined'` inside `handleBulkCancel` even though `plan` was narrowed by early returns above. (2) All 3 E2E tests touching item status failed: edit form still referenced `select[name="status"]`, inline status test couldn't find the dropdown, and status filter tabs showed wrong items.
+
+**Root Cause**: (1) TypeScript does not narrow discriminated union types inside closures/async functions — the variable could theoretically change between closure creation and execution. (2) E2E test items had empty `assignmentStatusList`, so `getItemStatus` returned `undefined` and no status UI rendered. The edit form test still tried to interact with the removed status `<select>`.
+
+**Solution**: (1) Extracted `const planItems = plan.items` before the closure so TypeScript captures the already-narrowed type. (2) Removed `select[name="status"]` from the edit form test and changed the expected status from "Purchased" to "Pending". Added owner assignment to items in the inline status test so the dropdown renders. In the status filter test, assigned the owner to Bread (pending) and changed Water's assignment to `purchased` so buying/packing list filtering works correctly.
+
+**Lesson**: When using narrowed variables inside closures or async functions, extract them into a `const` first — TypeScript won't narrow inside closures. For E2E tests after a data model migration, verify that test fixture data includes the assignments needed for UI elements to render (empty `assignmentStatusList` means no status badge/dropdown).
