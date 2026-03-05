@@ -8,6 +8,12 @@ A log of bugs fixed and problems solved in `chillist-be`.
 
 <!-- Add new entries at the top -->
 
+### [Logic] GET /plans list only returned plans the user created, not plans they participate in
+**Date:** 2026-03-05
+**Problem:** The `GET /plans` endpoint filtered by `plans.createdByUserId`, so participants who joined via invite or join request never saw those plans in their list.
+**Solution:** Replaced the `createdByUserId` filter with an `innerJoin` on the `participants` table filtered by `participants.userId`. Since the plan creator is always inserted as a participant with `role: 'owner'`, this covers both owned and joined plans.
+**Prevention:** Always test list/query endpoints from the perspective of every user role (owner, participant, non-participant). When a query filters by ownership, ask: "are there other ways a user can be associated with this entity?" Write multi-user integration tests that verify visibility from each role's perspective.
+
 ### [API] Every route must declare all possible error status codes with descriptions in OpenAPI
 **Date:** 2026-03-05
 **Problem:** 20 error status codes were missing from route schemas (mostly 401 on JWT-protected routes). All existing error entries used "Default Response" as the description. The FE had no way to know which errors a given endpoint could return, and backend logs showed `statusCode: 400` with no context about the actual error message or request body.
