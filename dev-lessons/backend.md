@@ -8,6 +8,12 @@ A log of bugs fixed and problems solved in `chillist-be`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Expense access control: check participant ownership, not expense creator
+**Date:** 2026-03-06
+**Problem:** Initial expense PATCH/DELETE routes checked `expense.createdByUserId === request.user.id` to determine if a non-owner could edit. This meant that when the plan owner added an expense for participant B, participant B could not edit it — the expense was "owned" by whoever typed it in, not the person it was about.
+**Solution:** Replaced `isCreator` check with `isExpenseParticipant`: look up the participant record for `expense.participantId` and check if `participant.userId === request.user.id`. Also added `checkPlanAccess()` to PATCH/DELETE so removed participants lose access entirely.
+**Prevention:** For entities that belong to a participant (expenses, preferences, etc.), always authorize based on the participant linkage (`participant.userId`), not who happened to create the record. The "creator" may be the plan owner acting on someone's behalf.
+
 ### [Logic] GET /plans list only returned plans the user created, not plans they participate in
 **Date:** 2026-03-05
 **Problem:** The `GET /plans` endpoint filtered by `plans.createdByUserId`, so participants who joined via invite or join request never saw those plans in their list.
