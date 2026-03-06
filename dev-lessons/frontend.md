@@ -900,3 +900,13 @@ Route file dropped from ~600 to ~460 lines, with each extracted module independe
 **Solution**: (1) Extracted `const planItems = plan.items` before the closure so TypeScript captures the already-narrowed type. (2) Removed `select[name="status"]` from the edit form test and changed the expected status from "Purchased" to "Pending". Added owner assignment to items in the inline status test so the dropdown renders. In the status filter test, assigned the owner to Bread (pending) and changed Water's assignment to `purchased` so buying/packing list filtering works correctly.
 
 **Lesson**: When using narrowed variables inside closures or async functions, extract them into a `const` first — TypeScript won't narrow inside closures. For E2E tests after a data model migration, verify that test fixture data includes the assignments needed for UI elements to render (empty `assignmentStatusList` means no status badge/dropdown).
+
+## 2026-03-06: Point-based quantity suggestion system
+
+**Problem**: When adding items (single or bulk), quantity always defaulted to 1 regardless of plan size, requiring manual adjustment every time.
+
+**Root Cause**: No relationship between plan participant count / event duration and suggested item quantities. All items started at quantity 1.
+
+**Solution**: Created a point-based system: `planPoints = (totalAdults + totalKids * 0.5) * durationMultiplier`. Duration multiplier scales with event length (0-4h=1, 4-7h=1.5, 7-12h=2, >12h=3). Enriched all food items in `common-items.json` (EN/HE/ES) with `quantityPerPoint` and `isPersonal` flags. Built `PlanContext` (following the `AuthContext` pattern) to expose `PlanWithDetails` and derived `planPoints`. Both `ItemForm` (on autocomplete select) and `BulkItemAddWizard` (on toggle/select-all) now use `calculateSuggestedQuantity()` to pre-fill quantities. Pure calculation functions in `utils-plan-points.ts` with 21 unit tests.
+
+**Lesson**: For FE-only derived data, use a React context to compute and cache values from existing API data rather than adding new API endpoints. Keep calculation logic in pure utility functions with thorough unit tests — this makes the context provider trivially simple (just a `useMemo` wrapper). When adding data to useCallback dependencies that reference a function defined in the component body, wrap that function in `useCallback` first to prevent stale closure issues and lint warnings.

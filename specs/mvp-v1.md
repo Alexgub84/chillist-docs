@@ -225,6 +225,8 @@ Admin users (platform-level role, not per-plan) can:
   - `planId`, `title`, optional: `description`, `location` (name/country/region/city/lat/lon/timezone), `startDate`, `endDate`, `tags[]`
   - `ownerParticipantId`, `createdByUserId` (Supabase UUID of the plan creator)
   - `status` ("draft" | "active" | "archived"), `visibility` ("public" | "invite_only" | "private")
+  - `defaultLang` (varchar(10), nullable) — ISO 639-1 language code for the plan UI (e.g. en, he)
+  - `currency` (varchar(10), nullable) — ISO 4217 currency code (e.g. USD, EUR, ILS). Used as the currency for participant expenses.
   - Timestamps: `createdAt`, `updatedAt`
 - **Item**
   - **EquipmentItem** | **FoodItem** (discriminated by `category`)
@@ -244,6 +246,10 @@ Admin users (platform-level role, not per-plan) can:
   - `requestId`, `planId`, `supabaseUserId`, `name`, `lastName`, `contactPhone`, optional: `contactEmail`, `displayName`, `adultsCount`, `kidsCount`, `foodPreferences`, `allergies`, `notes`
   - `status` ("pending" | "approved" | "rejected")
   - Unique constraint: one request per user per plan
+  - Timestamps: `createdAt`, `updatedAt`
+- **ParticipantExpense**
+  - `expenseId`, `participantId`, `planId`, `amount` (numeric(10,2)), optional `description`, optional `createdByUserId`
+  - Tracks individual expenses per participant within a plan. Currency is defined at the plan level (`plans.currency`).
   - Timestamps: `createdAt`, `updatedAt`
 
 ---
@@ -298,6 +304,12 @@ Base URL: `/` (versioning can be added later: `/v1`)
 
 ### Claim
 - `POST /plans/:planId/claim/:inviteToken` → link authenticated user to participant (JWT required)
+
+### Expenses
+- `GET /plans/:planId/expenses` → `{ expenses: Expense[], summary: [{ participantId, totalAmount }] }` (JWT required — all expenses for a plan with per-participant totals)
+- `POST /plans/:planId/expenses` → `201 Expense` (JWT required — owner/admin: any participant; linked: own only. Body: `{ participantId, amount, description? }`)
+- `PATCH /expenses/:expenseId` → `Expense` (JWT required — owner/admin: any; creator: own only)
+- `DELETE /expenses/:expenseId` → `{ ok: true }` (JWT required — owner/admin: any; creator: own only)
 
 ### Auth
 - `GET /auth/me` → `{ user: { id, email, role } }` (JWT required)
@@ -381,6 +393,8 @@ Base URL: `/` (versioning can be added later: `/v1`)
 | Guest invite flow | Done | Invite API returns `myParticipantId`, `myRsvpStatus`, `myPreferences` (single source of truth). RSVP-gated flow: guests see plan details until they respond, then items section appears. Guest item CRUD via invite URL pattern. |
 | Participant preferences | Done | Preferences modal (adults, kids, food prefs, allergies, notes) after plan creation for owner + edit per participant on plan detail page. Group Details section shows all participants' preferences. |
 | Assignments | Done | Per-participant tracking via `assignmentStatusList` JSONB on items. `isAllParticipants` flag. Owner can assign/reassign any items; non-owners can self-assign. Bulk assign per subcategory. |
+| Participant expenses | Done | `participant_expenses` table with CRUD API (v1.21.0, PR #132). `GET /plans/:planId/expenses` returns flat list + per-participant totals. `POST /plans/:planId/expenses`, `PATCH /expenses/:expenseId`, `DELETE /expenses/:expenseId`. Access: owner/admin manage all, participants manage own (via `participant.userId`). `checkPlanAccess` enforced on all routes. 30 integration tests. |
+| Plan detail fields | Done | `defaultLang` (ISO 639-1) and `currency` (ISO 4217) nullable columns on plans (v1.21.0, PR #132). Supported in create, update, and read. Currency used as plan-level setting for expense display. |
 | Weather | Not started | Optional forecast for plan location (FE has UI, BE integration pending) |
 | Auth | Done | Supabase JWT on BE + FE, guest auth via invite token, join requests, profile endpoints, rate limiting, security headers. API key removed (v1.14.1). JWT enforced on all routes. |
 | i18n (Hebrew + English) | Done | i18next + react-i18next. All UI text translated. Language toggle in header. RTL support for Hebrew. Language persisted to localStorage. Unit + E2E tests. |
