@@ -943,3 +943,11 @@ Route file dropped from ~600 to ~460 lines, with each extracted module independe
 - The `ExpensesView` is built directly in the lazy route file rather than a separate component, keeping the file structure simpler when there's no reuse.
 
 **Lesson**: When adding a new entity, follow the same layered pattern (schema → api → hook → route) but don't blindly copy permission logic — read the spec for entity-specific access rules. The `usePlanRole` hook provides `isOwner`/`currentParticipant` but the "can edit" decision is entity-specific.
+
+## 2026-03-07: Multi-select item linking on expenses
+
+**Problem**: Expenses had no way to indicate which plan items they covered. Users needed to manually describe purchases in the description field.
+
+**Solution**: Added optional `itemIds` array to expense schemas (response, create, patch). Built an `ItemMultiSelect` sub-component inside `ExpenseForm` with: collapsible toggle, search filter, checkbox list grouped by category, and removable chip tags for selected items. The component uses React Hook Form's `setValue` + `watch` to sync the array. On expense cards, linked items render as small blue chips. Type assertions in `expense.ts` use `Exclude<..., 'itemIds'>` to temporarily allow the field before the BE OpenAPI spec syncs.
+
+**Lesson**: When adding a field before the BE OpenAPI is synced, temporarily exclude it from the type assertion (`Exclude<keyof FE, 'newField'> extends keyof BE`) so CI doesn't break. Remove the exclusion after `npm run api:sync`. For multi-select in forms, use `setValue('field', newArray, { shouldDirty: true })` + `watch('field')` instead of `register` — `register` only works with scalar inputs, not programmatically managed arrays.
