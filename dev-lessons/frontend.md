@@ -910,3 +910,26 @@ Route file dropped from ~600 to ~460 lines, with each extracted module independe
 **Solution**: Created a point-based system: `planPoints = (totalAdults + totalKids * 0.5) * durationMultiplier`. Duration multiplier scales with event length (0-4h=1, 4-7h=1.5, 7-12h=2, >12h=3). Enriched all food items in `common-items.json` (EN/HE/ES) with `quantityPerPoint` and `isPersonal` flags. Built `PlanContext` (following the `AuthContext` pattern) to expose `PlanWithDetails` and derived `planPoints`. Both `ItemForm` (on autocomplete select) and `BulkItemAddWizard` (on toggle/select-all) now use `calculateSuggestedQuantity()` to pre-fill quantities. Pure calculation functions in `utils-plan-points.ts` with 21 unit tests.
 
 **Lesson**: For FE-only derived data, use a React context to compute and cache values from existing API data rather than adding new API endpoints. Keep calculation logic in pure utility functions with thorough unit tests — this makes the context provider trivially simple (just a `useMemo` wrapper). When adding data to useCallback dependencies that reference a function defined in the component body, wrap that function in `useCallback` first to prevent stale closure issues and lint warnings.
+
+## 2026-03-06: E2E test flake — CollapsibleSection defaultOpen + click toggles closed
+
+**Problem**: E2E test `Invite Landing Page › shows plan details for valid invite link` failed on Desktop Firefox: `expect(locator).toBeVisible()` for `getByText('Bob Jones')` timed out with "element(s) not found".
+
+**Root Cause**: The `CollapsibleSection` component renders the Participants list with `defaultOpen={true}`. The E2E test had `await page.getByText('Participants').click()` before the visibility assertions — this actually _closed_ the section instead of opening it. With the test's injected `transition-duration: 10ms`, `Alex Smith` still passed (checked before the 10ms close animation finished) but `Bob Jones` failed (checked after the panel unmounted).
+
+**Solution**: Removed the unnecessary `.click()` call. The section is already open by default, so the participant names are immediately visible without interaction.
+
+**Lesson**: When writing E2E tests for `CollapsibleSection` (Headless UI `Disclosure`), remember `defaultOpen={true}` means clicking the header _closes_ it. Always check the component's `defaultOpen` prop before adding click interactions. The 10ms animation injection in E2E fixtures can mask timing issues — one assertion passes, the next fails — so a single "flaky" assertion often indicates a real DOM state problem.
+
+## 2026-03-07: Expense feature — pattern for new entity CRUD
+
+**Problem**: Adding a full CRUD feature (expenses) that follows the existing item/participant pattern but with different permission rules.
+
+**Solution**: Followed the established layered pattern: Zod schemas → API functions → React Query hooks → route + view. Key decisions:
+
+- Expense amounts come back as strings from BE (numeric(10,2) in Postgres), so the schema uses `z.string()` for the response but `z.number().positive()` for create/patch input.
+- `usePlanContext()` returns `PlanContextValue | null` — always null-check before destructuring (`planCtx?.planCurrency ?? ''`).
+- Permission check uses `createdByUserId === user.id` instead of `canEditItem` (which is assignment-based for items). Each entity type can have its own permission logic.
+- The `ExpensesView` is built directly in the lazy route file rather than a separate component, keeping the file structure simpler when there's no reuse.
+
+**Lesson**: When adding a new entity, follow the same layered pattern (schema → api → hook → route) but don't blindly copy permission logic — read the spec for entity-specific access rules. The `usePlanRole` hook provides `isOwner`/`currentParticipant` but the "can edit" decision is entity-specific.
