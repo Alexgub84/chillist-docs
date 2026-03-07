@@ -8,6 +8,12 @@ A log of bugs fixed and problems solved in `chillist-be`.
 
 <!-- Add new entries at the top -->
 
+### [Infra] Drizzle migrator skips migrations with out-of-order timestamps
+**Date:** 2026-03-07
+**Problem:** Migrations 0016 and 0017 were never applied in production. Drizzle's migrator compares `created_at` (the `when` field from `_journal.json`) — it fetches `MAX(created_at)` from `__drizzle_migrations` and skips any migration whose timestamp is lower. Migration 0015 had a manually-set timestamp (`1772870400000`) that was later than 0016/0017's auto-generated timestamps, so they were silently skipped.
+**Solution:** Fixed the `when` values in `_journal.json` so timestamps are strictly increasing. Added a CI check (`scripts/check-migration-order.ts`) that validates timestamp order before migrations run.
+**Prevention:** Never manually set migration timestamps. After generating a migration on a feature branch, always rebase on main and verify the journal timestamps are monotonically increasing. The CI check now catches this automatically.
+
 ### [Arch] Expense access control: check participant ownership, not expense creator
 **Date:** 2026-03-06
 **Problem:** Initial expense PATCH/DELETE routes checked `expense.createdByUserId === request.user.id` to determine if a non-owner could edit. This meant that when the plan owner added an expense for participant B, participant B could not edit it — the expense was "owned" by whoever typed it in, not the person it was about.

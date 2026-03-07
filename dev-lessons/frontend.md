@@ -6,6 +6,16 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Test] E2E bulk wizard — use toPass retry pattern for Headless UI modal clicks
+
+**Date:** 2026-03-07
+**Problem:** E2E test "bulk adds multiple items via wizard modal" timed out on `equipmentBtn.click()` — Playwright reported "element is not stable" and "element was detached from the DOM". The test failed consistently on Desktop Chrome (60s timeout exceeded) and intermittently on other browsers. Using `force: true` fixed Chrome but broke Mobile Safari (clicks dispatched during transitions didn't trigger React handlers on WebKit).
+**Root Cause:** Two interacting issues: (1) Headless UI `TransitionChild` enter animation on the `DialogPanel` makes buttons inside the modal "unstable" (still moving) even with the 10ms transition fixture override. (2) Parent component re-renders (data fetching, context updates) can detach and re-attach the modal content, causing the locator's resolved element to become stale. `force: true` bypasses stability checks but on WebKit can dispatch events on stale nodes that React doesn't process.
+**Solution:** Use Playwright's `toPass` retry pattern to wrap click + next-step-assertion as a unit. This retries the entire interaction if the click doesn't register or the element is unstable: `await expect(async () => { await btn.click({ timeout: 2000 }); await expect(nextStep).toBeVisible({ timeout: 2000 }); }).toPass({ timeout: 15000 });`. Applied to FAB click, category click, and subcategory click. Only the final submit button uses `force: true` (no subsequent step to assert on). Scoped wizard selectors to the dialog (`dialog.getByTestId(...)`) for robustness.
+**Prevention:** For multi-step modal interactions in E2E with Headless UI: (1) Use `toPass` retry blocks that pair each click with an assertion on the expected next state — this handles both "element not stable" (Chrome) and "click not registered" (WebKit). (2) Avoid blanket `force: true` on modal content clicks — it can break on WebKit. (3) Reserve `force: true` only for final submit buttons where there's no next step to assert on.
+
+---
+
 ### [UX] Participant filter excludes canceled items from counts
 
 **Date:** 2026-03-04
