@@ -6,6 +6,16 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Test] E2E bulk wizard — use toPass retry pattern for Headless UI modal clicks
+
+**Date:** 2026-03-07
+**Problem:** E2E test "bulk adds multiple items via wizard modal" timed out on `equipmentBtn.click()` — Playwright reported "element is not stable" and "element was detached from the DOM". The test failed consistently on Desktop Chrome (60s timeout exceeded) and intermittently on other browsers. Using `force: true` fixed Chrome but broke Mobile Safari (clicks dispatched during transitions didn't trigger React handlers on WebKit).
+**Root Cause:** Two interacting issues: (1) Headless UI `TransitionChild` enter animation on the `DialogPanel` makes buttons inside the modal "unstable" (still moving) even with the 10ms transition fixture override. (2) Parent component re-renders (data fetching, context updates) can detach and re-attach the modal content, causing the locator's resolved element to become stale. `force: true` bypasses stability checks but on WebKit can dispatch events on stale nodes that React doesn't process.
+**Solution:** Use Playwright's `toPass` retry pattern to wrap click + next-step-assertion as a unit. This retries the entire interaction if the click doesn't register or the element is unstable: `await expect(async () => { await btn.click({ timeout: 2000 }); await expect(nextStep).toBeVisible({ timeout: 2000 }); }).toPass({ timeout: 15000 });`. Applied to FAB click, category click, and subcategory click. Only the final submit button uses `force: true` (no subsequent step to assert on). Scoped wizard selectors to the dialog (`dialog.getByTestId(...)`) for robustness.
+**Prevention:** For multi-step modal interactions in E2E with Headless UI: (1) Use `toPass` retry blocks that pair each click with an assertion on the expected next state — this handles both "element not stable" (Chrome) and "click not registered" (WebKit). (2) Avoid blanket `force: true` on modal content clicks — it can break on WebKit. (3) Reserve `force: true` only for final submit buttons where there's no next step to assert on.
+
+---
+
 ### [UX] Participant filter excludes canceled items from counts
 
 **Date:** 2026-03-04
@@ -900,3 +910,44 @@ Route file dropped from ~600 to ~460 lines, with each extracted module independe
 **Solution**: (1) Extracted `const planItems = plan.items` before the closure so TypeScript captures the already-narrowed type. (2) Removed `select[name="status"]` from the edit form test and changed the expected status from "Purchased" to "Pending". Added owner assignment to items in the inline status test so the dropdown renders. In the status filter test, assigned the owner to Bread (pending) and changed Water's assignment to `purchased` so buying/packing list filtering works correctly.
 
 **Lesson**: When using narrowed variables inside closures or async functions, extract them into a `const` first — TypeScript won't narrow inside closures. For E2E tests after a data model migration, verify that test fixture data includes the assignments needed for UI elements to render (empty `assignmentStatusList` means no status badge/dropdown).
+
+## 2026-03-06: Point-based quantity suggestion system
+
+**Problem**: When adding items (single or bulk), quantity always defaulted to 1 regardless of plan size, requiring manual adjustment every time.
+
+**Root Cause**: No relationship between plan participant count / event duration and suggested item quantities. All items started at quantity 1.
+
+**Solution**: Created a point-based system: `planPoints = (totalAdults + totalKids * 0.5) * durationMultiplier`. Duration multiplier scales with event length (0-4h=1, 4-7h=1.5, 7-12h=2, >12h=3). Enriched all food items in `common-items.json` (EN/HE/ES) with `quantityPerPoint` and `isPersonal` flags. Built `PlanContext` (following the `AuthContext` pattern) to expose `PlanWithDetails` and derived `planPoints`. Both `ItemForm` (on autocomplete select) and `BulkItemAddWizard` (on toggle/select-all) now use `calculateSuggestedQuantity()` to pre-fill quantities. Pure calculation functions in `utils-plan-points.ts` with 21 unit tests.
+
+**Lesson**: For FE-only derived data, use a React context to compute and cache values from existing API data rather than adding new API endpoints. Keep calculation logic in pure utility functions with thorough unit tests — this makes the context provider trivially simple (just a `useMemo` wrapper). When adding data to useCallback dependencies that reference a function defined in the component body, wrap that function in `useCallback` first to prevent stale closure issues and lint warnings.
+
+## 2026-03-06: E2E test flake — CollapsibleSection defaultOpen + click toggles closed
+
+**Problem**: E2E test `Invite Landing Page › shows plan details for valid invite link` failed on Desktop Firefox: `expect(locator).toBeVisible()` for `getByText('Bob Jones')` timed out with "element(s) not found".
+
+**Root Cause**: The `CollapsibleSection` component renders the Participants list with `defaultOpen={true}`. The E2E test had `await page.getByText('Participants').click()` before the visibility assertions — this actually _closed_ the section instead of opening it. With the test's injected `transition-duration: 10ms`, `Alex Smith` still passed (checked before the 10ms close animation finished) but `Bob Jones` failed (checked after the panel unmounted).
+
+**Solution**: Removed the unnecessary `.click()` call. The section is already open by default, so the participant names are immediately visible without interaction.
+
+**Lesson**: When writing E2E tests for `CollapsibleSection` (Headless UI `Disclosure`), remember `defaultOpen={true}` means clicking the header _closes_ it. Always check the component's `defaultOpen` prop before adding click interactions. The 10ms animation injection in E2E fixtures can mask timing issues — one assertion passes, the next fails — so a single "flaky" assertion often indicates a real DOM state problem.
+
+## 2026-03-07: Expense feature — pattern for new entity CRUD
+
+**Problem**: Adding a full CRUD feature (expenses) that follows the existing item/participant pattern but with different permission rules.
+
+**Solution**: Followed the established layered pattern: Zod schemas → API functions → React Query hooks → route + view. Key decisions:
+
+- Expense amounts come back as strings from BE (numeric(10,2) in Postgres), so the schema uses `z.string()` for the response but `z.number().positive()` for create/patch input.
+- `usePlanContext()` returns `PlanContextValue | null` — always null-check before destructuring (`planCtx?.planCurrency ?? ''`).
+- Permission check uses `createdByUserId === user.id` instead of `canEditItem` (which is assignment-based for items). Each entity type can have its own permission logic.
+- The `ExpensesView` is built directly in the lazy route file rather than a separate component, keeping the file structure simpler when there's no reuse.
+
+**Lesson**: When adding a new entity, follow the same layered pattern (schema → api → hook → route) but don't blindly copy permission logic — read the spec for entity-specific access rules. The `usePlanRole` hook provides `isOwner`/`currentParticipant` but the "can edit" decision is entity-specific.
+
+## 2026-03-07: Multi-select item linking on expenses
+
+**Problem**: Expenses had no way to indicate which plan items they covered. Users needed to manually describe purchases in the description field.
+
+**Solution**: Added optional `itemIds` array to expense schemas (response, create, patch). Built an `ItemMultiSelect` sub-component inside `ExpenseForm` with: collapsible toggle, search filter, checkbox list grouped by category, and removable chip tags for selected items. The component uses React Hook Form's `setValue` + `watch` to sync the array. On expense cards, linked items render as small blue chips. Type assertions in `expense.ts` use `Exclude<..., 'itemIds'>` to temporarily allow the field before the BE OpenAPI spec syncs.
+
+**Lesson**: When adding a field before the BE OpenAPI is synced, temporarily exclude it from the type assertion (`Exclude<keyof FE, 'newField'> extends keyof BE`) so CI doesn't break. Remove the exclusion after `npm run api:sync`. For multi-select in forms, use `setValue('field', newArray, { shouldDirty: true })` + `watch('field')` instead of `register` — `register` only works with scalar inputs, not programmatically managed arrays.
