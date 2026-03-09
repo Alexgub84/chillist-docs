@@ -62,6 +62,12 @@ A log of bugs fixed and problems solved in `chillist-be`.
 **Solution:** Extracted `addParticipantToPlan()` into `src/services/participant.service.ts`. The service is a pure function that receives `db` as its first argument — no Fastify coupling. Route handlers do orchestration (auth, validation, error responses) and delegate business logic to the service.
 **Prevention:** Route handlers should only handle HTTP concerns (auth, validation, status codes, error formatting). When business logic is needed in 2+ routes or is complex enough to warrant its own tests, extract it to `src/services/` immediately. Services are the single place for side effects (notifications, activity logs) that should fire regardless of which route triggers the action.
 
+### [Security] WebSocket plan membership check was missing
+**Date:** 2026-03-09
+**Problem:** The WebSocket `/plans/:planId/ws` endpoint validated the JWT and checked that the plan existed, but did not verify the authenticated user was actually a participant/creator of the plan. Any user with a valid JWT could subscribe to any plan's WebSocket.
+**Solution:** Replaced the raw plan-exists query with `checkPlanAccess()` — the same utility used by REST routes — which enforces creator, participant, public/private visibility, and admin checks. Also added warn/error logs on all rejection paths and try/catch on `ws.send()` in broadcast.
+**Prevention:** When adding new access-controlled endpoints (including WebSocket), always reuse the existing access-check utility (`checkPlanAccess`) rather than writing ad-hoc queries. Every new feature should pass through a log-level analysis per backend rule #4.
+
 ### [Category] Short Title
 **Date:** YYYY-MM-DD
 **Problem:** One sentence describing what went wrong

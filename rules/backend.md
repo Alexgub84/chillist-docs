@@ -30,9 +30,15 @@ Strict, minimal instructions for `chillist-be`. Read these before executing any 
 - **Critical Env Vars:** Make environment variables that disable critical features (like `SUPABASE_URL`) required in production via Zod `.refine()`.
 
 ## 4. Error Logging
-- Use Fastify's Pino logger (`request.log`).
+- Use Fastify's Pino logger (`request.log` in routes, `fastify.log` in plugins).
 - Always pass the error object as `err` and include relevant entity IDs (`planId`, `itemId`) for correlation.
 - Use `warn` or `error` for anything that changes request behavior (e.g., auth failure). `debug` is invisible in production.
+- **Every new feature must include a log-level analysis before finalization.** Walk through every code path and classify:
+  - `error` — unexpected failures the system cannot recover from (unhandled exceptions, DB connection failures, data corruption). These indicate bugs or infrastructure problems.
+  - `warn` — expected-but-abnormal situations that change behavior (invalid token, access denied, missing required data, send failures to external clients). The system recovers, but an operator should know.
+  - `info` — normal successful operations (resource created, connection opened, notification sent). Already standard practice.
+  - Never leave a rejection/failure path without a log. If a request is denied, a connection is closed, or an error is caught, log it at `warn` or `error` with enough context (entity IDs, error type) to debug from production logs alone.
+  - Never log at `debug` if the answer to "would I want to see this in production?" is yes.
 
 ## 5. Testing
 - **Write Alongside Code:** Every new route or behavior change requires a matching integration test *before* finalization.

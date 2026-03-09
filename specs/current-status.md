@@ -17,11 +17,23 @@ A web app for organizing group activities — camping trips, dinner parties, bea
 
 ### Plans
 
-Create a plan for any group event. Each plan has a title, optional description, date or date range, and a location with Google Maps search. Plans have a status (draft / active / archived) and a visibility setting (public / invite-only / private) that controls who can find and access them. The owner can set a currency and default language per plan.
+Create a plan for any group event using a **3-step wizard**:
+
+1. **Plan Details** — title, description, date/time (one-day toggle or date range), location (Google Maps autocomplete — only place name is shown; city/country/region/lat/lon are auto-populated), language, and currency.
+2. **Preferences** — number of adults and kids, food preferences, allergies, notes. RSVP is auto-set to "confirmed" for the owner. Also includes **estimated adults and kids** for other participants (stored on the plan via BE). The plan is created and saved at this step.
+3. **Add Items** — the bulk add wizard is embedded inline so the owner can immediately pick items from the 700+ item library. This step can be skipped.
+
+Owner details (name, phone, email) are auto-filled from the user's profile and not shown in the wizard. Defaults are applied silently: status = active, visibility = invite-only.
+
+Each plan has a title, optional description, date or date range, and a location with Google Maps search. Plans have a status (draft / active / archived) and a visibility setting (public / invite-only / private) that controls who can find and access them. The owner can set a currency and default language per plan.
 
 The plans list shows all plans you own or are invited to. Filter by ownership (All / My plans / Invited) and by time (All / Upcoming / Past). Each card shows the plan title, status, dates, location, and participant count.
 
+The **edit plan** modal follows the same 2-step layout: Step 1 for plan details (title, description, location, dates, status, language, currency, tags) and Step 2 for owner preferences + participant estimation. Location in edit mode also shows only the place name with Google Maps autocomplete.
+
 Only the plan owner can edit or delete a plan. Platform admins can also delete any plan.
+
+The plan detail page shows a **Headcount** section with two cards: **Reported** (aggregated adults and kids from all participants) and **Estimated** (the owner's estimation of other participants, stored as `estimatedAdults`/`estimatedKids` on the plan). Values show a dash when not set.
 
 ### Items & Checklists
 
@@ -30,6 +42,7 @@ Items are the core of every plan — the shared list of everything the group nee
 You can add a single item with full details, or use the **bulk add wizard** to pick from a library of 700+ suggested items organized by subcategory (Cooking Equipment, Fresh Vegetables, Dairy, First Aid, Lighting, Beverages, Vegan, and many more). Search, select, and add multiple items at once.
 
 Items are grouped by category, then by subcategory. Four views are available:
+
 - **All Items** — everything in the plan
 - **My Items** — only items assigned to you
 - **Buying List** — items still to be purchased (checklist mode with checkboxes)
@@ -42,6 +55,7 @@ Inline editing lets you tap any item to change its quantity, unit, or status. In
 ### Participants & Roles
 
 Every plan has participants with roles:
+
 - **Owner** — full control: edit the plan, manage participants, assign items, approve join requests, transfer ownership.
 - **Participant** — can add items, edit their own assigned items, self-assign unassigned items, update their own preferences.
 - **Viewer** — read-only access.
@@ -53,6 +67,7 @@ Each participant has group details: number of adults and kids, food preferences,
 ### Assignments
 
 Items can be assigned to specific participants so everyone knows who's responsible for what:
+
 - The owner can assign or reassign any item to any participant.
 - Non-owners can self-assign unassigned items.
 - **Assign to all** marks an item as "for everyone" — it appears on every participant's list with individual status tracking.
@@ -65,6 +80,7 @@ Each participant has their own status per item (pending → purchased → packed
 The owner can invite people to a plan by sharing a unique invite link per participant. The link can be copied and shared via WhatsApp, SMS, or any messaging app.
 
 When someone opens an invite link:
+
 - **Signed-in users** are automatically added to the plan and redirected to it.
 - **Not signed in** — they see a plan preview and can choose to sign in, sign up, or continue as a guest.
 
@@ -107,13 +123,14 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 ### Owner creates a plan and invites friends
 
 1. Sign up or sign in (email or Google).
-2. Create a plan — add title, dates, pick a location on the map.
-3. Set your group preferences (how many adults/kids, dietary needs).
-4. Add participants by name/phone, or share invite links.
-5. Add items — one by one or bulk-pick from the suggested library.
-6. Assign items to participants (or let them self-assign).
-7. Track progress as people mark items purchased and packed.
-8. Log expenses and see the settlement summary.
+2. Start the 3-step plan creation wizard.
+3. Step 1: Enter title, description, dates, location (Google Maps autocomplete), language, currency → click Next.
+4. Step 2: Set group preferences (adults/kids count, dietary needs, allergies) → click Next (plan is created and saved).
+5. Step 3: Bulk-pick items from the 700+ item library, or skip to go straight to the plan.
+6. From the plan page: add participants by name/phone, or share invite links.
+7. Assign items to participants (or let them self-assign).
+8. Track progress as people mark items purchased and packed.
+9. Log expenses and see the settlement summary.
 
 ### Invited participant joins via link
 
@@ -152,15 +169,15 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 
 ### Stack
 
-| Layer | Technology |
-|-------|------------|
-| Frontend | React 19, TypeScript, Vite 7, Tailwind CSS v4, TanStack Router + React Query |
-| Backend | Node.js 20+, Fastify 5, TypeScript (ESM), Zod validation |
-| Database | PostgreSQL via Drizzle ORM |
-| Auth | Supabase (email + Google OAuth), JWT verified via JWKS |
-| API contract | OpenAPI 3.1, auto-generated from Fastify schemas |
-| FE deploy | Cloudflare Pages via GitHub Actions |
-| BE deploy | Railway via GitHub Actions |
+| Layer        | Technology                                                                   |
+| ------------ | ---------------------------------------------------------------------------- |
+| Frontend     | React 19, TypeScript, Vite 7, Tailwind CSS v4, TanStack Router + React Query |
+| Backend      | Node.js 20+, Fastify 5, TypeScript (ESM), Zod validation                     |
+| Database     | PostgreSQL via Drizzle ORM                                                   |
+| Auth         | Supabase (email + Google OAuth), JWT verified via JWKS                       |
+| API contract | OpenAPI 3.1, auto-generated from Fastify schemas                             |
+| FE deploy    | Cloudflare Pages via GitHub Actions                                          |
+| BE deploy    | Railway via GitHub Actions                                                   |
 
 ### Security
 
@@ -181,22 +198,22 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 
 ### Backend API Routes
 
-| Area | Routes | What They Do |
-|------|--------|-------------|
-| Health | `GET /health` | Server and database status check |
-| Plans | `POST`, `GET`, `GET /:id`, `GET /:id/preview`, `PATCH /:id`, `DELETE /:id` | Create, list, read, preview, update, delete plans |
-| Plans | `GET /plans/pending-requests` | List plans with pending join requests |
-| Participants | `POST`, `GET`, `GET /:id`, `PATCH /:id`, `DELETE /:id` | Add, list, read, update, remove participants |
-| Participants | `POST /.../regenerate-token` | Regenerate a participant's invite token |
-| Items | `POST`, `GET`, `PATCH /:id` | Create, list, update items |
-| Items | `POST /bulk`, `PATCH /bulk` | Bulk create and bulk update items |
-| Invite (guest) | `GET /invite/:token` | Get plan data as a guest via invite token |
-| Invite (guest) | `PATCH /invite/:token/preferences` | Update guest preferences and RSVP |
-| Invite (guest) | `POST`, `PATCH`, `POST /bulk`, `PATCH /bulk` on items | Guest item CRUD (single + bulk) |
-| Join Requests | `POST`, `PATCH /:id` | Submit a join request, approve or reject |
-| Claim | `POST /claim/:token` | Link a registered user to a participant spot |
-| Auth | `GET /me`, `GET /profile`, `PATCH /profile`, `POST /sync-profile` | Current user, read/update preferences, sync from Supabase |
-| Expenses | `POST`, `GET`, `PATCH /:id`, `DELETE /:id` | Create, list, update, delete expenses |
+| Area           | Routes                                                                     | What They Do                                              |
+| -------------- | -------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Health         | `GET /health`                                                              | Server and database status check                          |
+| Plans          | `POST`, `GET`, `GET /:id`, `GET /:id/preview`, `PATCH /:id`, `DELETE /:id` | Create, list, read, preview, update, delete plans         |
+| Plans          | `GET /plans/pending-requests`                                              | List plans with pending join requests                     |
+| Participants   | `POST`, `GET`, `GET /:id`, `PATCH /:id`, `DELETE /:id`                     | Add, list, read, update, remove participants              |
+| Participants   | `POST /.../regenerate-token`                                               | Regenerate a participant's invite token                   |
+| Items          | `POST`, `GET`, `PATCH /:id`                                                | Create, list, update items                                |
+| Items          | `POST /bulk`, `PATCH /bulk`                                                | Bulk create and bulk update items                         |
+| Invite (guest) | `GET /invite/:token`                                                       | Get plan data as a guest via invite token                 |
+| Invite (guest) | `PATCH /invite/:token/preferences`                                         | Update guest preferences and RSVP                         |
+| Invite (guest) | `POST`, `PATCH`, `POST /bulk`, `PATCH /bulk` on items                      | Guest item CRUD (single + bulk)                           |
+| Join Requests  | `POST`, `PATCH /:id`                                                       | Submit a join request, approve or reject                  |
+| Claim          | `POST /claim/:token`                                                       | Link a registered user to a participant spot              |
+| Auth           | `GET /me`, `GET /profile`, `PATCH /profile`, `POST /sync-profile`          | Current user, read/update preferences, sync from Supabase |
+| Expenses       | `POST`, `GET`, `PATCH /:id`, `DELETE /:id`                                 | Create, list, update, delete expenses                     |
 
 ### CI/CD
 

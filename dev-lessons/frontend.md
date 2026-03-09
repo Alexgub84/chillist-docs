@@ -951,3 +951,33 @@ Route file dropped from ~600 to ~460 lines, with each extracted module independe
 **Solution**: Added optional `itemIds` array to expense schemas (response, create, patch). Built an `ItemMultiSelect` sub-component inside `ExpenseForm` with: collapsible toggle, search filter, checkbox list grouped by category, and removable chip tags for selected items. The component uses React Hook Form's `setValue` + `watch` to sync the array. On expense cards, linked items render as small blue chips. Type assertions in `expense.ts` use `Exclude<..., 'itemIds'>` to temporarily allow the field before the BE OpenAPI spec syncs.
 
 **Lesson**: When adding a field before the BE OpenAPI is synced, temporarily exclude it from the type assertion (`Exclude<keyof FE, 'newField'> extends keyof BE`) so CI doesn't break. Remove the exclusion after `npm run api:sync`. For multi-select in forms, use `setValue('field', newArray, { shouldDirty: true })` + `watch('field')` instead of `register` — `register` only works with scalar inputs, not programmatically managed arrays.
+
+## 2026-03-09: Plan creation wizard — refactor from single form + modal to 3-step wizard
+
+**Problem**: The plan creation flow was a single long form (PlanForm) followed by a preferences modal. Users had to fill in owner details manually, scroll through many fields, and location showed all geo fields. Item add came only after navigating to the plan page.
+
+**Root Cause**: Original design put everything in one form. Owner details were duplicated from user profile. Location exposed internal fields (city, country, region, lat/lon). Preferences were a separate modal. Item add was a completely separate step on the plan page.
+
+**Solution**: Created `CreatePlanWizard` component with 3 steps: (1) plan details — title, description, date/time, location (place name only via Google Maps autocomplete, hidden geo fields), language, currency; (2) preferences — reuse `PreferencesFields`, RSVP auto-confirmed, plan created at this step; (3) bulk item add — `BulkItemAddWizard` embedded inline (new `inline` prop skips Modal wrapper). Owner details auto-filled from user profile. `create-plan.tsx` route simplified to just render the wizard. Step indicator with numbered steps and checkmarks.
+
+**Lesson**: When converting a monolithic form to a multi-step wizard, keep each step's `useForm` instance separate — sharing form state across steps creates coupling and makes step-back harder. For components that can render both as modal and inline, add an `inline` prop that skips the wrapper rather than extracting inner content into a separate component — this avoids breaking existing modal consumers. Auto-filling owner details from auth user metadata eliminates a whole class of validation errors on required fields.
+
+## 2026-03-09: Edit plan form — convert to 2-step wizard matching create flow
+
+**Problem**: Edit Plan was a single long modal form while Create Plan was a 3-step wizard. The inconsistency confused users and the edit form showed raw location fields (city, country, region) that the create wizard hid.
+
+**Root Cause**: EditPlanForm was written before the create wizard and never updated to match.
+
+**Solution**: Rewrote `EditPlanForm` as a 2-step wizard (Step 1: plan details with place-only location; Step 2: owner preferences + participant estimation). Changed `onSubmit` signature from `PlanPatch` to `EditPlanSubmitPayload { planPatch, ownerPreferences }` so the plan detail page can update both in one flow. Added `ownerParticipant` prop to pre-fill preferences from the existing owner data. Estimation fields (estimatedAdults/Kids) are now sent to the BE in both create and patch flows.
+
+**Lesson**: When a form's `onSubmit` signature changes (e.g., from a single object to a compound payload), update the caller in the route file at the same time — TypeScript will catch the mismatch. Use `data-testid` on each step's form element so tests can reliably target the correct step without depending on button text that might repeat across steps. For union types in closures (like `plan` which can be `PlanWithDetails | NotParticipantResponse`), add an explicit type guard before accessing discriminated properties.
+
+## 2026-03-09: Align FE with BE OpenAPI — plan estimation fields
+
+**Problem**: BE added `estimatedAdults`/`estimatedKids` to the Plan entity, CreatePlanWithOwner body, and UpdatePlanBody on the `feature/plan-estimation-fields` branch. FE was collecting these values in the wizard but not sending them and not displaying real data.
+
+**Root Cause**: FE was built before the BE schema existed, so estimation was UI-only with placeholder dashes.
+
+**Solution**: (1) Synced OpenAPI from the BE feature branch using `curl` with the branch ref instead of `main`. (2) Regenerated `api.generated.ts`. (3) Added `estimatedAdults`/`estimatedKids` to `planSchema`, `planCreateWithOwnerSchema`, `planPatchSchema`. (4) Wired estimation values into `CreatePlanWizard` payload and `EditPlanForm` planPatch. (5) Updated headcount section to read `plan.estimatedAdults`/`plan.estimatedKids` with dash fallback.
+
+**Lesson**: When syncing OpenAPI from a BE feature branch, override the fetch URL to point to the branch ref (`raw.githubusercontent.com/.../feature-branch/docs/openapi.json`) rather than modifying the fetch script. After regenerating types, check all three schema layers: (1) the response schema (plan read), (2) the create schema, (3) the patch schema — new fields often appear in all three with slightly different nullability rules.
