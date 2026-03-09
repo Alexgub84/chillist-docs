@@ -14,7 +14,9 @@ Central documentation repository for the Chillist project — a trip/event plann
 
 ### Specs
 
-- [MVP Specification v1](specs/mvp-v1.md) — full product spec with current implementation status
+- [MVP Target](specs/mvp-target.md) — what's needed to declare MVP ready (WhatsApp, analytics, logging, alerts)
+- [Current Status](specs/current-status.md) — what's working right now (auto-updated on each BE/FE deploy)
+- [MVP Specification v1](specs/mvp-v1.md) — full product spec with implementation details
 - [User & Participant Management](specs/user-management.md) — auth, profiles, access control, PII filtering
 - [Backlog](backlog.md) — upcoming work as issue candidates
 
@@ -42,7 +44,7 @@ Logs of bugs fixed and problems solved — kept as a learning reference:
 
 Both `chillist-fe` and `chillist-be` have a `.cursor/rules/workflow.mdc` that points here. When working in either repo, Cursor reads the rules, guides, and specs directly from `../chillist-docs/` — no copies are made. This keeps everything in sync.
 
-1. **Starting a new feature?** Check the [MVP spec](specs/mvp-v1.md) for requirements and current status.
+1. **Starting a new feature?** Check the [MVP Target](specs/mvp-target.md) for what's left, and the [Current Status](specs/current-status.md) for what's working. Full details in the [MVP spec](specs/mvp-v1.md).
 2. **Setting up a repo?** Follow the relevant [guide](guides/).
 3. **Hit a bug?** Check [dev-lessons](dev-lessons/) — someone may have solved it before.
 4. **Integrating FE and BE?** The OpenAPI spec in `chillist-be/docs/openapi.json` is the contract. Backend owns it, frontend fetches it via `npm run api:fetch`.

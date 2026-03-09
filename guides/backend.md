@@ -51,6 +51,8 @@ npm run db:migrate    # run Drizzle migrations
 npm run db:seed       # seed with sample data (optional)
 ```
 
+**Seed maintenance:** When adding a new feature or endpoint, update the seed (`src/db/seed.ts`) or review whether an update is needed. See [Backend Rules § Seed Maintenance](../rules/backend.md#6-seed-maintenance).
+
 ## Running Locally
 
 ### Quick start (one command)

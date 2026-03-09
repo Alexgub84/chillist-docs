@@ -40,7 +40,12 @@ Strict, minimal instructions for `chillist-be`. Read these before executing any 
 - **Mocking DB:** If a unit test mocks DB calls, ensure the mock chain matches the exact Drizzle query builder chain used in the handler.
 - **Combine Similar Tests:** Use `it.each` for repetitive validation tests.
 
-## 6. Workflow & Safe Deployments
+## 6. Seed Maintenance
+- **Update on new features:** The seed (`src/db/seed.ts`) should be updated with each new feature and endpoint, or reviewed to determine if an update is needed.
+- When adding a new table or entity, add representative seed data and include it in the TRUNCATE list if applicable.
+- When adding a new endpoint that returns data, consider whether the seed should provide sample data to exercise that endpoint.
+
+## 7. Workflow & Safe Deployments
 - **Version Bumping:** Bump `package.json` version on every PR (Patch: fixes, Minor: features/DB, Major: breaking).
 - **Incremental Migration:** When adding auth or breaking changes, do additive changes first. Keep the old route/auth working, let FE migrate, then enforce/cleanup.
 - **Breaking Change Check:** Before committing, check if request/response shapes changed. If breaking, keep the old code path working, deprecate it, and create a cleanup issue.
