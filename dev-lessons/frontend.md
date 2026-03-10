@@ -1000,3 +1000,15 @@ Route file dropped from ~600 to ~460 lines, with each extracted module independe
 **Solution**: (1) Synced OpenAPI from the BE feature branch using `curl` with the branch ref instead of `main`. (2) Regenerated `api.generated.ts`. (3) Added `estimatedAdults`/`estimatedKids` to `planSchema`, `planCreateWithOwnerSchema`, `planPatchSchema`. (4) Wired estimation values into `CreatePlanWizard` payload and `EditPlanForm` planPatch. (5) Updated headcount section to read `plan.estimatedAdults`/`plan.estimatedKids` with dash fallback.
 
 **Lesson**: When syncing OpenAPI from a BE feature branch, override the fetch URL to point to the branch ref (`raw.githubusercontent.com/.../feature-branch/docs/openapi.json`) rather than modifying the fetch script. After regenerating types, check all three schema layers: (1) the response schema (plan read), (2) the create schema, (3) the patch schema — new fields often appear in all three with slightly different nullability rules.
+
+### [Test] E2E WebSocket detection — `page.on('websocket')` unreliable in headless Chrome
+
+**Date:** 2026-03-10
+
+**Problem:** E2E tests using Playwright's `page.on('websocket')` event to verify the app attempts WebSocket connections passed locally but failed consistently in CI (headless Chrome on ubuntu-latest). The `wsConnections` array was always empty.
+
+**Root Cause:** In CI, no WebSocket server listens on localhost:3333. The browser's TCP connection is immediately refused (ECONNREFUSED) before the WebSocket upgrade handshake begins, so Playwright's network-level `websocket` event never fires. Locally this may work if the port responds differently (e.g., timeout vs. refusal).
+
+**Solution:** Replaced `page.on('websocket', ...)` with a JavaScript-level interception via `addInitScript`: monkeypatch the `WebSocket` constructor to record URLs into `window.__wsUrls`, then use `expect.poll(() => page.evaluate(...))` to assert. This captures connection attempts at the application layer regardless of network outcome.
+
+**Lesson:** Do not rely on Playwright's `page.on('websocket')` to detect connection _attempts_ when the target server is not running. The event depends on the TCP handshake progressing to the HTTP upgrade phase. For verifying that app code calls `new WebSocket(url)`, intercept the constructor in the page context instead.
