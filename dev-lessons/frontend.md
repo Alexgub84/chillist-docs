@@ -6,6 +6,25 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Test] E2E — always await Playwright expect assertions
+
+**Date:** 2026-03-09
+**Problem:** E2E websocket tests passed on Desktop Chrome but failed on Firefox and Safari. `expect(locator).toBeVisible()` returned immediately without waiting for the element.
+**Root Cause:** Missing `await` on Playwright `expect()` assertions. Without `await`, the assertion returns a pending promise that resolves to truthy (so the test appears to pass on fast browsers) but doesn't actually wait for the element. Slower browsers (Firefox, WebKit) fail because the element isn't rendered yet when the non-awaited assertion runs.
+**Solution:** Add `await` to all Playwright `expect()` calls: `await expect(locator).toBeVisible()`.
+**Prevention:** Every Playwright `expect()` assertion must be awaited. Unlike Vitest/Jest `expect()` which is synchronous, Playwright's `expect()` returns a promise that polls until timeout. A missing `await` silently succeeds on fast browsers and fails intermittently on slow ones. Treat a non-awaited Playwright expect as a bug.
+
+---
+
+### [Arch] WebSocket hook — browser native API, no dependencies needed
+
+**Date:** 2026-03-09
+**Problem:** Needed live item update notifications via WebSocket without adding new dependencies.
+**Solution:** Created `usePlanWebSocket(planId)` hook using the browser's native `WebSocket` API. Derives WS URL from `VITE_API_URL` (`http` → `ws`, `https` → `wss`). Gets fresh JWT via `supabase.auth.getSession()` before each connect. On `items:changed` message, invalidates React Query cache `['plan', planId]`. Reconnects with exponential backoff (1s, 2s, 4s... cap 30s). Stops reconnecting on auth-failure close codes (4001, 4003). Cleans up on unmount.
+**Prevention:** For simple one-way server-to-client WebSocket, the browser native API is sufficient — no need for socket.io-client or other libraries. Keep the hook focused: listen for events, invalidate cache, let React Query handle the refetch. Test with a `MockWebSocket` class assigned to `globalThis.WebSocket` in unit tests (jsdom has no built-in WebSocket).
+
+---
+
 ### [Test] E2E bulk wizard — use toPass retry pattern for Headless UI modal clicks
 
 **Date:** 2026-03-07
