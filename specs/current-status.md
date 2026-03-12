@@ -1,7 +1,7 @@
 # Chillist — Current Status
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
-> **Last updated:** 2026-03-09
+> **Last updated:** 2026-03-12
 > **BE version:** —
 > **FE version:** —
 
@@ -100,7 +100,7 @@ When a plan has a location and dates, a 7-day weather forecast is shown on the p
 
 ### Authentication & Profiles
 
-Sign up with email/password or Google OAuth. Email confirmation required. After signing up, users complete their profile (name, phone, email). Default food preferences, allergies, and equipment can be set in the profile and are pre-filled into new plans.
+Sign up with email/password or Google OAuth. Email confirmation required. After signing up, users complete their profile (name, phone, email). Default food preferences, allergies, and equipment can be set in the profile and are pre-filled into new plans. Phone numbers are normalized to E.164 format before submission — the `PhoneInput` component accepts flexible input (spaces, dashes, parentheses, leading zeros, pasted international numbers) and the frontend validates the normalized result before sending to the backend.
 
 JWT-based sessions with automatic token refresh. Session expiry shows a modal prompting re-authentication. All plan creation and management requires sign-in.
 

@@ -26,6 +26,7 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
   - `api/server.ts`
   - `tests/e2e/fixtures.ts`
 - If one API function in a pattern is fixed, audit its siblings for the same issue.
+- **Phone numbers must be E.164 before leaving the frontend.** Use `combinePhone` (which delegates to `normalizePhone`) on form submit, then validate with `isValidE164`. If invalid, `setError` on the phone field. If the BE returns 400 with "phone" in the message, surface it as a field-level error, not a toast.
 - **Model all response variants.** An endpoint can legitimately return different shapes for the same 2xx status (e.g. `PlanWithDetails` vs `{ status: 'not_participant', preview, joinRequest }`). When implementing or changing any `fetchX` function: (1) check the OpenAPI spec for `oneOf`, `anyOf`, or multiple 2xx response schemas; (2) define a Zod schema for every variant; (3) branch on a discriminant field before parsing. Never assume every successful response is the happy-path shape.
 
 ## 4) Auth and Invite Rules

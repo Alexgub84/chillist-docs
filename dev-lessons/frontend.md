@@ -6,6 +6,15 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Phone E.164 normalization — normalize on submit, validate before send
+
+**Date:** 2026-03-12
+**Problem:** Phone numbers were sent to the BE as raw local strings (e.g., `050-123-4567`) without country dial codes. The BE expects E.164 format (`+972501234567`). The `combinePhone` helper simply concatenated dial code + local number without stripping formatting characters or leading zeros.
+**Solution:** Added `normalizePhone(countryCode, rawLocal)` in `country-codes.ts`: strips spaces/dashes/parens/dots, strips leading zeros, prepends dial code. If the input starts with `+`, it's used as-is (pasted international number). Added `isValidE164(phone)` regex check (`/^\+[1-9]\d{6,14}$/`). Updated `combinePhone` to delegate to `normalizePhone`. In every form that submits a phone (`PlanForm`, `AddParticipantForm`, `RequestToJoinPage`, `complete-profile`, `CreatePlanWizard`): normalize via `combinePhone`, then validate with `isValidE164` before sending. If invalid, `setError` on the phone field with `t('validation.phoneInvalid')`. For BE 400 errors containing "phone", surface as field-level error with `t('validation.phoneInvalidBE')`. Mock server updated with E.164 regex on `contactPhone` schemas. Test data updated to use valid E.164 phones.
+**Prevention:** All phone data must be E.164 before leaving the frontend. Normalize on form submit (not on keystroke). Validate the normalized result with `isValidE164` and block submission if invalid. When the BE returns a 400 mentioning "phone", map it to a field-level error, not a generic toast.
+
+---
+
 ### [Test] E2E — always await Playwright expect assertions
 
 **Date:** 2026-03-09
