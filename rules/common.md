@@ -127,6 +127,38 @@ When removing an env var: reverse all 6 steps.
 4. Push the branch: `git push`
 5. If creating a PR: `gh pr create` — include `Closes #XX` in the body if there is a related issue
 
+## Pull Request Description Format
+
+Every PR description must include:
+
+1. **What was done** — concise summary of the changes and why
+2. **Production test checklist** — manual steps to verify the feature works on production after merge/deploy
+3. **Closes issues** — list issues this PR closes (e.g., `Closes #123, Closes #456`)
+
+**Do NOT include:**
+
+- Local test results (e.g., "851 tests pass", "typecheck clean")
+- File change lists or line counts
+- Implementation details that belong in the commit message, not the PR
+
+### Template
+
+```markdown
+## Summary
+
+<What was done and why>
+
+## Test on Production
+
+- [ ] <Step 1>
+- [ ] <Step 2>
+- [ ] ...
+
+## Closes
+
+Closes #XX, Closes #YY
+```
+
 ## Version Bumps
 
 - Bump the `version` in `package.json` on every commit using [semver](https://semver.org):
@@ -165,6 +197,7 @@ Entry format:
 
 ```markdown
 ### [Category] Short Title
+
 **Date:** YYYY-MM-DD
 **Problem:** One sentence describing what went wrong
 **Solution:** One sentence describing the fix
