@@ -6,6 +6,15 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [UX] WhatsApp send list — role-based buttons on participant cards, not FAB
+
+**Date:** 2026-03-13
+**Problem:** WhatsApp send list was a single button in the FAB speed dial. Users couldn't tell if it would send to all or just themselves. Invite status (sent/not sent) wasn't visible.
+**Solution:** Removed WhatsApp from FAB. Added per-participant green "Send list" button at the bottom of each participant card. Owner sees button on every non-owner card + "Send to all" at the top of the section. Non-owner participant sees "Send list to me" on their own card only. Added invite status badge (WhatsApp icon + "Not sent"/"Sent"/"Joined") visible to owner only. Badges and buttons use `isOwner` guards — invite status is owner-only information, WhatsApp send is role-dependent.
+**Prevention:** For actions that differ by role (owner vs participant), use labeled buttons with clear text on the relevant UI element (e.g., participant card) rather than a single ambiguous FAB action. Show status badges only to the role that needs the information.
+
+---
+
 ### [Arch] Phone E.164 normalization — normalize on submit, validate before send
 
 **Date:** 2026-03-12

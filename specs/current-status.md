@@ -88,6 +88,8 @@ When someone opens an invite link:
 
 **Request to join:** If someone has a link to an invite-only plan but isn't a participant, they see a plan preview and a "Request to Join" form. The owner can approve or reject requests from the Manage Participants page.
 
+**WhatsApp send list:** The owner can send the plan's item list to participants via WhatsApp. A green "Send list" button appears on each non-owner participant card, and a "Send to all" link at the top of the Participants section. Non-owner participants see a "Send list to me" button on their own card. The owner also sees an invite status badge (with WhatsApp icon) on each participant: "Not sent", "Sent", or "Joined".
+
 ### Expenses
 
 Track expenses per participant within a plan. Each expense has an amount, optional description, and can be linked to specific items from the plan. The owner can manage all expenses; participants can manage their own.
@@ -231,7 +233,7 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 
 See [MVP Target](mvp-target.md) for the full breakdown. Key gaps:
 
-- WhatsApp integration (invite sharing + plan notifications)
+- WhatsApp integration — FE send list UI done; BE endpoint required for actual delivery
 - Error tracking and structured logging (BE + FE)
 - Analytics event collection (BE + FE)
 - Health monitoring and alerts
