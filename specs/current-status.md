@@ -19,9 +19,9 @@ A web app for organizing group activities — camping trips, dinner parties, bea
 
 Create a plan for any group event using a **4-step wizard**:
 
-1. **Plan Details** — title, description, date/time (one-day toggle or date range), location (Google Maps autocomplete — only place name is shown; city/country/region/lat/lon are auto-populated), language, and currency.
-2. **Plan Type** — a 3-tier tag wizard that collects structured tags describing the plan (e.g., Camping → Cooking → Shared meals). Tier 1 is single-select, tiers 2 and 3 are multi-select. Tags are stored as `string[]` on the plan. The step can be skipped entirely. Selected tags are shown as chips with back-navigation to edit previous tiers. A summary screen shows all selections before confirming.
-3. **Preferences** — number of adults and kids, food preferences, allergies, notes. RSVP is auto-set to "confirmed" for the owner. Also includes **estimated adults and kids** for other participants (stored on the plan via BE). The plan is created and saved at this step.
+1. **Plan Type** — a 3-tier tag wizard that collects structured tags describing the plan (e.g., Camping → Cooking → Shared meals). Tier 1 is single-select, tiers 2 and 3 are multi-select. Tags are stored as `string[]` on the plan. The step can be skipped entirely. Selected tags are shown as chips with back-navigation to edit previous tiers. A summary screen shows all selections before confirming.
+2. **Plan Details** — title, description (optional), date/time (one-day toggle or date range), location (Google Maps autocomplete — only place name is shown; city/country/region/lat/lon are auto-populated), language, and currency.
+3. **Preferences** — two clearly separated sections: **Your Details** (owner’s adults/kids count, food preferences, allergies, notes; RSVP auto-set to "confirmed") and **Total Group Estimate** (estimated total adults and kids for planning quantities). The plan is created silently at this step — the user sees a seamless transition to the next step.
 4. **Add Items** — the bulk add wizard is embedded inline so the owner can immediately pick items from the 700+ item library. This step can be skipped.
 
 Owner details (name, phone, email) are auto-filled from the user's profile and not shown in the wizard. Defaults are applied silently: status = active, visibility = invite-only.
@@ -127,9 +127,9 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 
 1. Sign up or sign in (email or Google).
 2. Start the 4-step plan creation wizard.
-3. Step 1: Enter title, description, dates, location (Google Maps autocomplete), language, currency → click Next.
-4. Step 2: Pick plan type tags via the 3-tier tag wizard (e.g., Camping → Cooking → Shared meals), or skip.
-5. Step 3: Set group preferences (adults/kids count, dietary needs, allergies) → click Next (plan is created and saved).
+3. Step 1: Pick plan type tags via the 3-tier tag wizard (e.g., Camping → Cooking → Shared meals), or skip.
+4. Step 2: Enter title, description (optional), dates, location (Google Maps autocomplete), language, currency → click Next.
+5. Step 3: Fill in your details (adults/kids count, dietary needs, allergies) and estimate total group size → click Next (plan is created silently).
 6. Step 4: Bulk-pick items from the 700+ item library, or skip to go straight to the plan.
 7. From the plan page: add participants by name/phone, or share invite links.
 8. Assign items to participants (or let them self-assign).

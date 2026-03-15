@@ -6,6 +6,51 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [i18n] Form validation messages must use t() — not hardcoded English
+
+**Date:** 2026-03-15
+**Problem:** All form Zod schemas (`CreatePlanWizard`, `EditPlanForm`, `ItemForm`, `AddParticipantForm`, `RequestToJoinPage`, `PlanForm`) had hardcoded English validation messages like `'Title is required'`. Hebrew users saw English error messages on form validation failures.
+**Solution:** Converted all static schemas to factory functions that accept `t: (key: string) => string` (e.g., `const schema = z.object(...)` → `function buildSchema(t) { return z.object(...) }`). Each form component calls `buildSchema(t)` inside the component where `useTranslation()` is available. The `validation.*` i18n keys already existed in all 3 locales — the schemas just weren't using them. Type inference updated from `z.infer<typeof schema>` to `z.infer<ReturnType<typeof buildSchema>>`.
+**Prevention:** Never hardcode English strings in Zod schemas. Always use `t('validation.*')` keys via a schema factory function. When adding a new form, follow the `buildXxxSchema(t)` pattern from `plan-form-utils.ts`. The `core/schemas/*.ts` files (used for API validation, not UI) can keep English strings since users don't see those errors.
+
+---
+
+### [UX] Split preferences wizard step into personal prefs + estimation
+
+**Date:** 2026-03-15
+**Problem:** The preferences step in `CreatePlanWizard` (step 3) and `EditPlanForm` (step 2) combined the owner's personal preferences (adults, kids, food, allergies) with group estimation (total expected adults/kids) in a single form. This was confusing — owners didn't understand the difference between "your party" and "total event size". The Hebrew text for `estimationIncludesYou` was also unnatural.
+**Solution:** Split into two separate steps: personal preferences (owner-only details) and estimation (total event size). `CreatePlanWizard` went from 4 to 5 steps; `EditPlanForm` from 2 to 3 steps. Created separate Zod schemas (`buildPersonalPrefsSchema`, `buildEstimationSchema`) in `plan-form-utils.ts`. Each step has its own form component with independent validation. Made the `StepIndicator` responsive for 5 steps on mobile (smaller circles, shorter connectors, truncated labels). Updated owner section title from "You & Your Party" to "Your Preferences" across all 3 locales.
+**Prevention:** When a form step combines two conceptually different things (personal vs group data), split them into separate steps. Each step should have one clear purpose. For mobile step indicators with 5+ steps, use responsive sizing from the start.
+
+---
+
+### [UX] Wizard step reorder — tags first for low-friction start
+
+**Date:** 2026-03-15
+**Problem:** The plan creation wizard started with a heavy form (title, description, dates, location, language, currency). Users hitting a wall of form fields on step 1 creates friction. The tag wizard (fun emoji cards) was buried as step 2.
+**Solution:** Swapped step 1 and 2 — tags wizard is now step 1 (engaging, low-effort start), plan details is step 2. Made `PlanTagWizard.onBack` optional so no Back button renders when it's the first step. Improved preferences step (step 3) with clearer section titles: "Your Details" (owner-only) and "Total Group Estimate" (total headcount). Plan creation is now invisible — spinner replaces "Creating plan…" label. Renamed internal components (`Step3Form` → `PrefsForm`, `Step4Items` → `ItemsStep`) for clarity.
+**Prevention:** When designing multi-step wizards, put the lowest-friction step first to build momentum. Keep plan creation invisible to users (no "Creating…" label) when it happens mid-flow. When reordering wizard steps, update all references in a single pass: step indicator labels, i18n keys, data-testid attributes, test assertions, and docs.
+
+---
+
+### [Arch] Plan Tag Wizard — JSON-driven 3-tier tag selection with step integration
+
+**Date:** 2026-03-15
+**Problem:** Plan creation needed structured tagging to describe the plan type, but hardcoding tag logic in components would be fragile and hard to extend.
+**Solution:** Created `src/data/plan-creation-tags.json` with a 3-tier hierarchy (tier1 → tier2 → tier3) where each tier's options are conditional on parent selections. Built `PlanTagWizard` component with internal step state (1/2/3/summary), chip-based navigation for editing previous tiers, and skip/back at every level. Integrated as Step 1 in the 4-step `CreatePlanWizard`. Tags are passed as `string[]` in the plan creation payload — the `planCreateWithOwnerSchema` already supported `tags: z.array(z.string()).nullish()`. Added translation parity tests that validate all locale files have matching `tagWizard.*` and `wizard.*` keys, plus data integrity tests for the tag JSON (no duplicate IDs, parent-child key consistency).
+**Prevention:** For multi-tier selection UIs, drive options from a static JSON file rather than hardcoding in components. This makes it easy to add/remove options without touching component logic. Always add translation parity tests when introducing new i18n namespaces — the test caught a missing Spanish locale immediately. When inserting a new step into a multi-step wizard, update all step references (state type, step numbers, data-testid attributes, i18n step title keys) in a single pass to avoid partial breakage.
+
+---
+
+### [Async] WebSocket — stop retry on permanent close codes 4004 and 4005
+
+**Date:** 2026-03-13
+**Problem:** When a user submitted a join request and stayed on the plan page, the WebSocket reconnect logic retried every ~2s because only auth-failure codes (4001, 4003) were in the no-retry set. Close codes 4004 (no access) and 4005 (pending join request) triggered infinite reconnect loops, flooding the server.
+**Solution:** Renamed `AUTH_FAILURE_CODES` to `NO_RETRY_CODES` and added 4004 and 4005. Exposed `wsCloseCode` from the hook so consumers can show contextual UI (e.g., "pending approval" banner on code 4005). Added unit tests for all no-retry codes and for the exposed close code state.
+**Prevention:** When the backend adds new WebSocket close codes, update the frontend `NO_RETRY_CODES` set immediately. Any close code that represents a permanent or semi-permanent state (not a transient network error) must be in the no-retry set. Only retry on truly transient failures (1006, network drops).
+
+---
+
 ### [UX] WhatsApp send list — role-based buttons on participant cards, not FAB
 
 **Date:** 2026-03-13

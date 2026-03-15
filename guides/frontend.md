@@ -115,6 +115,19 @@ The app gates UI elements based on authentication state and plan ownership. Thes
 - **Usage:** All user-facing strings use `t()`. Add keys to both `en.json` and `he.json`.
 - **RTL:** Use Tailwind logical properties (`ms-*`, `me-*`, `text-start`) instead of directional ones (`ml-*`, `text-left`).
 
+### Plan Tag Wizard (`src/components/PlanTagWizard.tsx`)
+
+3-tier tag wizard integrated as **Step 1** in `CreatePlanWizard` (fun, low-effort start). Collects structured tags describing the plan type (e.g., Camping → Cooking → Shared meals). Tag options are driven by `src/data/plan-creation-tags.json`. The `onBack` prop is optional — omitted when the wizard is the first step.
+
+- **Tier 1:** Single-select (plan type: camping, beach, hotel trip, etc.)
+- **Tier 2:** Multi-select (logistics: cooking, tent setup, day trip, etc.) — conditional on tier 1 selection
+- **Tier 3:** Multi-select (specifics: shared meals, BYO food, etc.) — conditional on tier 2 selections, capped at 5 options
+- **Summary:** Shows all selected tags as chips before confirming
+- **Chip navigation:** Clicking a chip navigates back to that tier for editing
+- **Skip:** Each tier and the whole step can be skipped
+- Tags are passed as `string[]` in the plan creation payload (`tags` field on `PlanCreateWithOwner`)
+- i18n keys under `tagWizard.*` namespace in all locale files
+
 ### Bulk Add Wizard (`src/components/BulkItemAddWizard.tsx`)
 
 3-step wizard (category → subcategory → items). Single search filters common items; when typed text doesn't match, "Add [name]" row appears and Enter adds custom item. Line layout with rounded borders, hover, and selected background for full title visibility.
