@@ -75,6 +75,8 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 
 ## 10) Pre-Push Checklist
 
+- **NEVER** use `--no-verify` on push or commit. Husky pre-push hooks run typecheck, unit, integration, and E2E tests — they exist to prevent broken code from being pushed. If hooks fail, fix the issue.
+- Before running E2E tests locally, kill any stale Vite process on port 5174 (`lsof -i :5174 -P -n -t | xargs kill`). Playwright reuses existing servers locally and a stale server without `VITE_AUTH_MOCK=true` causes mass auth failures.
 - Run:
   - `npm run typecheck`
   - `npm run lint`

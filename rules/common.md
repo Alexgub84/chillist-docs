@@ -96,7 +96,7 @@ When removing an env var: reverse all 6 steps.
 ## Git Branch Policy
 
 - **NEVER** push directly to `main` or `staging`
-- **NEVER** use `--no-verify` (or `-n`) on `git push` or `git commit` without the user's explicit permission. If hooks fail, fix the underlying issue or ask the user first.
+- **NEVER** use `--no-verify` (or `-n`) on `git push` or `git commit`. Husky hooks exist to prevent broken code from being pushed. If hooks fail, fix the underlying issue — never bypass them.
 - Always create a feature branch and push to that branch
 - Use Pull Requests to merge into main
 - All PRs require passing CI checks (lint, typecheck, tests, build)
