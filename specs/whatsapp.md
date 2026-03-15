@@ -16,29 +16,59 @@ WhatsApp is a core communication channel for Chillist. Two function categories:
 
 ## 2. Send Items List
 
-### 2.1 BE API
+### 2.1 BE API — Current (to be replaced)
+
+**Endpoint:** `POST /plans/{planId}/send-list` — sends full item list to one phone.
+**Endpoint:** `POST /plans/{planId}/send-list-all` — sends full item list to all participants with phone.
+
+Both will be **deprecated** and replaced by the unified endpoint below.
+
+### 2.2 BE API — Unified Endpoint (planned)
 
 **Endpoint:** `POST /plans/{planId}/send-list`
 
-- **Auth:** JWT required. Caller must be a participant of the plan.
-- **Body:** `{ phone: string }` — recipient phone in E.164 format.
-- **Response:** `{ sent: boolean, messageId?: string, error?: string }`
-- **Behavior:** Sends the **entire** item list for the plan, grouped by category (name, quantity, unit). Message language is determined by `plan.defaultLang`.
+- **Auth:** JWT required. Caller must be a participant of the plan. `recipient: "all"` requires owner role.
+- **Body:**
 
-**Endpoint:** `POST /plans/{planId}/send-list-all`
+```json
+{
+  "recipient": "all" | "self" | "<participantId>",
+  "listType": "full" | "buying" | "packing" | "unassigned"
+}
+```
 
-- **Auth:** JWT required. Caller must be the plan owner.
-- **Body:** none.
-- **Response:** `{ total: number, sent: number, failed: number, results: Array<{ participantId, phone, sent, messageId?, error? }> }`
-- **Behavior:** Sends the item list to every non-owner participant who has a phone number. Messages are sent in parallel. Response includes per-participant results.
+- **`recipient`:**
+  - `"all"` — send to every non-owner participant with a phone number. Owner-only.
+  - `"self"` — send to the calling participant's own phone.
+  - `"<participantId>"` — send to a specific participant by ID.
 
-**Limitations (no BE support yet):**
+- **`listType`** (default: `"full"`):
+  - `"full"` — all items (current behavior).
+  - `"buying"` — items with at least one assignment in `pending` status (not yet purchased).
+  - `"packing"` — items with at least one assignment in `purchased` status.
+  - `"unassigned"` — items where `assignmentStatusList` is empty and `isAllParticipants` is false.
 
-- Cannot filter by assignment (e.g., only items assigned to a specific participant).
-- Cannot filter by assignment status (e.g., only unassigned items).
-- Cannot filter by list type (e.g., buying list = pending, packing list = purchased).
+- **Response (unified for all recipient types):**
 
-### 2.2 FE — Current State
+```json
+{
+  "results": [
+    { "participantId": "...", "phone": "...", "sent": true, "messageId": "..." }
+  ],
+  "total": 1,
+  "sent": 1,
+  "failed": 0
+}
+```
+
+Single-recipient calls (`"self"`, `"<participantId>"`) return `results` with one entry.
+
+- **Filtering behavior with `recipient: "all"`:** Each participant receives their own filtered view. E.g., `"buying"` sends each participant only their own pending items.
+- **Filtering behavior with specific recipient:** Filters the full plan item list by the specified `listType`.
+- **Message language:** Determined by `plan.defaultLang`.
+- **Migration:** The old `/send-list` (phone-based) and `/send-list-all` endpoints should be deprecated after FE migrates. The new endpoint uses `participantId` instead of raw phone numbers — the BE resolves the phone internally.
+
+### 2.3 FE — Current State
 
 **Plan page (`plan.$planId.lazy.tsx`):**
 
@@ -63,12 +93,18 @@ WhatsApp is a core communication channel for Chillist. Two function categories:
 - Each participant card shows an invite status badge with a WhatsApp icon: "Not sent", "Sent", or "Joined".
 - Visible only to the plan owner.
 
-### 2.3 FE — Planned Changes
+### 2.4 FE — Planned Changes
+
+**FE API layer (`src/core/api.ts`):**
+
+- Replace `sendList(planId, phone)` and `handleSendListAll` loop with a single `sendList(planId, recipient, listType)` function calling the unified endpoint.
+- Update response schema to match the new unified response.
 
 **Plan page (non-owner participant):**
 
 - Move "Send list to me" from participant card to a button **above the items list** (near filter tabs).
-- Label reflects current filter: "Send my buying list" / "Send my packing list" / "Send full list" (label-only for now — BE always sends full list).
+- Label reflects current filter: "Send my buying list" / "Send my packing list" / "Send full list".
+- Calls unified endpoint with `recipient: "self"` + appropriate `listType`.
 - Disabled with tooltip if participant has no phone number.
 
 **Plan page (owner):**
@@ -79,12 +115,14 @@ WhatsApp is a core communication channel for Chillist. Two function categories:
 
 - New WhatsApp menu (dropdown or button group) in the action bar:
 
-| Option                               | BE support | Implementation                                                 |
-| ------------------------------------ | ---------- | -------------------------------------------------------------- |
-| Send item list to all participants   | ✅ Yes     | `POST /plans/{planId}/send-list-all` (dedicated bulk endpoint) |
-| Send item list to chosen participant | ✅ Yes     | Participant picker, then `sendList()`                          |
-| Send unassigned items to all         | ❌ No      | Disabled — needs BE `filter` param                             |
-| Send unassigned items to selected    | ❌ No      | Disabled — needs BE `filter` param                             |
+| Option                                    | `recipient`         | `listType`     |
+| ----------------------------------------- | ------------------- | -------------- |
+| Send full item list to all                | `"all"`             | `"full"`       |
+| Send full item list to chosen participant | `"<participantId>"` | `"full"`       |
+| Send buying list to all                   | `"all"`             | `"buying"`     |
+| Send packing list to all                  | `"all"`             | `"packing"`    |
+| Send unassigned items to all              | `"all"`             | `"unassigned"` |
+| Send unassigned items to chosen           | `"<participantId>"` | `"unassigned"` |
 
 ---
 
@@ -92,14 +130,14 @@ WhatsApp is a core communication channel for Chillist. Two function categories:
 
 > **Status:** Implemented (3 of 4 triggers). Rejection notification not yet sent.
 
-### 3.1 Implemented Messages
+### 3.1 Messages
 
-| Trigger                     | Recipient   | BE status      | Message content                                                  |
-| --------------------------- | ----------- | -------------- | ---------------------------------------------------------------- |
-| Owner invites participant   | Participant | ✅ Implemented | Plan title, invite deep-link (`/invite/{planId}/{token}`)        |
-| User submits join request   | Plan owner  | ✅ Implemented | Requester full name, plan title, deep-link to join-requests page |
-| Owner approves join request | Requester   | ✅ Implemented | Plan title, confirmation, deep-link to plan                      |
-| Owner rejects join request  | Requester   | ❌ Not sent    | —                                                                |
+| Trigger                     | Recipient   | BE status      | Message content                 | Deep link in message                            |
+| --------------------------- | ----------- | -------------- | ------------------------------- | ----------------------------------------------- |
+| Owner invites participant   | Participant | ✅ Implemented | Plan title, invite link         | `/invite/{planId}/{token}`                      |
+| User submits join request   | Plan owner  | ✅ Implemented | Requester full name, plan title | `/manage-participants/{planId}` (join requests) |
+| Owner approves join request | Requester   | ✅ Implemented | Plan title, confirmation        | `/plan/{planId}`                                |
+| Owner rejects join request  | Requester   | ❌ Not sent    | Plan title, rejection notice    | —                                               |
 
 ### 3.2 BE Implementation Details
 
@@ -165,17 +203,53 @@ WhatsApp is a core communication channel for Chillist. Two function categories:
 
 ---
 
-## 5. Post-MVP Stretch
+## 5. BE Action Items (before FE Phase 2)
 
-- **Rejection notification:** Send WhatsApp message when owner rejects a join request.
-- **Opt-in muting:** Participants can mute WhatsApp notifications per plan. Requires BE notification preferences + FE toggle.
+Ordered by priority. FE Phase 2 depends on items 1 and 2.
+
+### 5.1 Unified `/send-list` endpoint
+
+Replace the current two endpoints (`/send-list` + `/send-list-all`) with the unified endpoint defined in section 2.2. This is the **main blocker** for FE work.
+
+**Steps:**
+
+1. Add `recipient` and `listType` params to the existing `/send-list` route.
+2. Implement item filtering logic (buying, packing, unassigned).
+3. For `recipient: "all"`, send per-participant filtered lists in parallel.
+4. Return the unified response shape.
+5. Keep the old `/send-list` (phone-based) working temporarily for backward compat.
+6. Update OpenAPI spec and regenerate `openapi.json`.
+7. Add integration tests for each `recipient` × `listType` combination.
+
+### 5.2 Rejection notification
+
+Add WhatsApp notification when owner rejects a join request. The other 3 triggers are already implemented — this completes the set.
+
+**Steps:**
+
+1. Add `join_request_rejected` type to `whatsapp_notifications` table enum.
+2. Add rejection message template to `src/services/whatsapp/messages.ts` (en/he).
+3. Fire notification in the `PATCH /join-requests/:id` handler when `status=rejected`.
+
+### 5.3 Deprecate old endpoints
+
+After FE migrates to the unified endpoint:
+
+1. Remove `/send-list-all` route.
+2. Remove `phone` body param from `/send-list` (now uses `recipient` only).
+
+---
+
+## 6. Post-MVP Stretch
+
+- **Opt-in muting:** Participants can mute WhatsApp notifications per plan. Add `whatsappNotifications` boolean to participants table + FE toggle.
 - **Quick status updates via WhatsApp:** Participants reply to a notification to mark items as purchased/packed. Requires BE webhook for incoming WhatsApp messages.
-- **Filtered send:** BE adds `filter` parameter to `POST /send-list` (e.g., `unassigned`, `participant:{id}`, `status:pending`).
+- **Plan update notifications:** Notify participants when items are added, RSVP changes, or plan details are updated.
 - **WhatsApp bot:** Two-way conversation for plan updates, item check-offs, and reminders.
 
 ---
 
-## 6. Related Docs
+## 7. Related Docs
 
 - [MVP Target — WhatsApp section](mvp-target.md#2-whatsapp-integration-basic)
 - [Current Status — WhatsApp](current-status.md)
