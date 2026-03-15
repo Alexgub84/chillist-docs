@@ -6,6 +6,25 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [E2E] Stale Vite dev server causes mass Playwright auth failures
+
+**Date:** 2026-03-15
+**Problem:** After code changes, `git push` triggered the pre-push hook which runs Playwright E2E tests. ~90% of authenticated tests failed — page snapshots showed "Sign In / Sign Up" instead of the authenticated user. The auth mock injection (`injectUserSession` via `localStorage`) appeared broken. Unauthenticated tests all passed.
+**Root cause:** A stale Vite dev server was running on port 5174 from a previous manual session, started **without** `VITE_AUTH_MOCK=true`. Playwright's config has `reuseExistingServer: !process.env.CI`, so locally it reused the stale server instead of starting a fresh one with the correct env vars. The app built without `VITE_AUTH_MOCK` ignores `localStorage` mock sessions entirely.
+**Fix:** Kill the stale process (`lsof -i :5174 -P -n -t | xargs kill`) and re-run. Playwright starts a fresh server with `VITE_AUTH_MOCK=true` and all auth tests pass.
+**Prevention:** Before running E2E tests locally, check for stale Vite processes on the Playwright port (5174). If mass auth-related E2E failures appear out of nowhere, the first thing to check is a stale dev server. Never assume the reused server has the right env vars.
+
+---
+
+### [E2E] Wizard step changes require E2E test updates
+
+**Date:** 2026-03-15
+**Problem:** After splitting the preferences wizard step into personal prefs + estimation (4→5 steps in `CreatePlanWizard`, 2→3 steps in `EditPlanForm`), the E2E plan creation and edit plan tests failed. The tests still navigated the old step count and expected old `data-testid` values.
+**Solution:** Updated `tests/e2e/main-flow.spec.ts`: plan creation test now skips tags (step 1), fills details (step 2), skips prefs (step 3), skips estimation (step 4), then adds items (step 5). Edit plan test now navigates details → prefs (skip) → estimation (submit). Used `data-testid` attributes (`plan-tag-wizard`, `tag-wizard-skip`, `wizard-step-prefs`, `wizard-step-estimation`, `wizard-step-items`, `edit-wizard-step3`) for stable selectors.
+**Prevention:** When adding or reordering wizard steps, update E2E tests in the same pass. Search for all `data-testid` references to wizard steps in `tests/e2e/` and update navigation flow. E2E tests are the most likely to break on step count changes because they navigate the full UI flow.
+
+---
+
 ### [i18n] Form validation messages must use t() — not hardcoded English
 
 **Date:** 2026-03-15
