@@ -58,7 +58,11 @@ Strict, minimal instructions for `chillist-be`. Read these before executing any 
 - When adding a new table or entity, add representative seed data and include it in the TRUNCATE list if applicable.
 - When adding a new endpoint that returns data, consider whether the seed should provide sample data to exercise that endpoint.
 
-## 7. Workflow & Safe Deployments
+## 7. WhatsApp
+
+- For any WhatsApp-related task, read [specs/whatsapp.md](../specs/whatsapp.md) first — it is the single source of truth for current state, planned features, architecture, and FE/BE alignment.
+
+## 8. Workflow & Safe Deployments
 
 - **Version Bumping:** Bump `package.json` version on every PR (Patch: fixes, Minor: features/DB, Major: breaking).
 - **Incremental Migration:** When adding auth or breaking changes, do additive changes first. Keep the old route/auth working, let FE migrate, then enforce/cleanup.

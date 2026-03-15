@@ -190,7 +190,7 @@ Admin users (platform-level role, not per-plan) can:
 8. **Weather integration** with alerts (wind, rain).
 9. **Swipe UI** on mobile for quick status change.
 10. **Save participant presets** (what each person usually brings).
-11. **WhatsApp/Telegram integration** for updates and quick check-offs via bot.
+11. **WhatsApp/Telegram integration** for updates and quick check-offs via bot. See [WhatsApp spec](whatsapp.md) for full details.
 
 ---
 

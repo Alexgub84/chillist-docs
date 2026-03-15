@@ -19,14 +19,29 @@ MVP is ready when:
 
 ## 2. WhatsApp Integration (Basic)
 
-### 2.1 Invite Sharing via WhatsApp
+> Full spec: [specs/whatsapp.md](whatsapp.md)
+
+### 2.1 Send Items List
+
+- **Current:** `POST /plans/{planId}/send-list` sends the full item list to a phone number. FE has per-participant buttons on the plan page.
+- **Planned FE changes:** Move owner send controls to manage-participants page. Add participant self-send button above items list on plan page.
+- **Planned BE changes:** Add `filter` parameter to support sending only unassigned items, items assigned to a specific participant, or items filtered by status (buying/packing list).
+
+### 2.2 Invitation Messaging (Needs BE)
+
+- Send invitation link to participant via WhatsApp (plan title, dates, invite URL).
+- Notify owner when a join request is submitted (requester name, plan title, link to manage page).
+- Notify participant when their join request is approved or rejected.
+- **BE:** Requires new notification service with WhatsApp adapter (Twilio or Meta Cloud API). Queue-based delivery.
+
+### 2.3 Invite Sharing via WhatsApp
 
 - Owner can share an invite link directly to a WhatsApp contact or group from the plan page.
 - Uses the Web Share API (mobile) or WhatsApp deep link (`https://wa.me/?text=...`) as fallback.
 - The shared message includes the plan title, date range, and invite URL.
 - **Scope:** FE only — no BE changes needed. Uses existing invite token URLs.
 
-### 2.2 Plan Update Notifications (BE → WhatsApp)
+### 2.4 Plan Update Notifications (BE → WhatsApp)
 
 - When key events happen, send a WhatsApp notification to participants who have a phone number:
   - New item added to the plan
@@ -38,7 +53,7 @@ MVP is ready when:
 - **BE:** New `notifications` service with a WhatsApp adapter. Queue-based (avoid blocking request handlers).
 - **FE:** Notification preferences toggle per plan in participant settings.
 
-### 2.3 Quick Status Updates via WhatsApp (Post-MVP Stretch)
+### 2.5 Quick Status Updates via WhatsApp (Post-MVP Stretch)
 
 - Participants can reply to a WhatsApp notification to mark items as purchased/packed.
 - Requires a webhook endpoint on BE to receive incoming WhatsApp messages.
@@ -163,19 +178,19 @@ MVP is ready when:
 
 These items from the existing spec are not yet complete and are required for MVP:
 
-| Feature | Status | What's Left |
-|---------|--------|-------------|
-| Real trip test | Not done | Run at least 1 real trip with 3+ participants |
-| Weather integration (BE) | Not started | FE has UI, BE integration with Open-Meteo pending |
-| WhatsApp sharing (basic) | Not started | FE share button with WhatsApp deep link |
-| WhatsApp notifications | Not started | BE notification service + Twilio/Meta integration |
-| Error tracking (FE) | Not started | Sentry or similar integration |
-| Structured logging (BE) | Partial | Pino is there, needs structured context and correlation IDs |
-| Frontend logging | Not started | Logger utility with levels |
-| Analytics events (BE) | Not started | Analytics service with structured event logs |
-| Analytics events (FE) | Not started | Analytics abstraction + lightweight provider |
-| Health monitoring | Not started | External uptime monitor + alerts |
-| Deploy notifications | Not started | Slack webhook on successful deploy |
+| Feature                  | Status      | What's Left                                                 |
+| ------------------------ | ----------- | ----------------------------------------------------------- |
+| Real trip test           | Not done    | Run at least 1 real trip with 3+ participants               |
+| Weather integration (BE) | Not started | FE has UI, BE integration with Open-Meteo pending           |
+| WhatsApp sharing (basic) | Not started | FE share button with WhatsApp deep link                     |
+| WhatsApp notifications   | Not started | BE notification service + Twilio/Meta integration           |
+| Error tracking (FE)      | Not started | Sentry or similar integration                               |
+| Structured logging (BE)  | Partial     | Pino is there, needs structured context and correlation IDs |
+| Frontend logging         | Not started | Logger utility with levels                                  |
+| Analytics events (BE)    | Not started | Analytics service with structured event logs                |
+| Analytics events (FE)    | Not started | Analytics abstraction + lightweight provider                |
+| Health monitoring        | Not started | External uptime monitor + alerts                            |
+| Deploy notifications     | Not started | Slack webhook on successful deploy                          |
 
 ---
 

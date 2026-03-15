@@ -61,14 +61,18 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 - When showing `toast.error`, also log full error details.
 - Never log full tokens/secrets. Truncate sensitive values.
 
-## 8) Pre-Change Checklist
+## 8) WhatsApp
+
+- For any WhatsApp-related task, read [specs/whatsapp.md](../specs/whatsapp.md) first — it is the single source of truth for current state, planned features, architecture, and BE gaps.
+
+## 9) Pre-Change Checklist
 
 - Confirm backend already provides required contract fields/endpoints.
 - Identify route, component, hook, API, and tests that the change touches.
 - Confirm whether auth gating, i18n, and owner/admin conditions are affected.
 - Does the API endpoint return more than one response shape? If yes: are all shapes defined in `src/core/schemas/`? Is each shape tested in `tests/unit/core/api.test.ts`? Is the mock server handler in `api/server.ts` updated to return the alternative shape when appropriate?
 
-## 9) Pre-Push Checklist
+## 10) Pre-Push Checklist
 
 - Run:
   - `npm run typecheck`
@@ -79,11 +83,11 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 - Ensure changed behavior is reflected in tests.
 - If a new endpoint or response variant was added: confirm `api/server.ts` was updated and a unit test covers the new variant in `tests/unit/core/api.test.ts`.
 
-## 10) Docs Updates
+## 11) Docs Updates
 
 - Only update existing files. Do not create new docs files.
 
-## 11) Escalate Instead of Guessing
+## 12) Escalate Instead of Guessing
 
 Stop and raise to user when:
 

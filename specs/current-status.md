@@ -17,11 +17,12 @@ A web app for organizing group activities — camping trips, dinner parties, bea
 
 ### Plans
 
-Create a plan for any group event using a **3-step wizard**:
+Create a plan for any group event using a **4-step wizard**:
 
 1. **Plan Details** — title, description, date/time (one-day toggle or date range), location (Google Maps autocomplete — only place name is shown; city/country/region/lat/lon are auto-populated), language, and currency.
-2. **Preferences** — number of adults and kids, food preferences, allergies, notes. RSVP is auto-set to "confirmed" for the owner. Also includes **estimated adults and kids** for other participants (stored on the plan via BE). The plan is created and saved at this step.
-3. **Add Items** — the bulk add wizard is embedded inline so the owner can immediately pick items from the 700+ item library. This step can be skipped.
+2. **Plan Type** — a 3-tier tag wizard that collects structured tags describing the plan (e.g., Camping → Cooking → Shared meals). Tier 1 is single-select, tiers 2 and 3 are multi-select. Tags are stored as `string[]` on the plan. The step can be skipped entirely. Selected tags are shown as chips with back-navigation to edit previous tiers. A summary screen shows all selections before confirming.
+3. **Preferences** — number of adults and kids, food preferences, allergies, notes. RSVP is auto-set to "confirmed" for the owner. Also includes **estimated adults and kids** for other participants (stored on the plan via BE). The plan is created and saved at this step.
+4. **Add Items** — the bulk add wizard is embedded inline so the owner can immediately pick items from the 700+ item library. This step can be skipped.
 
 Owner details (name, phone, email) are auto-filled from the user's profile and not shown in the wizard. Defaults are applied silently: status = active, visibility = invite-only.
 
@@ -88,7 +89,7 @@ When someone opens an invite link:
 
 **Request to join:** If someone has a link to an invite-only plan but isn't a participant, they see a plan preview and a "Request to Join" form. The owner can approve or reject requests from the Manage Participants page.
 
-**WhatsApp send list:** The owner can send the plan's item list to participants via WhatsApp. A green "Send list" button appears on each non-owner participant card, and a "Send to all" link at the top of the Participants section. Non-owner participants see a "Send list to me" button on their own card. The owner also sees an invite status badge (with WhatsApp icon) on each participant: "Not sent", "Sent", or "Joined".
+**WhatsApp send list:** The owner can send the plan's item list to participants via WhatsApp. A green "Send list" button appears on each non-owner participant card, and a "Send to all" link at the top of the Participants section. Non-owner participants see a "Send list to me" button on their own card. The owner also sees an invite status badge (with WhatsApp icon) on each participant: "Not sent", "Sent", or "Joined". See [WhatsApp spec](whatsapp.md) for full details, planned features, and BE gaps.
 
 ### Expenses
 
@@ -125,14 +126,15 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 ### Owner creates a plan and invites friends
 
 1. Sign up or sign in (email or Google).
-2. Start the 3-step plan creation wizard.
+2. Start the 4-step plan creation wizard.
 3. Step 1: Enter title, description, dates, location (Google Maps autocomplete), language, currency → click Next.
-4. Step 2: Set group preferences (adults/kids count, dietary needs, allergies) → click Next (plan is created and saved).
-5. Step 3: Bulk-pick items from the 700+ item library, or skip to go straight to the plan.
-6. From the plan page: add participants by name/phone, or share invite links.
-7. Assign items to participants (or let them self-assign).
-8. Track progress as people mark items purchased and packed.
-9. Log expenses and see the settlement summary.
+4. Step 2: Pick plan type tags via the 3-tier tag wizard (e.g., Camping → Cooking → Shared meals), or skip.
+5. Step 3: Set group preferences (adults/kids count, dietary needs, allergies) → click Next (plan is created and saved).
+6. Step 4: Bulk-pick items from the 700+ item library, or skip to go straight to the plan.
+7. From the plan page: add participants by name/phone, or share invite links.
+8. Assign items to participants (or let them self-assign).
+9. Track progress as people mark items purchased and packed.
+10. Log expenses and see the settlement summary.
 
 ### Invited participant joins via link
 
