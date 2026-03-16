@@ -1,8 +1,24 @@
 # Chillist WhatsApp AI Chatbot — Architecture Spec v1.0
 
-> **Status:** Draft — feature definition & architecture
+> **Status:** In Progress — Phase 1 (scaffold) complete
 > **Scope:** This document defines the chatbot as a standalone service that communicates with the existing Chillist app backend via internal HTTP API. No implementation code is included.
 > **Prerequisite:** WhatsApp Integration Phase 1 & 2 (notifications + list sharing via Green API) must be complete before chatbot work begins.
+
+---
+
+## Implementation Phases
+
+| Phase | Name                          | Status  | What it delivers                                                                                                                     |
+| ----- | ----------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **1** | Project Scaffold              | ✅ Done | Fastify server + health endpoint, TypeScript, ESLint, Prettier, Husky, Vitest, Dockerfile, GitHub Actions CI/CD, Railway setup guide |
+| **2** | Green API Webhook             | Pending | Receive incoming WhatsApp messages, parse them, reply with static echo (no AI)                                                       |
+| **3** | User Identification           | Pending | Phone → userId lookup via internal API on app BE + session creation in Redis (Upstash)                                               |
+| **4** | AI Layer + Tools              | Pending | Vercel AI SDK, system prompt, tool definitions (getMyPlans, getPlanDetails, updateItemStatus) calling internal API                   |
+| **5** | Session & Conversation Memory | Pending | Redis-backed message history, TTL, context carry-over between messages                                                               |
+| **6** | Polish & Hardening            | Pending | Rate limiting, error handling, logging analysis, security review, production env var validation                                      |
+| **7** | Group Chat (v1.5)             | Pending | Mention/prefix triggers, linkPlan, group sessions (per Section 13)                                                                   |
+
+> Phases 2–5 each require corresponding **app BE** work (internal routes, internal-auth plugin). Those BE changes will be called out in each phase's plan.
 
 ---
 
@@ -18,11 +34,11 @@ Many Chillist users coordinate via WhatsApp group chats. The chatbot meets them 
 
 ### v1 Feature Scope
 
-| Feature | Type | Example user message |
-|---------|------|---------------------|
-| Get my plans | Read | "What plans do I have?" |
-| Get plan details | Read | "Show me the camping trip items" |
-| Update item status | Write | "Mark the tent as done" |
+| Feature            | Type  | Example user message             |
+| ------------------ | ----- | -------------------------------- |
+| Get my plans       | Read  | "What plans do I have?"          |
+| Get plan details   | Read  | "Show me the camping trip items" |
+| Update item status | Write | "Mark the tent as done"          |
 
 ### Explicitly out of scope (v1)
 
@@ -336,7 +352,10 @@ Each WhatsApp phone number gets one session. The session stores:
   "currentPlanId": "plan-1",
   "messageHistory": [
     { "role": "user", "content": "Show me the camping trip" },
-    { "role": "assistant", "content": "Here are the items for Camping in the Golan:..." }
+    {
+      "role": "assistant",
+      "content": "Here are the items for Camping in the Golan:..."
+    }
   ],
   "createdAt": "2026-03-16T10:00:00Z",
   "lastActiveAt": "2026-03-16T10:05:00Z"
@@ -345,11 +364,11 @@ Each WhatsApp phone number gets one session. The session stores:
 
 ### TTL & limits
 
-| Setting | Value | Rationale |
-|---------|-------|-----------|
-| Session TTL | 24 hours from last activity | Conversations are short-lived; stale context is worse than no context |
-| Max message history | 20 messages (10 pairs) | Keeps token usage bounded; older context is rarely needed |
-| Re-identification | On session expiry, re-lookup phone → userId | Handles edge case of phone number transferred to a different user |
+| Setting             | Value                                       | Rationale                                                             |
+| ------------------- | ------------------------------------------- | --------------------------------------------------------------------- |
+| Session TTL         | 24 hours from last activity                 | Conversations are short-lived; stale context is worse than no context |
+| Max message history | 20 messages (10 pairs)                      | Keeps token usage bounded; older context is rarely needed             |
+| Re-identification   | On session expiry, re-lookup phone → userId | Handles edge case of phone number transferred to a different user     |
 
 ### First message flow
 
@@ -406,16 +425,16 @@ WhatsApp has messaging limits. The chatbot should:
 
 ## 8 — Tech Stack Summary
 
-| Component | Technology | Notes |
-|-----------|-----------|-------|
-| Runtime | Node.js 20+, TypeScript | Same as app BE for consistency |
-| Framework | Fastify 5 | Same as app BE; could also be lightweight (Express/Hono) but Fastify keeps tooling consistent |
-| AI SDK | Vercel AI SDK (`ai` package) | Provider-agnostic; supports Anthropic, OpenAI, others |
-| LLM Provider | TBD (Anthropic or OpenAI) | Decided at implementation time; AI SDK makes switching trivial |
-| Session storage | Redis via Upstash | Serverless Redis; managed, persistent, supports TTL |
-| WhatsApp API | Green API | Shared instance with notification system |
-| Hosting | Railway (same project as app BE) | Private networking for internal API calls |
-| User lookup | Supabase Admin SDK | Resolve phone number → userId |
+| Component       | Technology                       | Notes                                                                                         |
+| --------------- | -------------------------------- | --------------------------------------------------------------------------------------------- |
+| Runtime         | Node.js 20+, TypeScript          | Same as app BE for consistency                                                                |
+| Framework       | Fastify 5                        | Same as app BE; could also be lightweight (Express/Hono) but Fastify keeps tooling consistent |
+| AI SDK          | Vercel AI SDK (`ai` package)     | Provider-agnostic; supports Anthropic, OpenAI, others                                         |
+| LLM Provider    | TBD (Anthropic or OpenAI)        | Decided at implementation time; AI SDK makes switching trivial                                |
+| Session storage | Redis via Upstash                | Serverless Redis; managed, persistent, supports TTL                                           |
+| WhatsApp API    | Green API                        | Shared instance with notification system                                                      |
+| Hosting         | Railway (same project as app BE) | Private networking for internal API calls                                                     |
+| User lookup     | Supabase Admin SDK               | Resolve phone number → userId                                                                 |
 
 ### Environment variables (chatbot server)
 
@@ -471,21 +490,22 @@ Railway Project: chillist
 
 ## 10 — Security Considerations
 
-| Concern | Mitigation |
-|---------|-----------|
-| Phone spoofing | WhatsApp provides device-level verification; Green API relays verified sender numbers |
-| Internal API exposure | `/api/internal/*` routes protected by service key; not exposed on public hostname |
-| Service key leakage | Stored in Railway env vars; never in code; rotatable |
-| Excessive AI usage | Per-user rate limiting on the chatbot side (e.g., max 50 messages/hour) |
-| Data access | Chatbot can only access plans the user participates in (same access control as app) |
-| Session hijacking | Sessions keyed by phone number; Redis access requires Upstash token |
-| Prompt injection | AI system prompt includes guardrails; tool definitions limit what the model can do |
+| Concern               | Mitigation                                                                            |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| Phone spoofing        | WhatsApp provides device-level verification; Green API relays verified sender numbers |
+| Internal API exposure | `/api/internal/*` routes protected by service key; not exposed on public hostname     |
+| Service key leakage   | Stored in Railway env vars; never in code; rotatable                                  |
+| Excessive AI usage    | Per-user rate limiting on the chatbot side (e.g., max 50 messages/hour)               |
+| Data access           | Chatbot can only access plans the user participates in (same access control as app)   |
+| Session hijacking     | Sessions keyed by phone number; Redis access requires Upstash token                   |
+| Prompt injection      | AI system prompt includes guardrails; tool definitions limit what the model can do    |
 
 ---
 
 ## 11 — Definition of Done (v1)
 
 ### Infrastructure
+
 - [ ] Chatbot service created in Railway project
 - [ ] Upstash Redis provisioned and connected
 - [ ] Internal networking verified (chatbot can reach app BE on private network)
@@ -493,6 +513,7 @@ Railway Project: chillist
 - [ ] All environment variables configured
 
 ### App BE changes
+
 - [ ] `internal-auth` plugin created and registered
 - [ ] `POST /api/internal/auth/identify` route implemented
 - [ ] `GET /api/internal/plans` route implemented (reuses existing service functions)
@@ -502,6 +523,7 @@ Railway Project: chillist
 - [ ] Access control enforced on all internal routes
 
 ### Chatbot service
+
 - [ ] Green API webhook endpoint receives and parses incoming messages
 - [ ] Phone → userId identification works via internal API
 - [ ] Unregistered phone numbers receive a friendly rejection message
@@ -514,6 +536,7 @@ Railway Project: chillist
 - [ ] Plan name fuzzy matching works for natural references
 
 ### Testing
+
 - [ ] Integration tests for all internal API routes (app BE side)
 - [ ] Unit tests for session management logic
 - [ ] Unit tests for phone → user resolution
@@ -524,16 +547,16 @@ Railway Project: chillist
 
 ## 12 — Open Questions & Future Considerations
 
-| Question | Status | Notes |
-|----------|--------|-------|
+| Question                  | Status   | Notes                                                                                            |
+| ------------------------- | -------- | ------------------------------------------------------------------------------------------------ |
 | NPM shared schema package | Deferred | Not needed for v1 since chatbot doesn't access DB directly; revisit if direct DB access is added |
-| Group chat support | v1.5 | Designed in Section 13; implement after v1 1:1 chat is stable |
-| Create plan via chatbot | v2 | Requires more complex tool definitions and write access |
-| Add/remove items | v2 | Requires item creation logic in internal API |
-| OTP confirmation | Future | Add when higher-risk write operations are introduced |
-| Billing / usage metering | Future | Track AI API costs per user if monetizing chatbot as premium feature |
-| Fallback when AI is down | TBD | Options: queue messages for retry, or respond with "I'm having trouble, try the app" |
-| Green API consolidation | Future | Move all WhatsApp sending to chatbot service; app BE requests sends via internal API |
+| Group chat support        | v1.5     | Designed in Section 13; implement after v1 1:1 chat is stable                                    |
+| Create plan via chatbot   | v2       | Requires more complex tool definitions and write access                                          |
+| Add/remove items          | v2       | Requires item creation logic in internal API                                                     |
+| OTP confirmation          | Future   | Add when higher-risk write operations are introduced                                             |
+| Billing / usage metering  | Future   | Track AI API costs per user if monetizing chatbot as premium feature                             |
+| Fallback when AI is down  | TBD      | Options: queue messages for retry, or respond with "I'm having trouble, try the app"             |
+| Green API consolidation   | Future   | Move all WhatsApp sending to chatbot service; app BE requests sends via internal API             |
 
 ---
 
@@ -640,14 +663,14 @@ Group chat rules:
 
 ### Edge cases
 
-| Scenario | Behavior |
-|----------|----------|
-| Bot added to group, no plan linked yet | Bot only responds to "link" commands; all other messages get: "Link me to a plan first: @Chillist link [plan name]" |
-| Plan is deleted in the app | Next bot interaction detects 404 from internal API → unlinks and notifies group |
-| User removed from plan in the app | Bot responds to that user with "You're no longer part of this plan" |
-| Someone tries to link a plan they don't own | Bot responds: "Only the plan owner can link a plan to this group" |
-| Group has a linked plan, someone asks about a different plan | Bot responds: "This group is linked to [plan name]. Message me privately to check other plans." |
-| Bot is removed from the group | Session persists in Redis but expires via TTL; no cleanup needed |
+| Scenario                                                     | Behavior                                                                                                            |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| Bot added to group, no plan linked yet                       | Bot only responds to "link" commands; all other messages get: "Link me to a plan first: @Chillist link [plan name]" |
+| Plan is deleted in the app                                   | Next bot interaction detects 404 from internal API → unlinks and notifies group                                     |
+| User removed from plan in the app                            | Bot responds to that user with "You're no longer part of this plan"                                                 |
+| Someone tries to link a plan they don't own                  | Bot responds: "Only the plan owner can link a plan to this group"                                                   |
+| Group has a linked plan, someone asks about a different plan | Bot responds: "This group is linked to [plan name]. Message me privately to check other plans."                     |
+| Bot is removed from the group                                | Session persists in Redis but expires via TTL; no cleanup needed                                                    |
 
 ### Privacy considerations
 
@@ -673,5 +696,5 @@ Group chat rules:
 
 ---
 
-*Chillist — Internal Engineering Document*
-*WhatsApp AI Chatbot Architecture Spec v1.0*
+_Chillist — Internal Engineering Document_
+_WhatsApp AI Chatbot Architecture Spec v1.0_
