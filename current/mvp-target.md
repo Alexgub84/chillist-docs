@@ -19,7 +19,7 @@ MVP is ready when:
 
 ## 2. WhatsApp Integration (Basic)
 
-> Full spec: [specs/whatsapp.md](whatsapp.md)
+> Full spec: [specs/whatsapp.md](../specs/whatsapp.md)
 
 ### 2.1 Send Items List
 

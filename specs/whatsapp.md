@@ -251,7 +251,7 @@ After FE migrates to the unified endpoint:
 
 ## 7. Related Docs
 
-- [MVP Target — WhatsApp section](mvp-target.md#2-whatsapp-integration-basic)
-- [Current Status — WhatsApp](current-status.md)
+- [MVP Target — WhatsApp section](../current/mvp-target.md#2-whatsapp-integration-basic)
+- [Current Status — WhatsApp](../current/status.md)
 - [MVP Spec — Roadmap item #11](mvp-v1.md#5-roadmap-post-mvp)
 - [Frontend Guide](../guides/frontend.md)

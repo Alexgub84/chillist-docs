@@ -21,7 +21,7 @@ Create a plan for any group event using a **4-step wizard**:
 
 1. **Plan Type** — a 3-tier tag wizard that collects structured tags describing the plan (e.g., Camping → Cooking → Shared meals). Tier 1 is single-select, tiers 2 and 3 are multi-select. Tags are stored as `string[]` on the plan. The step can be skipped entirely. Selected tags are shown as chips with back-navigation to edit previous tiers. A summary screen shows all selections before confirming.
 2. **Plan Details** — title, description (optional), date/time (one-day toggle or date range), location (Google Maps autocomplete — only place name is shown; city/country/region/lat/lon are auto-populated), language, and currency.
-3. **Preferences** — two clearly separated sections: **Your Details** (owner’s adults/kids count, food preferences, allergies, notes; RSVP auto-set to "confirmed") and **Total Group Estimate** (estimated total adults and kids for planning quantities). The plan is created silently at this step — the user sees a seamless transition to the next step.
+3. **Preferences** — two clearly separated sections: **Your Details** (owner's adults/kids count, food preferences, allergies, notes; RSVP auto-set to "confirmed") and **Total Group Estimate** (estimated total adults and kids for planning quantities). The plan is created silently at this step — the user sees a seamless transition to the next step.
 4. **Add Items** — the bulk add wizard is embedded inline so the owner can immediately pick items from the 700+ item library. This step can be skipped.
 
 Owner details (name, phone, email) are auto-filled from the user's profile and not shown in the wizard. Defaults are applied silently: status = active, visibility = invite-only.
@@ -89,7 +89,7 @@ When someone opens an invite link:
 
 **Request to join:** If someone has a link to an invite-only plan but isn't a participant, they see a plan preview and a "Request to Join" form. The owner can approve or reject requests from the Manage Participants page.
 
-**WhatsApp send list:** The owner can send the plan's item list to participants via WhatsApp. A green "Send list" button appears on each non-owner participant card, and a "Send to all" link at the top of the Participants section. Non-owner participants see a "Send list to me" button on their own card. The owner also sees an invite status badge (with WhatsApp icon) on each participant: "Not sent", "Sent", or "Joined". See [WhatsApp spec](whatsapp.md) for full details, planned features, and BE gaps.
+**WhatsApp send list:** The owner can send the plan's item list to participants via WhatsApp. A green "Send list" button appears on each non-owner participant card, and a "Send to all" link at the top of the Participants section. Non-owner participants see a "Send list to me" button on their own card. The owner also sees an invite status badge (with WhatsApp icon) on each participant: "Not sent", "Sent", or "Joined". See [WhatsApp spec](../specs/whatsapp.md) for full details, planned features, and BE gaps.
 
 ### Expenses
 

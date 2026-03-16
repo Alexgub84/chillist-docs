@@ -1,6 +1,6 @@
 # Common Rules
 
-Shared workflow rules for both frontend and backend repos.
+Shared workflow rules for all Chillist service repos (backend, frontend, chatbot).
 
 ---
 
@@ -21,7 +21,7 @@ Shared workflow rules for both frontend and backend repos.
 3. Confirm with user which issue we're working on
 4. Assign yourself and add "in progress" label
 5. Create a feature branch from up-to-date main: `git checkout main && git pull origin main && git checkout -b <branch>`
-6. See [Frontend Rules](frontend.md) or [Backend Rules](backend.md) for repo-specific setup steps before coding
+6. See the repo-specific rules for setup steps before coding: [Backend](backend.md), [Frontend](frontend.md), or the chatbot spec
 
 ## Planning Mode (Mandatory First Step)
 
@@ -31,10 +31,11 @@ Shared workflow rules for both frontend and backend repos.
 - If less than 90% sure about intent, ask clarifying questions
 - **Documentation step required:** Every plan must include a documentation update step. If the change introduces new architecture patterns, structure decisions, or conventions, update all relevant docs:
   - `README.md` — file map, "where to find" sections, workflow guidance
-  - `../chillist-docs/rules/backend.md` or `frontend.md` — new conventions or patterns to follow in future work
-  - `../chillist-docs/guides/backend.md` or `frontend.md` — "What's next" progress, setup changes
-  - `../chillist-docs/dev-lessons/backend.md` or `frontend.md` — lessons learned, architecture decisions
+  - `../chillist-docs/rules/<service>.md` — new conventions or patterns to follow in future work
+  - `../chillist-docs/guides/<service>.md` — "What's next" progress, setup changes
+  - `../chillist-docs/dev-lessons/<service>.md` — lessons learned, architecture decisions
   - `../chillist-docs/specs/mvp-v1.md` — feature status updates
+  - `../chillist-docs/current/status.md` — update when features are added, changed, or removed
   - Even if no docs need updating, the plan must explicitly state "No docs changes needed" with reasoning
 
 ## Implementation Flow
@@ -190,8 +191,9 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
 After fixing any bug, configuration mistake, or non-obvious problem, add an entry to the relevant dev-lessons file in chillist-docs:
 
-- Frontend lessons: `../chillist-docs/dev-lessons/frontend.md`
 - Backend lessons: `../chillist-docs/dev-lessons/backend.md`
+- Frontend lessons: `../chillist-docs/dev-lessons/frontend.md`
+- Chatbot lessons: `../chillist-docs/dev-lessons/chatbot.md`
 
 Entry format:
 
