@@ -6,6 +6,15 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [UI] Form components designed for inline use need an inModal prop for modal context
+
+**Date:** 2026-03-17
+**Problem:** `AddParticipantForm` was designed for inline use with its own gray card styling (`bg-gray-50 rounded-lg p-3 sm:p-4`). When placed inside a `Modal`, the card background clashed with the white modal surface and had no outer padding, making it look broken.
+**Solution:** Added an `inModal?: boolean` prop (matching the `PreferencesForm` pattern) that swaps the card class for `px-4 sm:px-6 pb-4 sm:pb-6`. Passed `inModal` at the call site in `manage-participants.$planId.lazy.tsx`.
+**Prevention:** When building form components, decide upfront if they will ever appear inside a Modal. If so, include an `inModal` prop from the start (see `PreferencesForm` as the reference pattern). Never add card backgrounds to forms that may be reused in modals.
+
+---
+
 ### [E2E] Stale Vite dev server causes mass Playwright auth failures
 
 **Date:** 2026-03-15
