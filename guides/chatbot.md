@@ -27,21 +27,22 @@ Setup, development, and deployment guide for `chillist-whatsapp-bot`.
 
 See `.env.example` in the repo for full annotated config. Summary:
 
-| Variable                   | Local                                         | Production                                                          | Required in prod |
-| -------------------------- | --------------------------------------------- | ------------------------------------------------------------------- | ---------------- |
-| `PORT`                     | `3334`                                        | `3334`                                                              | yes              |
-| `HOST`                     | `0.0.0.0`                                     | `0.0.0.0`                                                           | yes              |
-| `NODE_ENV`                 | `development`                                 | `production`                                                        | yes              |
-| `LOG_LEVEL`                | `info`                                        | `info`                                                              | yes              |
-| `WHATSAPP_PROVIDER`        | `fake` (noop client)                          | `green_api`                                                         | yes              |
-| `GREEN_API_INSTANCE_ID`    | —                                             | from Green API dashboard                                            | when `green_api` |
-| `GREEN_API_TOKEN`          | —                                             | from Green API dashboard                                            | when `green_api` |
-| `APP_BE_INTERNAL_URL`      | `http://localhost:3333`                       | `http://zealous-beauty.railway.internal:${{chillist-be-prod.PORT}}` | yes              |
-| `CHATBOT_SERVICE_KEY`      | any string (optional in dev)                  | shared secret with chillist-be                                      | yes              |
-| `FE_BASE_URL`              | `http://localhost:5173`                       | `https://chillist-fe.pages.dev`                                     | yes              |
-| `DATABASE_URL`             | — (optional; sessions use in-memory if unset) | Supabase **pooled** connection (port 6543)                          | yes              |
-| `DATABASE_URL_PUBLIC`      | — (optional; only needed for migrations)      | Supabase **direct** connection (port 5432)                          | for migrations   |
-| `SESSION_IDLE_TTL_MINUTES` | `15`                                          | `15`                                                                | no (default 15)  |
+| Variable                   | Local                                                      | Production                                                          | Required in prod |
+| -------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------- | ---------------- |
+| `PORT`                     | `3334`                                                     | `3334`                                                              | yes              |
+| `HOST`                     | `0.0.0.0`                                                  | `0.0.0.0`                                                           | yes              |
+| `NODE_ENV`                 | `development`                                              | `production`                                                        | yes              |
+| `LOG_LEVEL`                | `info`                                                     | `info`                                                              | yes              |
+| `WHATSAPP_PROVIDER`        | `fake` (noop client)                                       | `green_api`                                                         | yes              |
+| `GREEN_API_INSTANCE_ID`    | —                                                          | from Green API dashboard                                            | when `green_api` |
+| `GREEN_API_TOKEN`          | —                                                          | from Green API dashboard                                            | when `green_api` |
+| `APP_BE_INTERNAL_URL`      | `http://localhost:3333`                                    | `http://zealous-beauty.railway.internal:${{chillist-be-prod.PORT}}` | yes              |
+| `CHATBOT_SERVICE_KEY`      | any string (optional in dev)                               | shared secret with chillist-be                                      | yes              |
+| `BOT_PHONE_NUMBER`         | — (optional; only needed for @mention detection in groups) | E.164 phone of the bot's WhatsApp number                            | for group chat   |
+| `FE_BASE_URL`              | `http://localhost:5173`                                    | `https://chillist-fe.pages.dev`                                     | yes              |
+| `DATABASE_URL`             | — (optional; sessions use in-memory if unset)              | Supabase **pooled** connection (port 6543)                          | yes              |
+| `DATABASE_URL_PUBLIC`      | — (optional; only needed for migrations)                   | Supabase **direct** connection (port 5432)                          | for migrations   |
+| `SESSION_IDLE_TTL_MINUTES` | `15`                                                       | `15`                                                                | no (default 15)  |
 
 **Env validation:** All variables are validated at startup via Zod (`src/config.ts`). If invalid, the process exits with a clear error listing each failing field.
 
@@ -79,7 +80,8 @@ src/
 └── services/
     ├── green-api/
     │   ├── types.ts          # IGreenApiClient, SendResult, Zod webhook schemas
-    │   ├── green-api.client.ts       # createHttpGreenApiClient (real HTTP)
+    │   ├── green-api.client.ts       # createHttpGreenApiClient + chatIdToPhone, isGroupChatId, phoneToChatId
+    │   ├── group-triggers.ts         # isBotMentioned, hasBotPrefix, isTriggeredGroupMessage, getMessageText
     │   ├── noop-green-api.client.ts  # createNoopGreenApiClient (dev mode)
     │   └── fake-green-api.client.ts  # createFakeGreenApiClient (tests)
     ├── internal-api/
@@ -131,9 +133,28 @@ export async function handleXxx(
 ): Promise<void>;
 ```
 
+### Group message handling (Phase 7 foundation — done)
+
+Group messages (`chatId` ending in `@g.us`) are handled separately from DMs:
+
+1. **Trigger check** — message is only processed if directed at the bot:
+   - `@mention`: bot's JID appears in `extendedTextMessageData.mentionedJidList` (requires `BOT_PHONE_NUMBER`)
+   - Prefix: message starts with `/chillist` or `/cl` (case-insensitive)
+2. **Not triggered** → silently ignore, log `"Ignored group message"`
+3. **Triggered** → per-message identify (`senderData.sender` → phone) → reply welcome or signup to **group** `chatId`
+
+No session lookup for group messages — identity is resolved per-message. Group sessions (linked plan, shared history) are Phase 7.
+
+Key helpers in `src/services/green-api/group-triggers.ts`:
+
+- `isTriggeredGroupMessage(message, botJid | null)` — combined trigger check
+- `getMessageText(message)` — extracts text from `textMessageData` or `extendedTextMessageData`
+- `isBotMentioned(message, botJid)` — mention check
+- `hasBotPrefix(text)` — prefix check
+
 ### Session management (Phase 3 — done)
 
-The handler now runs session logic before calling `identify`:
+For DM messages, the handler runs session logic before calling `identify`:
 
 1. `sessionStore.getActiveSession(phone)` — looks up a non-expired session
 2. If found → `touchSession()` (extend TTL) → send `continuingConversation` reply
@@ -207,7 +228,7 @@ Every log line includes relevant entity IDs for production debugging:
 | `instanceId` | string | Green API plugin init            |
 | `provider`   | string | Green API plugin init            |
 
-### Webhook Log Flow (happy path)
+### Webhook Log Flow (happy path — DM)
 
 ```
 info  { typeWebhook }                         → "Ignored non-message webhook event" (status events)
@@ -216,13 +237,25 @@ info  { phone, userId, lang }                 → "User identified — sending w
 info  { chatId, messageId }                   → "Welcome message sent"
 ```
 
+### Webhook Log Flow (group messages)
+
+```
+info  { chatId, idMessage }                   → "Ignored group message" (not triggered)
+info  { chatId, sender, phone, groupLang }    → "Processing triggered group message"
+info  { chatId, phone, userId }               → "Group sender identified — sending welcome"
+info  { chatId, messageId }                   → "Group welcome message sent"
+info  { chatId, phone }                       → "Group sender not found — sending signup link"
+info  { chatId, messageId }                   → "Group signup message sent"
+```
+
 ### Webhook Log Flow (error paths)
 
 ```
 warn  { err }                                 → "Malformed webhook payload"
 warn  { err, typeWebhook }                    → "Failed to parse incoming message body"
-warn  { err, chatId }                         → "Failed to send welcome/signup message"
+warn  { err, chatId }                         → "Failed to send welcome/signup/group message"
 error { err, phone, chatId, idMessage }       → "Unexpected error during webhook processing"
+error { err, chatId, sender, idMessage }      → "Unexpected error during group webhook processing"
 ```
 
 ---
@@ -327,6 +360,8 @@ Railway resolves `${{chillist-be-prod.PORT}}` to `8080` at deploy time.
 ## What's Next
 
 - [x] Session management (direct DB via `chatbot_sessions` table)
+- [x] Group message trigger detection (`@mention` + `/cl` prefix) with per-message identify
 - [ ] AI SDK integration with tool definitions
 - [ ] Internal API data routes (`GET /plans`, `GET /plans/:id`, `PATCH /items/:id/status`)
 - [ ] `chatbot_messages` table — conversation history for AI context window
+- [ ] Group sessions (linked plan, shared message history) — Phase 7
