@@ -3,7 +3,7 @@
 > **Status:** In Progress — Phase 3 BE work in progress
 > **Scope:** This document defines the chatbot as a standalone service that communicates with the existing Chillist app backend via internal HTTP API. No implementation code is included.
 > **Prerequisite:** WhatsApp Integration Phase 1 & 2 (notifications + list sharing via Green API) must be complete before chatbot work begins.
-> **Last updated:** 2026-03-17 — Sections 3 & 4 rewritten: replaced Supabase Admin scan with direct DB query; added guest user identification path (mirrors FE registered vs guest routing).
+> **Last updated:** 2026-03-17 — Security & architecture review: service key rationale documented; session storage changed to DB-primary (`chatbot_sessions` + `chatbot_messages` tables); 15-min idle TTL; sign-up link on 404; ORDER BY determinism note on phone lookup.
 
 ---
 
@@ -158,10 +158,13 @@ SELECT user_id, name, last_name, display_name
 FROM participants
 WHERE contact_phone = $1
   AND user_id IS NOT NULL
+ORDER BY created_at DESC
 LIMIT 1
 ```
 
 This is O(1) with an index, not O(N) like a Supabase Admin user scan.
+
+**Why `ORDER BY created_at DESC`:** The same phone number can appear in multiple participant rows across different plans. Without ordering, the result is non-deterministic across DB replicas and vacuums. Taking the most recently created row is stable and predictable.
 
 **Coverage:** A user who registered in Supabase but has never accepted any plan invite will not be found by this query. For the chatbot, this is acceptable — if they have no plan membership, there is nothing for the chatbot to show them.
 
@@ -220,11 +223,11 @@ For **guest users**: `guestProfile.name + ' ' + guestProfile.lastName`
 
 ### Unidentified users
 
-If the phone number is not found in either lookup (not in `participants` with a userId, not in `guest_profiles`), the app BE returns 404. The chatbot responds:
+If the phone number is not found in either lookup (not in `participants` with a userId, not in `guest_profiles`), the app BE returns 404. The chatbot responds with a message **and a sign-up link**:
 
-> "I don't recognize this number. Make sure you've signed up for Chillist with this phone number, or add it to your profile in the app."
+> "I don't recognize this number. Sign up for Chillist here: https://chillist.app/signup"
 
-Note: A participant who was added to a plan but hasn't yet accepted their invite (their participant row has no `userId` and no `guestProfileId`) is also considered unidentified. The chatbot can respond:
+Note: A participant who was added to a plan but hasn't yet accepted their invite (their participant row has no `userId` and no `guestProfileId`) is also considered unidentified. The chatbot responds:
 
 > "It looks like you haven't accepted your Chillist invite yet. Open the link you received to join your plan."
 
@@ -262,6 +265,8 @@ knows CHATBOT_SERVICE_KEY  ─── x-service-key header ──→  validates h
 ```
 
 The key is a long random string (e.g., 32-64 hex characters), generated once and stored in both services' environment variables. It is never in code and never in logs.
+
+**Why a service key at all?** Railway's private internal network already prevents external access to internal routes. The service key is **not** primarily defending against network interception — that threat is already mitigated. Its purpose is a cheap extra layer against _accidental internal misuse_: a bug in another internal service, a misconfigured route, or a developer mistake that accidentally hits an internal endpoint. Note: anyone with Railway-level access already has full DB access, so the key does not protect against that threat.
 
 ### Two-header pattern for data routes
 
@@ -590,31 +595,56 @@ Without session memory, the user would need to repeat context every message:
 
 ### Storage
 
-**Redis (Upstash)** — persists across chatbot deploys, supports TTL for auto-expiry.
+Sessions are stored **in the app BE's PostgreSQL database** — not only Redis. This gives the team full visibility into chatbot usage for monitoring, debugging, and analytics. Redis/Upstash is optional and can be used as a read-cache by the chatbot service, but the source of truth is the DB.
+
+### New DB tables (app BE migration required)
+
+#### `chatbot_sessions`
+
+| Column            | Type        | Notes                                                     |
+| ----------------- | ----------- | --------------------------------------------------------- |
+| `session_id`      | UUID PK     | Generated on creation                                     |
+| `phone_number`    | text        | E.164 — one active session per phone at a time            |
+| `user_id`         | UUID        | Supabase userId (null for guest sessions)                 |
+| `current_plan_id` | UUID        | Nullable — plan currently in focus for this conversation  |
+| `created_at`      | timestamptz |                                                           |
+| `last_active_at`  | timestamptz | Updated on every message; used for idle expiry            |
+| `expires_at`      | timestamptz | `last_active_at + 15 minutes`; recomputed on each message |
+
+#### `chatbot_messages`
+
+| Column        | Type        | Notes                                    |
+| ------------- | ----------- | ---------------------------------------- |
+| `message_id`  | UUID PK     |                                          |
+| `session_id`  | UUID FK     | References `chatbot_sessions.session_id` |
+| `sender_type` | text        | `'user'` or `'bot'`                      |
+| `content`     | text        | Raw message text                         |
+| `created_at`  | timestamptz |                                          |
+
+Messages are also used as the AI conversation history (loaded in order for the current active session).
 
 ### Session model
 
-Each WhatsApp phone number gets one session. The session stores:
+Each WhatsApp phone number gets one active session at a time. The session represents both the AI conversation context and a monitoring/audit record.
 
 ```json
 // Registered user session
 {
+  "sessionId": "sess-uuid-xxx",
   "phoneNumber": "+972501234567",
   "userType": "registered",
   "userId": "supabase-uid-xxx",
   "guestParticipants": null,
   "displayName": "Alex",
   "currentPlanId": "plan-1",
-  "messageHistory": [
-    { "role": "user", "content": "Show me the camping trip" },
-    { "role": "assistant", "content": "Here are the items for Camping in the Golan:..." }
-  ],
   "createdAt": "2026-03-16T10:00:00Z",
-  "lastActiveAt": "2026-03-16T10:05:00Z"
+  "lastActiveAt": "2026-03-16T10:05:00Z",
+  "expiresAt": "2026-03-16T10:20:00Z"
 }
 
 // Guest user session
 {
+  "sessionId": "sess-uuid-yyy",
   "phoneNumber": "+15550001234",
   "userType": "guest",
   "userId": null,
@@ -623,9 +653,9 @@ Each WhatsApp phone number gets one session. The session stores:
   ],
   "displayName": "Dana Smith",
   "currentPlanId": "plan-uuid-1",
-  "messageHistory": [],
   "createdAt": "2026-03-16T10:00:00Z",
-  "lastActiveAt": "2026-03-16T10:05:00Z"
+  "lastActiveAt": "2026-03-16T10:00:00Z",
+  "expiresAt": "2026-03-16T10:15:00Z"
 }
 ```
 
@@ -634,28 +664,33 @@ Each WhatsApp phone number gets one session. The session stores:
 - `currentPlanId` defaults to the first (and often only) plan in `guestParticipants`
 - If the guest is in multiple plans, the chatbot asks "Which plan? You're a guest in: [list]"
 - Guest data routes use `x-guest-participant-id` (v1.5 — not yet implemented)
+- Guest session details (DB table structure for `guestParticipants`) TBD
 
 ### TTL & limits
 
-| Setting             | Value                                              | Rationale                                                             |
-| ------------------- | -------------------------------------------------- | --------------------------------------------------------------------- |
-| Session TTL         | 24 hours from last activity                        | Conversations are short-lived; stale context is worse than no context |
-| Max message history | 20 messages (10 pairs)                             | Keeps token usage bounded; older context is rarely needed             |
-| Re-identification   | On session expiry, re-lookup phone → user identity | Handles edge case of phone number transferred to a different user     |
+| Setting             | Value                                              | Rationale                                                                     |
+| ------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Session idle TTL    | **15 minutes** from last message                   | Short idle window keeps context fresh; stale context is worse than no context |
+| Max message history | 20 messages (10 pairs) loaded for AI context       | Keeps token usage bounded; full history always available in DB for audit      |
+| Re-identification   | On session expiry, re-lookup phone → user identity | Handles edge case of phone number transferred to a different user             |
+
+> **Why 15 minutes (not 24 hours)?** Chatbot conversations are short bursts. If a user doesn't reply for 15 minutes they've mentally moved on. A fresh session on next contact avoids carrying stale AI context.
 
 ### First message flow
 
 ```
 1. Message arrives from +972501234567
-2. Check Redis for session with this phone number
-3a. If no session:
+2. Call app BE: GET /api/internal/sessions?phone=+972501234567
+   → returns active session if exists (expiresAt > now), else null
+3a. If no active session:
     → call POST /api/internal/auth/identify
     → response: { userType, userId | null, displayName, guestParticipants | null }
-    → create session with userType + identity fields
-3b. If session exists → load identity + messageHistory from session
-4. Build AI request with system prompt + messageHistory + new user message
-5. Process AI response → send to WhatsApp → append both messages to session
-6. Update lastActiveAt, save session to Redis
+    → call POST /api/internal/sessions to create session in DB
+3b. If active session → load identity + recent messages for AI context
+4. Build AI request with system prompt + last N messages + new user message
+5. Process AI response → send to WhatsApp
+6. Call POST /api/internal/sessions/:sessionId/messages to persist both messages
+7. Call PATCH /api/internal/sessions/:sessionId to update lastActiveAt + expiresAt
 ```
 
 ---
@@ -707,7 +742,8 @@ WhatsApp has messaging limits. The chatbot should:
 | Framework       | Fastify 5                        | Same as app BE; could also be lightweight (Express/Hono) but Fastify keeps tooling consistent |
 | AI SDK          | Vercel AI SDK (`ai` package)     | Provider-agnostic; supports Anthropic, OpenAI, others                                         |
 | LLM Provider    | TBD (Anthropic or OpenAI)        | Decided at implementation time; AI SDK makes switching trivial                                |
-| Session storage | Redis via Upstash                | Serverless Redis; managed, persistent, supports TTL                                           |
+| Session storage | PostgreSQL (app BE DB)           | `chatbot_sessions` + `chatbot_messages` tables; enables monitoring and audit logging          |
+| Session cache   | Redis via Upstash (optional)     | Can be added for low-latency active-session reads; source of truth remains the DB             |
 | WhatsApp API    | Green API                        | Shared instance with notification system                                                      |
 | Hosting         | Railway (same project as app BE) | Private networking for internal API calls                                                     |
 | User lookup     | Direct DB query                  | `participants` + `guest_profiles` tables; no Supabase Admin SDK needed                        |
@@ -727,9 +763,10 @@ CHATBOT_SERVICE_KEY=         # shared secret for internal auth
 AI_PROVIDER=                 # "anthropic" | "openai"
 AI_API_KEY=                  # provider API key
 
-# Session
-UPSTASH_REDIS_URL=
-UPSTASH_REDIS_TOKEN=
+# Session cache (optional — sessions are persisted in the app BE DB)
+# Add only if using Redis as a read-cache for active sessions
+# UPSTASH_REDIS_URL=
+# UPSTASH_REDIS_TOKEN=
 
 # Supabase
 # Neither the chatbot server NOR the app BE uses SUPABASE_SERVICE_ROLE_KEY for user identification.
@@ -748,8 +785,9 @@ SUPABASE_URL=
 Railway Project: chillist
 ├── Service: chillist-api        (existing app backend)
 ├── Service: chillist-chatbot    (new — this spec)
-├── Database: PostgreSQL         (existing, accessed by app BE only)
-└── Redis: Upstash               (new — chatbot sessions)
+└── Database: PostgreSQL         (existing — chatbot_sessions + chatbot_messages added here)
+
+# Redis/Upstash is optional (session read-cache only, not required for v1)
 ```
 
 ### Internal networking
@@ -831,7 +869,7 @@ The E2E pre-deploy test (`tests/e2e/internal-auth-prod.test.ts`) is **manual onl
 | Service key leakage   | Stored in Railway env vars; never in code; rotatable                                  |
 | Excessive AI usage    | Per-user rate limiting on the chatbot side (e.g., max 50 messages/hour)               |
 | Data access           | Chatbot can only access plans the user participates in (same access control as app)   |
-| Session hijacking     | Sessions keyed by phone number; Redis access requires Upstash token                   |
+| Session hijacking     | Sessions keyed by phone number; stored in app BE DB (Railway-access required)         |
 | Prompt injection      | AI system prompt includes guardrails; tool definitions limit what the model can do    |
 
 ---
@@ -841,10 +879,10 @@ The E2E pre-deploy test (`tests/e2e/internal-auth-prod.test.ts`) is **manual onl
 ### Infrastructure
 
 - [ ] Chatbot service created in Railway project
-- [ ] Upstash Redis provisioned and connected
 - [ ] Internal networking verified (chatbot can reach app BE on private network)
 - [ ] Green API webhook updated to point to chatbot service
 - [ ] All environment variables configured
+- [ ] Upstash Redis provisioned (optional — only if adding session read-cache)
 
 ### App BE changes
 
@@ -855,6 +893,12 @@ The E2E pre-deploy test (`tests/e2e/internal-auth-prod.test.ts`) is **manual onl
 - [x] `src/schemas/internal.schema.ts` — `IdentifyRequest`, `IdentifyResponse`, `GuestParticipantEntry` schemas
 - [x] Unit tests: phone normalization, env guards
 - [x] Integration tests: service key validation, registered lookup, guest lookup, 404, 400, phone normalization, route isolation
+- [ ] DB migration: `chatbot_sessions` table
+- [ ] DB migration: `chatbot_messages` table
+- [ ] `GET /api/internal/sessions` route (lookup active session by phone)
+- [ ] `POST /api/internal/sessions` route (create session)
+- [ ] `PATCH /api/internal/sessions/:sessionId` route (update lastActiveAt + expiresAt)
+- [ ] `POST /api/internal/sessions/:sessionId/messages` route (append message)
 - [ ] `GET /api/internal/plans` route implemented (reuses existing service functions)
 - [ ] `GET /api/internal/plans/:planId` route implemented (reuses existing service functions)
 - [ ] `PATCH /api/internal/items/:itemId/status` route implemented (reuses existing service functions)
@@ -868,9 +912,9 @@ The E2E pre-deploy test (`tests/e2e/internal-auth-prod.test.ts`) is **manual onl
 - [ ] AI SDK configured with tools (getMyPlans, getPlanDetails, updateItemStatus)
 - [ ] System prompt produces natural, short, WhatsApp-friendly responses
 - [ ] Language auto-detection works (Hebrew and English)
-- [ ] Session memory persists across messages (Redis)
-- [ ] Sessions expire after 24 hours of inactivity
-- [ ] Message history capped at 20 messages per session
+- [ ] Session created in app BE DB on first message, loaded on subsequent messages
+- [ ] Sessions expire after **15 minutes** of inactivity
+- [ ] Last 20 messages loaded for AI context per session
 - [ ] Plan name fuzzy matching works for natural references
 
 ### Testing
@@ -885,16 +929,18 @@ The E2E pre-deploy test (`tests/e2e/internal-auth-prod.test.ts`) is **manual onl
 
 ## 12 — Open Questions & Future Considerations
 
-| Question                  | Status   | Notes                                                                                            |
-| ------------------------- | -------- | ------------------------------------------------------------------------------------------------ |
-| NPM shared schema package | Deferred | Not needed for v1 since chatbot doesn't access DB directly; revisit if direct DB access is added |
-| Group chat support        | v1.5     | Designed in Section 13; implement after v1 1:1 chat is stable                                    |
-| Create plan via chatbot   | v2       | Requires more complex tool definitions and write access                                          |
-| Add/remove items          | v2       | Requires item creation logic in internal API                                                     |
-| OTP confirmation          | Future   | Add when higher-risk write operations are introduced                                             |
-| Billing / usage metering  | Future   | Track AI API costs per user if monetizing chatbot as premium feature                             |
-| Fallback when AI is down  | TBD      | Options: queue messages for retry, or respond with "I'm having trouble, try the app"             |
-| Green API consolidation   | Future   | Move all WhatsApp sending to chatbot service; app BE requests sends via internal API             |
+| Question                  | Status     | Notes                                                                                                                              |
+| ------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| NPM shared schema package | Deferred   | Not needed for v1 since chatbot doesn't access DB directly; revisit if direct DB access is added                                   |
+| **Concurrent edits**      | 🚩 Flagged | Same item edited simultaneously from WhatsApp and frontend — last-write-wins for now; needs design before write operations go live |
+| **Guest session details** | TBD        | DB table structure for guest chatbot sessions (guestProfileId vs userId) needs design                                              |
+| Group chat support        | v1.5       | Designed in Section 13; implement after v1 1:1 chat is stable                                                                      |
+| Create plan via chatbot   | v2         | Requires more complex tool definitions and write access                                                                            |
+| Add/remove items          | v2         | Requires item creation logic in internal API                                                                                       |
+| OTP confirmation          | Future     | Add when higher-risk write operations are introduced                                                                               |
+| Billing / usage metering  | Future     | Track AI API costs per user if monetizing chatbot as premium feature                                                               |
+| Fallback when AI is down  | TBD        | Options: queue messages for retry, or respond with "I'm having trouble, try the app"                                               |
+| Green API consolidation   | Future     | Move all WhatsApp sending to chatbot service; app BE requests sends via internal API                                               |
 
 ---
 
