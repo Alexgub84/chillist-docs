@@ -1,22 +1,23 @@
 # Chillist WhatsApp AI Chatbot — Architecture Spec v1.0
 
-> **Status:** In Progress — Phase 1 (scaffold) complete
+> **Status:** In Progress — Phase 3 BE work in progress
 > **Scope:** This document defines the chatbot as a standalone service that communicates with the existing Chillist app backend via internal HTTP API. No implementation code is included.
 > **Prerequisite:** WhatsApp Integration Phase 1 & 2 (notifications + list sharing via Green API) must be complete before chatbot work begins.
+> **Last updated:** 2026-03-17 — Expanded Sections 3 & 4 with detailed technical explanations of Supabase Admin API, phone normalization, pagination strategy, TTL cache, service-key auth, and error formats.
 
 ---
 
 ## Implementation Phases
 
-| Phase | Name                          | Status  | What it delivers                                                                                                                     |
-| ----- | ----------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| **1** | Project Scaffold              | ✅ Done | Fastify server + health endpoint, TypeScript, ESLint, Prettier, Husky, Vitest, Dockerfile, GitHub Actions CI/CD, Railway setup guide |
-| **2** | Green API Webhook             | Pending | Receive incoming WhatsApp messages, parse them, reply with static echo (no AI)                                                       |
-| **3** | User Identification           | Pending | Phone → userId lookup via internal API on app BE + session creation in Redis (Upstash)                                               |
-| **4** | AI Layer + Tools              | Pending | Vercel AI SDK, system prompt, tool definitions (getMyPlans, getPlanDetails, updateItemStatus) calling internal API                   |
-| **5** | Session & Conversation Memory | Pending | Redis-backed message history, TTL, context carry-over between messages                                                               |
-| **6** | Polish & Hardening            | Pending | Rate limiting, error handling, logging analysis, security review, production env var validation                                      |
-| **7** | Group Chat (v1.5)             | Pending | Mention/prefix triggers, linkPlan, group sessions (per Section 13)                                                                   |
+| Phase | Name                          | Status         | What it delivers                                                                                                                     |
+| ----- | ----------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **1** | Project Scaffold              | ✅ Done        | Fastify server + health endpoint, TypeScript, ESLint, Prettier, Husky, Vitest, Dockerfile, GitHub Actions CI/CD, Railway setup guide |
+| **2** | Green API Webhook             | Pending        | Receive incoming WhatsApp messages, parse them, reply with static echo (no AI)                                                       |
+| **3** | User Identification           | 🚧 In Progress | Phone → userId lookup via internal API on app BE + session creation in Redis (Upstash)                                               |
+| **4** | AI Layer + Tools              | Pending        | Vercel AI SDK, system prompt, tool definitions (getMyPlans, getPlanDetails, updateItemStatus) calling internal API                   |
+| **5** | Session & Conversation Memory | Pending        | Redis-backed message history, TTL, context carry-over between messages                                                               |
+| **6** | Polish & Hardening            | Pending        | Rate limiting, error handling, logging analysis, security review, production env var validation                                      |
+| **7** | Group Chat (v1.5)             | Pending        | Mention/prefix triggers, linkPlan, group sessions (per Section 13)                                                                   |
 
 > Phases 2–5 each require corresponding **app BE** work (internal routes, internal-auth plugin). Those BE changes will be called out in each phase's plan.
 
@@ -104,12 +105,91 @@ WhatsApp guarantees that the sender owns the phone number (SIM + device verifica
 2. Chatbot calls App BE: POST /api/internal/auth/identify
    Header: x-service-key: <CHATBOT_SERVICE_KEY>
    Body: { "phoneNumber": "+972501234567" }
-3. App BE queries Supabase Admin API: supabase.auth.admin.listUsers()
-   filtered by phone match
+3. App BE normalizes the phone number and queries Supabase Admin API
 4. App BE returns: { "userId": "supabase-uid-xxx", "displayName": "Alex" }
    or 404 if no user found
 5. Chatbot stores userId in session for subsequent requests
 ```
+
+### Phone number normalization
+
+Phone numbers arrive in many formats depending on the device, country, and user. Before comparing phones, the app BE normalizes them to **E.164 format** — a standardized international format:
+
+```
+E.164 format: +[country code][number]  →  e.g., +972501234567
+```
+
+Examples of inputs that all resolve to the same normalized phone:
+
+| Input from WhatsApp | Normalized to   |
+| ------------------- | --------------- |
+| `+972501234567`     | `+972501234567` |
+| `972501234567`      | `+972501234567` |
+| `+972 50 123 4567`  | `+972501234567` |
+| `+972-50-123-4567`  | `+972501234567` |
+| `(972) 50 1234567`  | `+972501234567` |
+
+Normalization logic: strip all spaces, dashes, and parentheses, then ensure the result starts with `+`. This is done in `src/utils/phone.ts` — the same utility can be reused anywhere in the project.
+
+### How the Supabase Admin API phone lookup works
+
+**What is Supabase Auth?**
+Supabase provides authentication as a managed service. It stores user accounts (email, phone, hashed password, OAuth tokens) in a table called `auth.users` in your Supabase project's PostgreSQL database. The Chillist app backend does NOT have direct access to `auth.users` — that's internal to Supabase.
+
+**What is the Supabase Admin API?**
+Supabase exposes an admin REST API that allows server-side code to manage users. You authenticate with a `SUPABASE_SERVICE_ROLE_KEY` — a high-privilege secret key that bypasses Supabase Row Level Security (RLS). This key must NEVER be exposed to the frontend or committed to code.
+
+**What is `supabase.auth.admin.listUsers()`?**
+This is a function in the `@supabase/supabase-js` SDK that calls the Supabase Admin REST endpoint `GET /auth/v1/admin/users`. It returns a paginated list of all users registered in your Supabase project. Think of it as "get all users, page by page."
+
+**Important limitation:** `listUsers()` does NOT support filtering by phone number server-side. It returns ALL users and we must filter client-side by comparing the normalized phone number. This is an O(N) scan.
+
+### Paginated scan strategy (app BE implementation)
+
+Because we must iterate all users to find a phone match:
+
+1. Call `listUsers({ page: 1, perPage: 1000 })` — fetch first 1000 users.
+2. Normalize each user's phone number and compare to the target phone.
+3. If no match in this page, fetch next page (`page: 2, perPage: 1000`), repeat.
+4. Stop when a match is found, or when all pages are exhausted.
+5. **Cap at 50 pages (50,000 users)** — fail-safe to prevent infinite loops.
+
+```
+page 1: users 1–1000  → scan for phone match → not found
+page 2: users 1001–2000 → scan → found: userId=abc123  ✓
+```
+
+**Why this is acceptable for MVP:**
+
+- `/identify` is called **once per session** (every 24 hours at most per user).
+- The chatbot caches the resolved `userId` in Redis — subsequent messages in the same session skip the lookup entirely.
+- For <10,000 users, this is at most 10 Supabase API calls per identification (fast).
+
+**Scalability note:** At large scale (100k+ users), this approach becomes slow. The long-term solution is to maintain a phone→userId mapping table in the app database (synced from Supabase via webhooks). This is tracked as a follow-up issue.
+
+### In-process TTL cache
+
+To avoid repeat scans when the same phone is identified multiple times quickly (e.g., rapid fire messages before session is saved to Redis), the app BE keeps an **in-process cache**:
+
+- A `Map<normalizedPhone, { result, expiresAt }>` held in memory.
+- TTL: 5 minutes. After that, a fresh Supabase scan is performed.
+- Cache is NOT shared between app BE instances (Railway may run multiple replicas). This is fine — the worst case is two concurrent scans, not incorrect results.
+- Never log the full phone number — only a truncated prefix (`+972***`) for debugging.
+
+### displayName resolution
+
+Supabase stores user profile data in a `user_metadata` JSON field on the user record. When users sign up with Google, their name comes in automatically. When users sign up with email, the app BE syncs their name to `user_metadata` during profile creation.
+
+The `displayName` returned by `/identify` is derived from `user_metadata`:
+
+```
+user_metadata.first_name + " " + user_metadata.last_name  → "Alex Cohen"
+OR user_metadata.full_name                                 → "Alex Cohen"
+OR user_metadata.name                                      → "Alex Cohen"
+OR fallback: "User"                                        (if no name data)
+```
+
+This uses the same `parseNameFromMetadata()` function already in `src/plugins/auth.ts`.
 
 ### Unregistered users
 
@@ -121,9 +201,9 @@ No further interactions are allowed until identification succeeds.
 
 ### No OTP / no login
 
-v1 does not require OTP or any additional confirmation. The WhatsApp phone number is the sole authentication factor. This is acceptable because:
+v1 does not require OTP (One-Time Password) or any additional confirmation step. The WhatsApp phone number is the sole authentication factor. This is acceptable because:
 
-- WhatsApp itself provides strong device-level authentication
+- WhatsApp itself provides strong device-level authentication (SIM swap is not trivial)
 - v1 scope is limited (read plans + update item status) — low risk
 - Reduces friction for adoption
 
@@ -137,31 +217,50 @@ If/when the chatbot gains higher-risk capabilities (create plans, manage partici
 
 The chatbot communicates with the app backend via dedicated internal routes. These routes are **not** exposed publicly — they are only accessible over Railway's private network and require a service key.
 
-### Authentication
+### What is service-key authentication?
 
-All internal routes require:
+Regular app routes use **JWT authentication**: the frontend sends a token signed by Supabase, and the app BE verifies it cryptographically. This works because the user is the one calling the API.
+
+Internal routes are different — the **chatbot server** calls the app BE, not the user directly. There's no user JWT. Instead, both services share a **secret key** (`CHATBOT_SERVICE_KEY`), and the chatbot proves its identity by including that key in every request header.
+
+This is called **service-to-service authentication** or a **shared secret / API key pattern**:
 
 ```
-Header: x-service-key: <CHATBOT_SERVICE_KEY>
-Header: x-user-id: <supabase-user-id>
+Chatbot Server                         App Backend
+───────────────                        ───────────
+knows CHATBOT_SERVICE_KEY  ─── x-service-key header ──→  validates header == env var
+                                                          ✓ proceed  |  ✗ 401 Unauthorized
 ```
 
-The `CHATBOT_SERVICE_KEY` is a shared secret stored as a Railway environment variable, known only to the chatbot and app BE services. The `x-user-id` header carries the resolved user identity.
+The key is a long random string (e.g., 32-64 hex characters), generated once and stored in both services' environment variables. It is never in code and never in logs.
 
-### App BE middleware
+### Two-header pattern for data routes
 
-A new `internal-auth` plugin validates internal requests:
+Most internal routes need to know **which Chillist user** is making the request (to enforce access control). The chatbot passes the resolved userId as a second header:
 
-1. Check `x-service-key` matches the expected value → 401 if not
-2. Read `x-user-id` from header → 400 if missing
-3. Attach userId to the request context (same as JWT auth does for regular routes)
-4. Route handler proceeds using existing service functions with the provided userId
+```
+Header: x-service-key: <CHATBOT_SERVICE_KEY>   ← proves the caller is the chatbot
+Header: x-user-id: <supabase-user-id>           ← identifies which user this is for
+```
+
+**Exception: `/auth/identify` only needs `x-service-key`.** It does not have a `x-user-id` because its whole purpose is to _resolve_ the user — the userId isn't known yet at this point.
+
+### App BE `internal-auth` plugin
+
+A new `internal-auth` Fastify plugin validates all `/api/internal/*` requests:
+
+1. Check `x-service-key` header matches `CHATBOT_SERVICE_KEY` env var → 401 if missing or wrong.
+2. Read `x-user-id` header if present → attach as `request.internalUserId`.
+3. Route handlers receive `request.internalUserId` the same way public routes receive `request.user.id` from JWT.
+4. Routes that require a userId (e.g., `GET /plans`) must check `request.internalUserId` is set.
+
+This plugin is registered globally with `fp()` but only activates on paths starting with `/api/internal`. All existing public routes are unaffected.
 
 ### Routes
 
 #### POST /api/internal/auth/identify
 
-Resolves a phone number to a Chillist user.
+Resolves a phone number to a Chillist user. Only requires service key — no `x-user-id`.
 
 ```
 Request:
@@ -172,16 +271,25 @@ Response 200:
   { "userId": "abc-123", "displayName": "Alex" }
 
 Response 404:
-  { "error": "user_not_found" }
+  { "message": "User not found" }
+
+Response 401:
+  { "message": "Unauthorized" }   (wrong or missing service key)
+
+Response 400:
+  { "message": "phoneNumber is required" }   (missing body field)
 ```
+
+> **Why `{ message }` and not `{ error }`?** All app BE error responses use the `ErrorResponse` schema: `{ message: string }`. Using `{ error }` would be inconsistent and break any error-handling middleware the chatbot uses.
 
 #### GET /api/internal/plans
 
-Returns plans where the user is owner or participant.
+Returns plans where the user is owner or participant. Requires both headers.
 
 ```
 Request:
-  Header: x-service-key, x-user-id
+  Header: x-service-key: <CHATBOT_SERVICE_KEY>
+  Header: x-user-id: <supabase-user-id>
 
 Response 200:
   {
@@ -205,7 +313,8 @@ Returns full plan details including items and participants.
 
 ```
 Request:
-  Header: x-service-key, x-user-id
+  Header: x-service-key: <CHATBOT_SERVICE_KEY>
+  Header: x-user-id: <supabase-user-id>
 
 Response 200:
   {
@@ -238,8 +347,10 @@ Response 200:
   }
 
 Response 403:
-  { "error": "access_denied" }
-  (user is not a participant of this plan)
+  { "message": "Access denied" }   (user is not a participant of this plan)
+
+Response 404:
+  { "message": "Plan not found" }
 ```
 
 #### PATCH /api/internal/items/:itemId/status
@@ -248,22 +359,32 @@ Updates an item's status.
 
 ```
 Request:
-  Header: x-service-key, x-user-id
+  Header: x-service-key: <CHATBOT_SERVICE_KEY>
+  Header: x-user-id: <supabase-user-id>
   Body: { "status": "done" }
 
 Response 200:
   { "item": { "id": "item-1", "name": "Tent", "status": "done" } }
 
 Response 403:
-  { "error": "access_denied" }
+  { "message": "Access denied" }
 
 Response 404:
-  { "error": "item_not_found" }
+  { "message": "Item not found" }
 ```
 
 ### Access control
 
 Internal routes reuse the **same access control logic** as public routes (e.g., `src/utils/plan-access.ts`). The userId from `x-user-id` is checked against plan participants. The chatbot cannot access plans the user isn't part of.
+
+### Security considerations for internal API
+
+| Risk                        | Mitigation                                                                                     |
+| --------------------------- | ---------------------------------------------------------------------------------------------- |
+| `CHATBOT_SERVICE_KEY` leaks | Stored only in Railway env vars. Never in code, never in logs. Rotatable at any time.          |
+| Phone number logged         | App BE truncates phone to first 4 chars + `***` in all log lines.                              |
+| Key brute-forced            | Rate limited: max 30 requests/min on `/identify`. Wrong key logs a `warn`.                     |
+| Route exposed publicly      | Railway internal networking: `chatbot → app-be.railway.internal`. Not reachable from internet. |
 
 ---
 
@@ -455,9 +576,11 @@ AI_API_KEY=                  # provider API key
 UPSTASH_REDIS_URL=
 UPSTASH_REDIS_TOKEN=
 
-# Supabase (for phone lookup)
+# Supabase (for phone lookup on app BE side — chatbot uses internal API, not Supabase directly)
+# SUPABASE_SERVICE_ROLE_KEY is stored on the APP BE, not the chatbot server
+# The chatbot only needs APP_BE_INTERNAL_URL + CHATBOT_SERVICE_KEY to call /api/internal/auth/identify
 SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=   # admin access for user lookup
+SUPABASE_SERVICE_ROLE_KEY=   # ONLY needed on app BE for admin user lookup; do NOT add to chatbot env
 ```
 
 ---
@@ -514,13 +637,20 @@ Railway Project: chillist
 
 ### App BE changes
 
-- [ ] `internal-auth` plugin created and registered
-- [ ] `POST /api/internal/auth/identify` route implemented
+- [ ] `CHATBOT_SERVICE_KEY` + `SUPABASE_SERVICE_ROLE_KEY` env vars added to `src/env.ts`, `src/config.ts`, `.env.example`
+- [ ] `src/utils/phone.ts` — `normalizePhone()` utility created
+- [ ] `src/services/supabase-admin.ts` — `ISupabaseAdminClient` + `SupabaseAdminClient` (real) + `FakeSupabaseAdminClient` (test)
+- [ ] `src/plugins/supabase-admin.ts` — DI plugin registered
+- [ ] `src/plugins/internal-auth.ts` — `x-service-key` validation plugin registered globally
+- [ ] `src/routes/internal.route.ts` — `POST /api/internal/auth/identify` route
+- [ ] `src/schemas/internal.schema.ts` — request/response schemas registered
 - [ ] `GET /api/internal/plans` route implemented (reuses existing service functions)
 - [ ] `GET /api/internal/plans/:planId` route implemented (reuses existing service functions)
 - [ ] `PATCH /api/internal/items/:itemId/status` route implemented (reuses existing service functions)
 - [ ] Internal routes not accessible from public hostname
 - [ ] Access control enforced on all internal routes
+- [ ] Unit tests: phone normalization, env guards
+- [ ] Integration tests: service key validation, phone lookup (happy path + 404 + 401 + 400)
 
 ### Chatbot service
 
