@@ -63,11 +63,13 @@ src/
 ├── app.ts                   # Fastify setup, plugin registration, DI wiring
 ├── config.ts                # Zod env schema + parseConfig()
 ├── bot-replies/             # i18n message templates (en/he)
+├── handlers/
+│   └── incoming-message.handler.ts  # business logic — identify user, choose reply, send
 ├── plugins/
 │   ├── green-api.ts         # decorates app.greenApiClient
 │   └── internal-api.ts      # decorates app.internalApiClient
 ├── routes/
-│   └── webhook.ts           # POST /webhook/green-api
+│   └── webhook.ts           # HTTP parsing only — delegates to handler
 └── services/
     ├── green-api/
     │   ├── types.ts          # IGreenApiClient, SendResult, Zod webhook schemas
@@ -79,6 +81,53 @@ src/
         ├── internal-api.client.ts       # createHttpInternalApiClient (real HTTP)
         └── fake-internal-api.client.ts  # createFakeInternalApiClient (tests)
 ```
+
+---
+
+## Handler Architecture
+
+**Rule: routes contain HTTP logic only. All business logic lives in handlers.**
+
+### Route responsibility (`src/routes/*.ts`)
+
+- Parse and validate request body with Zod
+- Filter irrelevant events (non-message webhooks, non-text messages)
+- Call the handler with the parsed data and injected deps
+- Return the HTTP response (always 200 for webhook routes)
+
+### Handler responsibility (`src/handlers/*.handler.ts`)
+
+- Pure async functions — no Fastify, no `request`, no `reply`
+- Receive parsed data + explicit deps (`IncomingMessageHandlerDeps`)
+- Contain all business logic: identify user, choose reply, send message
+- Fully testable in unit tests without spinning up an HTTP server
+
+### Handler signature pattern
+
+```ts
+export interface XxxHandlerDeps {
+  serviceA: IServiceA; // injected — real in prod, fake in tests
+  serviceB: IServiceB;
+  feBaseUrl: string; // config values passed explicitly
+  log: HandlerLogger; // minimal interface: .info / .warn / .error
+}
+
+export async function handleXxx(
+  input: ParsedInput,
+  deps: XxxHandlerDeps,
+): Promise<void>;
+```
+
+### Adding the AI layer (Phase 4)
+
+Only `src/handlers/incoming-message.handler.ts` changes. Routes, plugins, and integration tests are untouched.
+
+1. **Add `src/services/ai/`** — `IAiClient`, `createVercelAiClient()`, `createFakeAiClient()` (same pattern as green-api, internal-api)
+2. **Add `src/services/session/`** — `ISessionStore`, `createRedisSessionStore()`, `createFakeSessionStore()`
+3. **Add plugins** — `src/plugins/ai.ts`, `src/plugins/session.ts` decorate `app.aiClient`, `app.sessionStore`
+4. **Extend `IncomingMessageHandlerDeps`** — add `aiClient: IAiClient`, `sessionStore: ISessionStore`
+5. **Update handler logic** — load session → run AI → save session → send reply
+6. **Add unit tests** — `tests/unit/incoming-message-handler.test.ts` grows, no HTTP needed
 
 ---
 
@@ -98,9 +147,9 @@ src/
 | **Config**        | Zod parse at startup — process exits with human-readable field errors   |
 | **Plugins**       | Throw on missing required config — Fastify catches and prevents startup |
 | **Webhook route** | `safeParse` on every payload — malformed input returns 200 + warn log   |
+| **Handler**       | `try/catch` wraps all service calls — logs `error` with all entity IDs  |
 | **Green API**     | `sendMessage` returns `{ success, error }` — never throws               |
 | **Internal API**  | `identify` returns `null` for 404, throws for unexpected HTTP errors    |
-| **Catch-all**     | `try/catch` in webhook handler logs `error` with all entity IDs         |
 
 **Why 200 on bad payloads:** Green API retries on non-200. Returning 200 acknowledges receipt and prevents infinite retry loops.
 
@@ -168,13 +217,13 @@ npm run test:e2e:docker   # Docker E2E (builds containers, runs tests, tears dow
 
 ### Test Layers
 
-| Layer       | Files                               | What it tests                                      |
-| ----------- | ----------------------------------- | -------------------------------------------------- |
-| Unit        | `tests/unit/*.test.ts`              | Zod schemas, message templates, client factories   |
-| Integration | `tests/integration/webhook.test.ts` | Full webhook flow with fake clients (no network)   |
-| E2E         | `tests/e2e/webhook-e2e.test.ts`     | Real HTTP to mock BE server + fake Green API       |
-| E2E Docker  | `tests/e2e/docker-e2e.test.ts`      | Real Docker containers, real HTTP between services |
-| E2E Prod    | `tests/e2e/green-api.e2e.test.ts`   | Real Green API with real creds (`skipIf` no creds) |
+| Layer       | Files                               | What it tests                                              |
+| ----------- | ----------------------------------- | ---------------------------------------------------------- |
+| Unit        | `tests/unit/*.test.ts`              | Zod schemas, message templates, client factories, handlers |
+| Integration | `tests/integration/webhook.test.ts` | Full webhook flow with fake clients (no network)           |
+| E2E         | `tests/e2e/webhook-e2e.test.ts`     | Real HTTP to mock BE server + fake Green API               |
+| E2E Docker  | `tests/e2e/docker-e2e.test.ts`      | Real Docker containers, real HTTP between services         |
+| E2E Prod    | `tests/e2e/green-api.e2e.test.ts`   | Real Green API with real creds (`skipIf` no creds)         |
 
 ### Fake Client Rules
 

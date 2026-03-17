@@ -449,21 +449,19 @@ interface IdentifyRequest {
   phoneNumber: string; // E.164 format, min 7 chars — normalize before sending
 }
 
-// Single entry in guestParticipants[]
-interface GuestParticipantEntry {
-  participantId: string; // UUID
-  planId: string; // UUID
-  displayName: string | null;
+// Response — registered users only (guest support deferred)
+interface IdentifyResponse {
+  userId: string; // Supabase user UUID
+  displayName: string; // resolved from participant.displayName ?? name + lastName
 }
 
-// Response (flat union — always check userType first)
-interface IdentifyResponse {
-  userType: "registered" | "guest";
-  userId: string | null; // UUID — present only when userType === 'registered'
-  displayName: string; // resolved from participant or guest profile
-  guestParticipants: GuestParticipantEntry[] | null; // present only when userType === 'guest'
+// Errors — same shape for 401, 404, 400
+interface ErrorResponse {
+  message: string;
 }
 ```
+
+> **Guest support deferred.** When added, `userType`, `guestParticipants`, and `GuestParticipantEntry` will be introduced as a separate schema update.
 
 #### `Participant` — type (for future GET /plans/:planId internal route)
 
@@ -497,19 +495,18 @@ interface Participant {
 }
 ```
 
-#### Chatbot session type (derived from above)
+#### Chatbot session type (DB-backed)
 
 ```typescript
 interface ChatbotSession {
-  phoneNumber: string; // E.164 — Redis key
-  userType: "registered" | "guest";
-  userId: string | null; // set if userType === 'registered'
-  guestParticipants: GuestParticipantEntry[] | null; // set if userType === 'guest'
+  sessionId: string; // UUID — PK in chatbot_sessions table
+  phoneNumber: string; // E.164
+  userId: string; // Supabase user UUID (from IdentifyResponse)
   displayName: string;
   currentPlanId: string | null; // plan currently in focus for this conversation
-  messageHistory: Array<{ role: "user" | "assistant"; content: string }>;
   createdAt: string; // ISO 8601
   lastActiveAt: string; // ISO 8601
+  expiresAt: string; // ISO 8601 — lastActiveAt + 15 minutes
 }
 ```
 
