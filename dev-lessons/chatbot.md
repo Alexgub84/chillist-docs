@@ -8,6 +8,14 @@ _(Seeded with relevant lessons from `dev-lessons/backend.md`. Only add NEW lesso
 
 <!-- Add new entries at the top -->
 
+### [Infra] Railway internal networking requires HOST=0.0.0.0 and correct PORT on every service
+
+**Date:** 2026-03-17
+**Problem:** The chatbot was deployed on Railway and receiving real WhatsApp webhooks, but every `identify` call to the BE failed with `ECONNREFUSED`. The `APP_BE_INTERNAL_URL` was set to `http://zealous-beauty.railway.internal:3333` — the hostname resolved correctly (no more `ENOTFOUND`) but the connection was refused.
+**Cause:** The BE service was binding to `127.0.0.1` (localhost) inside its container. Railway's private networking routes traffic from other containers, which arrives as an external connection. A service bound to `127.0.0.1` refuses all connections from outside its own container.
+**Solution:** Set `HOST=0.0.0.0` in the BE's Railway environment variables so it accepts connections on all interfaces, including Railway's private network. Also confirm `PORT` matches the port in the internal URL exactly.
+**Prevention:** Any Railway service that must be reachable by another service via `*.railway.internal` must have `HOST=0.0.0.0` set explicitly. Never rely on a default host binding. Add this to the Railway deploy checklist for every new service.
+
 ### [Arch] Fake external services must never be a runtime default — applies to all 3 providers
 
 **Date:** 2026-03-16 (ported from backend lesson 2026-03-13)
