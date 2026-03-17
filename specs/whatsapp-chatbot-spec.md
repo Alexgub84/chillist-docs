@@ -13,13 +13,14 @@
 | ----- | ----------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | **1** | Project Scaffold              | ✅ Done        | Fastify server + health endpoint, TypeScript, ESLint, Prettier, Husky, Vitest, Dockerfile, GitHub Actions CI/CD, Railway setup guide |
 | **2** | Green API Webhook             | Pending        | Receive incoming WhatsApp messages, parse them, reply with static echo (no AI)                                                       |
-| **3** | User Identification           | 🚧 In Progress | Phone → userId lookup via internal API on app BE + session creation in Redis (Upstash)                                               |
+| **3** | User Identification           | 🚧 In Progress | Phone → user identity lookup (registered or guest) via internal API on app BE + session creation in Redis (Upstash)                  |
 | **4** | AI Layer + Tools              | Pending        | Vercel AI SDK, system prompt, tool definitions (getMyPlans, getPlanDetails, updateItemStatus) calling internal API                   |
 | **5** | Session & Conversation Memory | Pending        | Redis-backed message history, TTL, context carry-over between messages                                                               |
 | **6** | Polish & Hardening            | Pending        | Rate limiting, error handling, logging analysis, security review, production env var validation                                      |
 | **7** | Group Chat (v1.5)             | Pending        | Mention/prefix triggers, linkPlan, group sessions (per Section 13)                                                                   |
 
 > Phases 2–5 each require corresponding **app BE** work (internal routes, internal-auth plugin). Those BE changes will be called out in each phase's plan.
+> Phase 3 app BE work is complete: `POST /api/internal/auth/identify` implemented with registered + guest user support.
 
 ---
 
@@ -429,6 +430,84 @@ Response 404:
 
 Internal routes reuse the **same access control logic** as public routes (e.g., `src/utils/plan-access.ts`). The userId from `x-user-id` is checked against plan participants. The chatbot cannot access plans the user isn't part of.
 
+### Shared type definitions (chatbot API client reference)
+
+These TypeScript types are derived directly from the app BE JSON schemas (`src/schemas/internal.schema.ts`, `src/schemas/participant.schema.ts`). Copy them into the chatbot service to type the API responses and session model.
+
+#### `POST /api/internal/auth/identify` — types
+
+Source: `src/schemas/internal.schema.ts`
+
+```typescript
+// Request body
+interface IdentifyRequest {
+  phoneNumber: string; // E.164 format, min 7 chars — normalize before sending
+}
+
+// Single entry in guestParticipants[]
+interface GuestParticipantEntry {
+  participantId: string; // UUID
+  planId: string; // UUID
+  displayName: string | null;
+}
+
+// Response (flat union — always check userType first)
+interface IdentifyResponse {
+  userType: "registered" | "guest";
+  userId: string | null; // UUID — present only when userType === 'registered'
+  displayName: string; // resolved from participant or guest profile
+  guestParticipants: GuestParticipantEntry[] | null; // present only when userType === 'guest'
+}
+```
+
+#### `Participant` — type (for future GET /plans/:planId internal route)
+
+Source: `src/schemas/participant.schema.ts`
+
+The internal plan-detail route will return participants in this shape. Note: `inviteToken` is hidden from non-owners; `contactPhone` is only visible in internal routes.
+
+```typescript
+interface Participant {
+  participantId: string;
+  planId: string;
+  userId: string | null; // set after invite is claimed; null for pending/guests
+  name: string;
+  lastName: string;
+  contactPhone: string; // E.164
+  displayName: string | null;
+  role: "owner" | "participant" | "viewer";
+  avatarUrl: string | null;
+  contactEmail: string | null;
+  inviteToken: string | null; // hidden from non-owners
+  inviteStatus: "pending" | "invited" | "accepted";
+  rsvpStatus: "pending" | "confirmed" | "not_sure";
+  lastActivityAt: string | null; // ISO 8601 datetime
+  adultsCount: number | null;
+  kidsCount: number | null;
+  foodPreferences: string | null;
+  allergies: string | null;
+  notes: string | null;
+  createdAt: string; // ISO 8601 datetime
+  updatedAt: string; // ISO 8601 datetime
+}
+```
+
+#### Chatbot session type (derived from above)
+
+```typescript
+interface ChatbotSession {
+  phoneNumber: string; // E.164 — Redis key
+  userType: "registered" | "guest";
+  userId: string | null; // set if userType === 'registered'
+  guestParticipants: GuestParticipantEntry[] | null; // set if userType === 'guest'
+  displayName: string;
+  currentPlanId: string | null; // plan currently in focus for this conversation
+  messageHistory: Array<{ role: "user" | "assistant"; content: string }>;
+  createdAt: string; // ISO 8601
+  lastActiveAt: string; // ISO 8601
+}
+```
+
 ### Security considerations for internal API
 
 | Risk                        | Mitigation                                                                                     |
@@ -518,41 +597,65 @@ Without session memory, the user would need to repeat context every message:
 Each WhatsApp phone number gets one session. The session stores:
 
 ```json
+// Registered user session
 {
   "phoneNumber": "+972501234567",
+  "userType": "registered",
   "userId": "supabase-uid-xxx",
+  "guestParticipants": null,
   "displayName": "Alex",
   "currentPlanId": "plan-1",
   "messageHistory": [
     { "role": "user", "content": "Show me the camping trip" },
-    {
-      "role": "assistant",
-      "content": "Here are the items for Camping in the Golan:..."
-    }
+    { "role": "assistant", "content": "Here are the items for Camping in the Golan:..." }
   ],
+  "createdAt": "2026-03-16T10:00:00Z",
+  "lastActiveAt": "2026-03-16T10:05:00Z"
+}
+
+// Guest user session
+{
+  "phoneNumber": "+15550001234",
+  "userType": "guest",
+  "userId": null,
+  "guestParticipants": [
+    { "participantId": "p-uuid-1", "planId": "plan-uuid-1", "displayName": "Dana" }
+  ],
+  "displayName": "Dana Smith",
+  "currentPlanId": "plan-uuid-1",
+  "messageHistory": [],
   "createdAt": "2026-03-16T10:00:00Z",
   "lastActiveAt": "2026-03-16T10:05:00Z"
 }
 ```
 
+**Guest session notes:**
+
+- `currentPlanId` defaults to the first (and often only) plan in `guestParticipants`
+- If the guest is in multiple plans, the chatbot asks "Which plan? You're a guest in: [list]"
+- Guest data routes use `x-guest-participant-id` (v1.5 — not yet implemented)
+
 ### TTL & limits
 
-| Setting             | Value                                       | Rationale                                                             |
-| ------------------- | ------------------------------------------- | --------------------------------------------------------------------- |
-| Session TTL         | 24 hours from last activity                 | Conversations are short-lived; stale context is worse than no context |
-| Max message history | 20 messages (10 pairs)                      | Keeps token usage bounded; older context is rarely needed             |
-| Re-identification   | On session expiry, re-lookup phone → userId | Handles edge case of phone number transferred to a different user     |
+| Setting             | Value                                              | Rationale                                                             |
+| ------------------- | -------------------------------------------------- | --------------------------------------------------------------------- |
+| Session TTL         | 24 hours from last activity                        | Conversations are short-lived; stale context is worse than no context |
+| Max message history | 20 messages (10 pairs)                             | Keeps token usage bounded; older context is rarely needed             |
+| Re-identification   | On session expiry, re-lookup phone → user identity | Handles edge case of phone number transferred to a different user     |
 
 ### First message flow
 
 ```
 1. Message arrives from +972501234567
 2. Check Redis for session with this phone number
-3. If no session → call /api/internal/auth/identify → create session
-4. If session exists → load userId and messageHistory from session
-5. Build AI request with system prompt + messageHistory + new user message
-6. Process AI response → send to WhatsApp → append both messages to session
-7. Update lastActiveAt, save session to Redis
+3a. If no session:
+    → call POST /api/internal/auth/identify
+    → response: { userType, userId | null, displayName, guestParticipants | null }
+    → create session with userType + identity fields
+3b. If session exists → load identity + messageHistory from session
+4. Build AI request with system prompt + messageHistory + new user message
+5. Process AI response → send to WhatsApp → append both messages to session
+6. Update lastActiveAt, save session to Redis
 ```
 
 ---
@@ -607,7 +710,7 @@ WhatsApp has messaging limits. The chatbot should:
 | Session storage | Redis via Upstash                | Serverless Redis; managed, persistent, supports TTL                                           |
 | WhatsApp API    | Green API                        | Shared instance with notification system                                                      |
 | Hosting         | Railway (same project as app BE) | Private networking for internal API calls                                                     |
-| User lookup     | Supabase Admin SDK               | Resolve phone number → userId                                                                 |
+| User lookup     | Direct DB query                  | `participants` + `guest_profiles` tables; no Supabase Admin SDK needed                        |
 
 ### Environment variables (chatbot server)
 
@@ -628,11 +731,11 @@ AI_API_KEY=                  # provider API key
 UPSTASH_REDIS_URL=
 UPSTASH_REDIS_TOKEN=
 
-# Supabase (for phone lookup on app BE side — chatbot uses internal API, not Supabase directly)
-# SUPABASE_SERVICE_ROLE_KEY is stored on the APP BE, not the chatbot server
-# The chatbot only needs APP_BE_INTERNAL_URL + CHATBOT_SERVICE_KEY to call /api/internal/auth/identify
+# Supabase
+# Neither the chatbot server NOR the app BE uses SUPABASE_SERVICE_ROLE_KEY for user identification.
+# Phone lookup is done via a direct DB query on the app BE's own database.
+# The chatbot only needs APP_BE_INTERNAL_URL + CHATBOT_SERVICE_KEY to call /api/internal/auth/identify.
 SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=   # ONLY needed on app BE for admin user lookup; do NOT add to chatbot env
 ```
 
 ---
@@ -660,6 +763,62 @@ Railway Project: chillist
 - Chatbot has its own Dockerfile and deploy pipeline
 - Can be deployed independently of the app BE
 - Shares the Railway project for environment variable management
+
+### Environment variable setup
+
+#### What to generate once
+
+```bash
+# Generate CHATBOT_SERVICE_KEY — run this once, save the output
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Store it somewhere safe (password manager). You will paste it into two places below.
+
+---
+
+#### Railway — `chillist-api` service (app BE)
+
+> **Do this now** — the `POST /api/internal/auth/identify` endpoint is already live and requires this key.
+
+| Variable              | Value                     | When    |
+| --------------------- | ------------------------- | ------- |
+| `CHATBOT_SERVICE_KEY` | `<generated 64-char hex>` | **Now** |
+
+Go to: Railway → Project: chillist → Service: chillist-api → Variables → Add
+
+---
+
+#### Railway — `chillist-chatbot` service (chatbot server — Phase 3)
+
+> Add these when the chatbot service is created in Railway.
+
+| Variable                | Value                                       | Notes                             |
+| ----------------------- | ------------------------------------------- | --------------------------------- |
+| `CHATBOT_SERVICE_KEY`   | `<same value as chillist-api>`              | Must match exactly                |
+| `APP_BE_INTERNAL_URL`   | `http://chillist-api.railway.internal:3333` | Adjust port if different          |
+| `GREEN_API_INSTANCE_ID` | `<same as app BE>`                          | Shared instance                   |
+| `GREEN_API_TOKEN`       | `<same as app BE>`                          | Shared instance                   |
+| `AI_PROVIDER`           | `anthropic` or `openai`                     | TBD at implementation time        |
+| `AI_API_KEY`            | `<provider API key>`                        |                                   |
+| `UPSTASH_REDIS_URL`     | `<from Upstash dashboard>`                  | New Redis DB for chatbot sessions |
+| `UPSTASH_REDIS_TOKEN`   | `<from Upstash dashboard>`                  |                                   |
+| `NODE_ENV`              | `production`                                |                                   |
+| `SUPABASE_URL`          | `<same as app BE>`                          | Only if chatbot needs JWT verify  |
+
+---
+
+#### GitHub Actions
+
+No new secrets are required for regular CI. Integration tests set `CHATBOT_SERVICE_KEY` themselves in `beforeAll` using a test value.
+
+The E2E pre-deploy test (`tests/e2e/internal-auth-prod.test.ts`) is **manual only** — it is skipped if env vars are missing. To run it before a deploy, set these locally in `.env`:
+
+| Variable                | Value                                         |
+| ----------------------- | --------------------------------------------- |
+| `CHATBOT_SERVICE_KEY`   | `<production key from Railway>`               |
+| `TEST_INTERNAL_PHONE`   | E.164 phone of a registered participant in DB |
+| `TEST_INTERNAL_USER_ID` | Expected Supabase userId for that phone       |
 
 ---
 
@@ -689,26 +848,23 @@ Railway Project: chillist
 
 ### App BE changes
 
-- [ ] `CHATBOT_SERVICE_KEY` + `SUPABASE_SERVICE_ROLE_KEY` env vars added to `src/env.ts`, `src/config.ts`, `.env.example`
-- [ ] `src/utils/phone.ts` — `normalizePhone()` utility created
-- [ ] `src/services/supabase-admin.ts` — `ISupabaseAdminClient` + `SupabaseAdminClient` (real) + `FakeSupabaseAdminClient` (test)
-- [ ] `src/plugins/supabase-admin.ts` — DI plugin registered
-- [ ] `src/plugins/internal-auth.ts` — `x-service-key` validation plugin registered globally
-- [ ] `src/routes/internal.route.ts` — `POST /api/internal/auth/identify` route
-- [ ] `src/schemas/internal.schema.ts` — request/response schemas registered
+- [x] `CHATBOT_SERVICE_KEY` env var added to `src/env.ts`, `src/config.ts`, `.env.example` (production refine)
+- [x] `src/utils/phone.ts` — `normalizePhone()` utility created
+- [x] `src/plugins/internal-auth.ts` — `x-service-key` validation plugin; attaches `request.internalUserId`
+- [x] `src/routes/internal.route.ts` — `POST /api/internal/auth/identify` route (registered + guest)
+- [x] `src/schemas/internal.schema.ts` — `IdentifyRequest`, `IdentifyResponse`, `GuestParticipantEntry` schemas
+- [x] Unit tests: phone normalization, env guards
+- [x] Integration tests: service key validation, registered lookup, guest lookup, 404, 400, phone normalization, route isolation
 - [ ] `GET /api/internal/plans` route implemented (reuses existing service functions)
 - [ ] `GET /api/internal/plans/:planId` route implemented (reuses existing service functions)
 - [ ] `PATCH /api/internal/items/:itemId/status` route implemented (reuses existing service functions)
-- [ ] Internal routes not accessible from public hostname
-- [ ] Access control enforced on all internal routes
-- [ ] Unit tests: phone normalization, env guards
-- [ ] Integration tests: service key validation, phone lookup (happy path + 404 + 401 + 400)
+- [ ] Internal data routes: access control enforced (registered via `x-user-id`, guest via `x-guest-participant-id` — v1.5)
 
 ### Chatbot service
 
 - [ ] Green API webhook endpoint receives and parses incoming messages
-- [ ] Phone → userId identification works via internal API
-- [ ] Unregistered phone numbers receive a friendly rejection message
+- [ ] Phone → user identity identification works via internal API (registered + guest)
+- [ ] Unregistered / pending-invite phones receive a friendly rejection message
 - [ ] AI SDK configured with tools (getMyPlans, getPlanDetails, updateItemStatus)
 - [ ] System prompt produces natural, short, WhatsApp-friendly responses
 - [ ] Language auto-detection works (Hebrew and English)
@@ -753,7 +909,7 @@ The chatbot can be added to a WhatsApp group where plan participants coordinate.
 1. Someone adds the chatbot's WhatsApp number to the group
 2. The bot sends an introduction message: "Hi! I'm the Chillist Bot. To link me to a plan, say: @Chillist link [plan name]"
 3. A registered user mentions the bot with a plan name
-4. The bot resolves the user (phone → userId), finds the plan, and links the group to that plan
+4. The bot resolves the user via `/api/internal/auth/identify`, finds the plan, and links the group to that plan
 5. From this point, all bot interactions in this group are scoped to that linked plan
 
 ### Message relevance filtering
@@ -773,8 +929,8 @@ Each message in a group has a sender phone number. The bot resolves identity per
 ```
 1. Group message arrives with mention/prefix trigger
 2. Extract sender phone number from the message
-3. Look up sender: phone → userId (same as 1:1 flow)
-4. If sender is not a registered Chillist user → respond: "I don't recognize your number. Sign up at chillist.app to use me."
+3. Look up sender: `POST /api/internal/auth/identify` with sender phone → `{ userType, userId | guestParticipants }`
+4. If sender is not found (404) → respond: "I don't recognize your number. Sign up at chillist.app to use me."
 5. If sender is registered but not a participant of the linked plan → respond: "You're not part of this plan."
 6. If sender is valid → process the message in the context of the linked plan
 ```
