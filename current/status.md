@@ -186,38 +186,43 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 ### Security
 
 - JWT required on all protected routes. Guest access via invite token in URL.
-- Rate limiting (100 req/min global, 10 req/min on auth endpoints).
+- Internal routes (`/api/internal/*`) use service-key auth (`x-service-key` header matches `CHATBOT_SERVICE_KEY` env var). Not exposed publicly — Railway internal network only.
+- Rate limiting (100 req/min global, 10 req/min on auth endpoints, 30 req/min on internal identify).
 - Security headers (Helmet), CORS restricted to frontend URL in production.
 - All input validated with Zod. SQL injection prevented via Drizzle ORM parameterized queries.
 
 ### Database Tables
 
 - **plans** — event details, location, dates, status, visibility, currency
-- **participants** — per-plan members with roles, preferences, invite tokens, RSVP
+- **participants** — per-plan members with roles, preferences, invite tokens, RSVP. Stores `contactPhone` (E.164) and optionally `userId` (set when invite is claimed) or `guestProfileId` (set when guest accesses without signing up)
 - **items** — equipment/food with per-participant status tracking
 - **item_changes** — audit log of item modifications
 - **user_details** — default user preferences (food, allergies, equipment)
+- **guest_profiles** — anonymous guest users (accessed plan via invite link, no Supabase account). Stores name, phone, email, dietary preferences
 - **participant_join_requests** — pending/approved/rejected join requests
 - **participant_expenses** — per-participant expenses with item linking
+- **plan_invites** — invite send history and acceptance tracking per participant
+- **whatsapp_notifications** — audit log of WhatsApp messages sent (invitation_sent, join_request_pending/approved/rejected)
 
 ### Backend API Routes
 
-| Area           | Routes                                                                     | What They Do                                              |
-| -------------- | -------------------------------------------------------------------------- | --------------------------------------------------------- |
-| Health         | `GET /health`                                                              | Server and database status check                          |
-| Plans          | `POST`, `GET`, `GET /:id`, `GET /:id/preview`, `PATCH /:id`, `DELETE /:id` | Create, list, read, preview, update, delete plans         |
-| Plans          | `GET /plans/pending-requests`                                              | List plans with pending join requests                     |
-| Participants   | `POST`, `GET`, `GET /:id`, `PATCH /:id`, `DELETE /:id`                     | Add, list, read, update, remove participants              |
-| Participants   | `POST /.../regenerate-token`                                               | Regenerate a participant's invite token                   |
-| Items          | `POST`, `GET`, `PATCH /:id`                                                | Create, list, update items                                |
-| Items          | `POST /bulk`, `PATCH /bulk`                                                | Bulk create and bulk update items                         |
-| Invite (guest) | `GET /invite/:token`                                                       | Get plan data as a guest via invite token                 |
-| Invite (guest) | `PATCH /invite/:token/preferences`                                         | Update guest preferences and RSVP                         |
-| Invite (guest) | `POST`, `PATCH`, `POST /bulk`, `PATCH /bulk` on items                      | Guest item CRUD (single + bulk)                           |
-| Join Requests  | `POST`, `PATCH /:id`                                                       | Submit a join request, approve or reject                  |
-| Claim          | `POST /claim/:token`                                                       | Link a registered user to a participant spot              |
-| Auth           | `GET /me`, `GET /profile`, `PATCH /profile`, `POST /sync-profile`          | Current user, read/update preferences, sync from Supabase |
-| Expenses       | `POST`, `GET`, `PATCH /:id`, `DELETE /:id`                                 | Create, list, update, delete expenses                     |
+| Area           | Routes                                                                     | What They Do                                                                   |
+| -------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Health         | `GET /health`                                                              | Server and database status check                                               |
+| Plans          | `POST`, `GET`, `GET /:id`, `GET /:id/preview`, `PATCH /:id`, `DELETE /:id` | Create, list, read, preview, update, delete plans                              |
+| Plans          | `GET /plans/pending-requests`                                              | List plans with pending join requests                                          |
+| Participants   | `POST`, `GET`, `GET /:id`, `PATCH /:id`, `DELETE /:id`                     | Add, list, read, update, remove participants                                   |
+| Participants   | `POST /.../regenerate-token`                                               | Regenerate a participant's invite token                                        |
+| Items          | `POST`, `GET`, `PATCH /:id`                                                | Create, list, update items                                                     |
+| Items          | `POST /bulk`, `PATCH /bulk`                                                | Bulk create and bulk update items                                              |
+| Invite (guest) | `GET /invite/:token`                                                       | Get plan data as a guest via invite token                                      |
+| Invite (guest) | `PATCH /invite/:token/preferences`                                         | Update guest preferences and RSVP                                              |
+| Invite (guest) | `POST`, `PATCH`, `POST /bulk`, `PATCH /bulk` on items                      | Guest item CRUD (single + bulk)                                                |
+| Join Requests  | `POST`, `PATCH /:id`                                                       | Submit a join request, approve or reject                                       |
+| Claim          | `POST /claim/:token`                                                       | Link a registered user to a participant spot                                   |
+| Internal       | `POST /api/internal/auth/identify`                                         | Resolve phone number to Chillist user (registered or guest) — chatbot use only |
+| Auth           | `GET /me`, `GET /profile`, `PATCH /profile`, `POST /sync-profile`          | Current user, read/update preferences, sync from Supabase                      |
+| Expenses       | `POST`, `GET`, `PATCH /:id`, `DELETE /:id`                                 | Create, list, update, delete expenses                                          |
 
 ### CI/CD
 
@@ -235,7 +240,8 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 
 See [MVP Target](mvp-target.md) for the full breakdown. Key gaps:
 
-- WhatsApp integration — FE send list UI done; BE endpoint required for actual delivery
+- WhatsApp send list — FE UI done, BE `/api/send-list` endpoint implemented; actual Green API delivery integration in progress
+- WhatsApp chatbot — internal auth infrastructure implemented (`POST /api/internal/auth/identify` with registered + guest user support); chatbot service and AI layer pending
 - Error tracking and structured logging (BE + FE)
 - Analytics event collection (BE + FE)
 - Health monitoring and alerts

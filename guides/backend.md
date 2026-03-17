@@ -34,15 +34,16 @@ cp .env.example .env
 
 Key variables:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | Server port | `3333` |
-| `HOST` | Server host | `0.0.0.0` |
-| `NODE_ENV` | Environment | `development` |
-| `LOG_LEVEL` | Pino log level | `info` |
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:postgres@localhost:5432/chillist` |
-| `FRONTEND_URL` | Allowed CORS origin | `http://localhost:5173` |
-| `SUPABASE_URL` | Supabase project URL for JWKS-based JWT verification | (optional in dev, required in prod) |
+| Variable              | Description                                                            | Default                                                  |
+| --------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------- |
+| `PORT`                | Server port                                                            | `3333`                                                   |
+| `HOST`                | Server host                                                            | `0.0.0.0`                                                |
+| `NODE_ENV`            | Environment                                                            | `development`                                            |
+| `LOG_LEVEL`           | Pino log level                                                         | `info`                                                   |
+| `DATABASE_URL`        | PostgreSQL connection string                                           | `postgresql://postgres:postgres@localhost:5432/chillist` |
+| `FRONTEND_URL`        | Allowed CORS origin                                                    | `http://localhost:5173`                                  |
+| `SUPABASE_URL`        | Supabase project URL for JWKS-based JWT verification                   | (optional in dev, required in prod)                      |
+| `CHATBOT_SERVICE_KEY` | Shared secret for internal chatbot API routes (`x-service-key` header) | (optional in dev, required in prod)                      |
 
 ### Database setup
 
@@ -64,6 +65,7 @@ npm run dev:local
 ```
 
 This single command:
+
 1. Starts a local PostgreSQL container (`docker compose up -d`)
 2. Runs Drizzle migrations
 3. Seeds the database with sample plans, participants, and items
@@ -73,11 +75,11 @@ The backend runs at `http://localhost:3333`. Swagger UI at `/docs`.
 
 ### Environment files
 
-| File | Purpose | Git-tracked |
-|------|---------|-------------|
-| `.env` | Production / Railway config | No (`.gitignore`) |
-| `.env.local` | Local development config | No (`.gitignore`) |
-| `.env.example` | Template with all variable names | Yes |
+| File           | Purpose                          | Git-tracked       |
+| -------------- | -------------------------------- | ----------------- |
+| `.env`         | Production / Railway config      | No (`.gitignore`) |
+| `.env.local`   | Local development config         | No (`.gitignore`) |
+| `.env.example` | Template with all variable names | Yes               |
 
 `npm run dev:local` loads `.env.local` automatically. If you run `npm run dev` directly, it uses whatever is in your shell environment or `.env` (depending on your setup).
 
@@ -104,6 +106,7 @@ SUPABASE_URL=https://<your-project>.supabase.co
 ```
 
 **How it works:**
+
 - FE runs at `http://localhost:5173` and handles Supabase sign-up/sign-in directly
 - FE sends `Authorization: Bearer <jwt>` to the local backend
 - BE fetches JWKS public keys from `${SUPABASE_URL}/auth/v1/.well-known/jwks.json` and verifies the JWT
@@ -128,30 +131,30 @@ All routes that require JWT will return 401. Guest invite routes (`/plans/:planI
 
 ## Available Scripts
 
-| Script | Description |
-|--------|-------------|
-| `npm run dev` | Start dev server with watch |
-| `npm run dev:local` | Docker DB + migrate + seed + dev server (loads `.env.local`) |
-| `npm run start` | Start production server |
-| `npm run build` | Compile TypeScript |
-| `npm run typecheck` | Type check only |
-| `npm run lint` | ESLint check |
-| `npm run lint:fix` | ESLint auto-fix |
-| `npm run format` | Prettier format |
-| `npm run format:check` | Check Prettier formatting (CI) |
-| `npm run test` | Typecheck + lint + run tests (watch) |
-| `npm run test:run` | Typecheck + lint + run tests once |
-| `npm run test:unit` | Unit tests only |
-| `npm run test:integration` | Integration tests only (requires Docker) |
-| `npm run test:e2e` | E2E tests only (requires Docker) |
-| `npm run db:generate` | Generate Drizzle migration files |
-| `npm run db:migrate` | Run pending migrations |
-| `npm run db:studio` | Open Drizzle Studio |
-| `npm run db:seed` | Seed database with sample data |
-| `npm run db:seed:prod` | Seed production database via Railway |
-| `npm run db:migrate:prod` | Run migrations on production via Railway |
-| `npm run openapi:generate` | Generate `docs/openapi.json` from route schemas |
-| `npm run openapi:validate` | Validate OpenAPI spec |
+| Script                     | Description                                                  |
+| -------------------------- | ------------------------------------------------------------ |
+| `npm run dev`              | Start dev server with watch                                  |
+| `npm run dev:local`        | Docker DB + migrate + seed + dev server (loads `.env.local`) |
+| `npm run start`            | Start production server                                      |
+| `npm run build`            | Compile TypeScript                                           |
+| `npm run typecheck`        | Type check only                                              |
+| `npm run lint`             | ESLint check                                                 |
+| `npm run lint:fix`         | ESLint auto-fix                                              |
+| `npm run format`           | Prettier format                                              |
+| `npm run format:check`     | Check Prettier formatting (CI)                               |
+| `npm run test`             | Typecheck + lint + run tests (watch)                         |
+| `npm run test:run`         | Typecheck + lint + run tests once                            |
+| `npm run test:unit`        | Unit tests only                                              |
+| `npm run test:integration` | Integration tests only (requires Docker)                     |
+| `npm run test:e2e`         | E2E tests only (requires Docker)                             |
+| `npm run db:generate`      | Generate Drizzle migration files                             |
+| `npm run db:migrate`       | Run pending migrations                                       |
+| `npm run db:studio`        | Open Drizzle Studio                                          |
+| `npm run db:seed`          | Seed database with sample data                               |
+| `npm run db:seed:prod`     | Seed production database via Railway                         |
+| `npm run db:migrate:prod`  | Run migrations on production via Railway                     |
+| `npm run openapi:generate` | Generate `docs/openapi.json` from route schemas              |
+| `npm run openapi:validate` | Validate OpenAPI spec                                        |
 
 ## Database (Drizzle + PostgreSQL)
 
@@ -198,11 +201,11 @@ feature/* → PR → main (CI must pass) → Railway production
 
 ### Branch strategy
 
-| Branch | Purpose | Protection |
-|--------|---------|------------|
-| `feature/*` | Development work | None |
-| `staging` | Pre-production testing | PR required, CI must pass |
-| `main` | Production | PR required, CI must pass |
+| Branch      | Purpose                | Protection                |
+| ----------- | ---------------------- | ------------------------- |
+| `feature/*` | Development work       | None                      |
+| `staging`   | Pre-production testing | PR required, CI must pass |
+| `main`      | Production             | PR required, CI must pass |
 
 ### Railway env vars (production)
 
@@ -241,9 +244,9 @@ Three workflow files:
 
 ### Required GitHub secrets
 
-| Name | Type | Description |
-|------|------|-------------|
-| `RAILWAY_TOKEN` | Secret | Railway API token |
+| Name                 | Type   | Description                |
+| -------------------- | ------ | -------------------------- |
+| `RAILWAY_TOKEN`      | Secret | Railway API token          |
 | `RAILWAY_SERVICE_ID` | Secret | Railway service identifier |
 
 ## Git Hooks (Husky)
@@ -294,12 +297,14 @@ npm run test:run
 ### What's next (user management — #73)
 
 Done:
+
 - ~~Opportunistic user tracking~~ (records `createdByUserId` and owner `userId` when JWT present)
 - ~~Profile endpoints~~ (`GET/PATCH /auth/profile` for user preferences)
 - ~~Rate limiting~~ (`@fastify/rate-limit`) and ~~security headers~~ (`@fastify/helmet`)
 - ~~Plan ownership + access control~~ (JWT-created plans default to `invite_only`, all read routes enforce visibility via `checkPlanAccess()`, `GET /plans` filtered by user's plans + public, 29 tests, PR #84, v1.8.0)
 
 Done (continued):
+
 - ~~Guest auth plugin~~ (Phase 3 Step 1, v1.11.0) — `X-Invite-Token` header auth, `rsvpStatus` + `lastActivityAt` columns, guest permission boundaries, 51 tests
 - ~~Claim-via-invite~~ (Phase 3 Step 3, v1.12.0) — `POST /plans/:planId/claim/:inviteToken` links authenticated user to participant record, pre-fills preferences from `user_details` defaults, nullifies invite token on claim (link stops working after claim), 13 tests
 - ~~Invite preferences~~ (v1.13.0) — `PATCH /plans/:planId/invite/:inviteToken/preferences` lets guests update per-plan preferences (displayName, group size, dietary info) via invite link, 8 tests
@@ -307,6 +312,7 @@ Done (continued):
 - ~~JWT enforcement on all routes + API key removal~~ (v1.14.1) — `onRequest` JWT hooks on plans, items, and participants routes. API key removed entirely from env, config, and app hooks. Invite routes remain token-based. 354 tests passing.
 
 Done (continued):
+
 - ~~JWT-based per-plan preferences~~ (v1.16.0, issue #101) — `PATCH /participants/:participantId` accepts `rsvpStatus`, authorization enforced (owner/admin → any participant, linked participant → own record only, others → 403), 9 new tests
 - ~~Join request management~~ (v1.17.0, issue #110) — `PATCH /plans/:planId/join-requests/:requestId` owner/admin endpoint. Body `{ status: 'approved' }` creates participant via `addParticipantToPlan()` service (pre-fills from `user_details`), `{ status: 'rejected' }` updates status only. Participant service extracted to `src/services/participant.service.ts` for future extensibility. 21 tests.
 - ~~Item change tracking~~ (v1.18.0) — `item_changes` table + `src/utils/item-changes.ts` records all item creates/updates (status, quantity, assignment, etc.) with `changedByUserId` or `changedByParticipantId`. Fire-and-forget recording (non-blocking). No API changes.
@@ -314,14 +320,15 @@ Done (continued):
 - ~~Plan detail fields~~ (v1.21.0, PR #132) — `defaultLang` and `currency` nullable varchar columns on plans. Supported in create/update/read. Currency is the plan-level setting for expense display.
 
 Future:
+
 - Invite route reduction (Phase 3 Step 4, BREAKING)
 - Response filtering enhancements (Phase 6)
 - Edit permissions for linked participants (Phase 7)
 
 ## Cost Estimate
 
-| Service | Free Tier |
-|---------|-----------|
+| Service        | Free Tier           |
+| -------------- | ------------------- |
 | GitHub Actions | 2,000 minutes/month |
-| Railway | $5/month credits |
-| **Total MVP** | $0–5/month |
+| Railway        | $5/month credits    |
+| **Total MVP**  | $0–5/month          |

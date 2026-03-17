@@ -3,7 +3,7 @@
 > **Status:** In Progress — Phase 3 BE work in progress
 > **Scope:** This document defines the chatbot as a standalone service that communicates with the existing Chillist app backend via internal HTTP API. No implementation code is included.
 > **Prerequisite:** WhatsApp Integration Phase 1 & 2 (notifications + list sharing via Green API) must be complete before chatbot work begins.
-> **Last updated:** 2026-03-17 — Expanded Sections 3 & 4 with detailed technical explanations of Supabase Admin API, phone normalization, pagination strategy, TTL cache, service-key auth, and error formats.
+> **Last updated:** 2026-03-17 — Sections 3 & 4 rewritten: replaced Supabase Admin scan with direct DB query; added guest user identification path (mirrors FE registered vs guest routing).
 
 ---
 
@@ -98,6 +98,20 @@ The chatbot runs as a **separate service** from the app backend, deployed in the
 
 WhatsApp guarantees that the sender owns the phone number (SIM + device verification). The chatbot trusts this and uses the phone number to identify the Chillist user.
 
+### Two user types — mirroring FE routing
+
+The Chillist frontend has two distinct access paths:
+
+- **Signed-in users** → JWT → full access to all their plans
+- **Guests** → invite token → access to a specific plan they were invited to (no Supabase account required)
+
+The chatbot internal API mirrors this exactly:
+
+- **Registered users** → identified by `userId` → chatbot uses `x-user-id` header on data routes
+- **Guest users** → identified by `guestParticipants[]` → chatbot uses `x-guest-participant-id` header on data routes (v1.5)
+
+Both user types are resolved through the same single endpoint: `POST /api/internal/auth/identify`.
+
 ### Lookup flow
 
 ```
@@ -105,15 +119,14 @@ WhatsApp guarantees that the sender owns the phone number (SIM + device verifica
 2. Chatbot calls App BE: POST /api/internal/auth/identify
    Header: x-service-key: <CHATBOT_SERVICE_KEY>
    Body: { "phoneNumber": "+972501234567" }
-3. App BE normalizes the phone number and queries Supabase Admin API
-4. App BE returns: { "userId": "supabase-uid-xxx", "displayName": "Alex" }
-   or 404 if no user found
-5. Chatbot stores userId in session for subsequent requests
+3. App BE normalizes the phone number and queries the app database (two-step lookup)
+4. App BE returns a union response — see below
+5. Chatbot stores user identity in session for subsequent requests
 ```
 
 ### Phone number normalization
 
-Phone numbers arrive in many formats depending on the device, country, and user. Before comparing phones, the app BE normalizes them to **E.164 format** — a standardized international format:
+Phone numbers arrive in many formats depending on the device, country, and user. Before querying the database, the app BE normalizes them to **E.164 format** — a standardized international format:
 
 ```
 E.164 format: +[country code][number]  →  e.g., +972501234567
@@ -129,75 +142,90 @@ Examples of inputs that all resolve to the same normalized phone:
 | `+972-50-123-4567`  | `+972501234567` |
 | `(972) 50 1234567`  | `+972501234567` |
 
-Normalization logic: strip all spaces, dashes, and parentheses, then ensure the result starts with `+`. This is done in `src/utils/phone.ts` — the same utility can be reused anywhere in the project.
+Normalization logic: strip all spaces, dashes, and parentheses, then ensure the result starts with `+`. Implemented in `src/utils/phone.ts`.
 
-### How the Supabase Admin API phone lookup works
+**Important:** Phone numbers in the `participants` table are already stored in E.164 format (enforced by schema validation), so the normalized input matches the stored value directly.
 
-**What is Supabase Auth?**
-Supabase provides authentication as a managed service. It stores user accounts (email, phone, hashed password, OAuth tokens) in a table called `auth.users` in your Supabase project's PostgreSQL database. The Chillist app backend does NOT have direct access to `auth.users` — that's internal to Supabase.
+### DB-based phone lookup (why no Supabase Admin API)
 
-**What is the Supabase Admin API?**
-Supabase exposes an admin REST API that allows server-side code to manage users. You authenticate with a `SUPABASE_SERVICE_ROLE_KEY` — a high-privilege secret key that bypasses Supabase Row Level Security (RLS). This key must NEVER be exposed to the frontend or committed to code.
+The app's `participants` table stores `contactPhone` (E.164) for every plan participant. When a participant accepts their invite (`POST /plans/:planId/claim/:inviteToken`), their Supabase `userId` is written to the same row.
 
-**What is `supabase.auth.admin.listUsers()`?**
-This is a function in the `@supabase/supabase-js` SDK that calls the Supabase Admin REST endpoint `GET /auth/v1/admin/users`. It returns a paginated list of all users registered in your Supabase project. Think of it as "get all users, page by page."
+This means the app database already contains a **`contactPhone → userId` mapping** for every user who has joined at least one plan. A single indexed query resolves any registered user:
 
-**Important limitation:** `listUsers()` does NOT support filtering by phone number server-side. It returns ALL users and we must filter client-side by comparing the normalized phone number. This is an O(N) scan.
-
-### Paginated scan strategy (app BE implementation)
-
-Because we must iterate all users to find a phone match:
-
-1. Call `listUsers({ page: 1, perPage: 1000 })` — fetch first 1000 users.
-2. Normalize each user's phone number and compare to the target phone.
-3. If no match in this page, fetch next page (`page: 2, perPage: 1000`), repeat.
-4. Stop when a match is found, or when all pages are exhausted.
-5. **Cap at 50 pages (50,000 users)** — fail-safe to prevent infinite loops.
-
-```
-page 1: users 1–1000  → scan for phone match → not found
-page 2: users 1001–2000 → scan → found: userId=abc123  ✓
+```sql
+SELECT user_id, name, last_name, display_name
+FROM participants
+WHERE contact_phone = $1
+  AND user_id IS NOT NULL
+LIMIT 1
 ```
 
-**Why this is acceptable for MVP:**
+This is O(1) with an index, not O(N) like a Supabase Admin user scan.
 
-- `/identify` is called **once per session** (every 24 hours at most per user).
-- The chatbot caches the resolved `userId` in Redis — subsequent messages in the same session skip the lookup entirely.
-- For <10,000 users, this is at most 10 Supabase API calls per identification (fast).
+**Coverage:** A user who registered in Supabase but has never accepted any plan invite will not be found by this query. For the chatbot, this is acceptable — if they have no plan membership, there is nothing for the chatbot to show them.
 
-**Scalability note:** At large scale (100k+ users), this approach becomes slow. The long-term solution is to maintain a phone→userId mapping table in the app database (synced from Supabase via webhooks). This is tracked as a follow-up issue.
+**No `SUPABASE_SERVICE_ROLE_KEY` needed.** The app BE does not use the Supabase Admin API for identification. No extra dependency, no elevated credentials.
 
-### In-process TTL cache
+### Guest user lookup
 
-To avoid repeat scans when the same phone is identified multiple times quickly (e.g., rapid fire messages before session is saved to Redis), the app BE keeps an **in-process cache**:
+Guest users accessed a plan via invite link without creating a Supabase account. They have a `guest_profiles` row (with their phone) and a `participants` row with `guestProfileId` set.
 
-- A `Map<normalizedPhone, { result, expiresAt }>` held in memory.
-- TTL: 5 minutes. After that, a fresh Supabase scan is performed.
-- Cache is NOT shared between app BE instances (Railway may run multiple replicas). This is fine — the worst case is two concurrent scans, not incorrect results.
-- Never log the full phone number — only a truncated prefix (`+972***`) for debugging.
+If the registered lookup finds no match, the app BE checks `guest_profiles`:
+
+```sql
+-- Step 1: find guest profile by phone
+SELECT guest_id, name, last_name
+FROM guest_profiles
+WHERE phone = $1
+LIMIT 1
+
+-- Step 2: find all their plan participations
+SELECT participant_id, plan_id, display_name
+FROM participants
+WHERE guest_profile_id = $guestId
+```
+
+Guest users are returned with `userType: 'guest'` and the list of plans they can access.
+
+### Response union type
+
+The `/identify` endpoint returns one of two shapes (flat schema — no discriminator union in JSON Schema per backend rules):
+
+```json
+// Registered user
+{
+  "userType": "registered",
+  "userId": "supabase-uid-xxx",
+  "displayName": "Alex Cohen",
+  "guestParticipants": null
+}
+
+// Guest user
+{
+  "userType": "guest",
+  "userId": null,
+  "displayName": "Dana Smith",
+  "guestParticipants": [
+    { "participantId": "p-uuid-1", "planId": "plan-uuid-1", "displayName": "Dana" }
+  ]
+}
+```
 
 ### displayName resolution
 
-Supabase stores user profile data in a `user_metadata` JSON field on the user record. When users sign up with Google, their name comes in automatically. When users sign up with email, the app BE syncs their name to `user_metadata` during profile creation.
+For **registered users**: `participant.displayName ?? participant.name + ' ' + participant.lastName`
 
-The `displayName` returned by `/identify` is derived from `user_metadata`:
+For **guest users**: `guestProfile.name + ' ' + guestProfile.lastName`
 
-```
-user_metadata.first_name + " " + user_metadata.last_name  → "Alex Cohen"
-OR user_metadata.full_name                                 → "Alex Cohen"
-OR user_metadata.name                                      → "Alex Cohen"
-OR fallback: "User"                                        (if no name data)
-```
+### Unidentified users
 
-This uses the same `parseNameFromMetadata()` function already in `src/plugins/auth.ts`.
-
-### Unregistered users
-
-If the phone number doesn't match any Supabase user, the chatbot responds with a friendly message:
+If the phone number is not found in either lookup (not in `participants` with a userId, not in `guest_profiles`), the app BE returns 404. The chatbot responds:
 
 > "I don't recognize this number. Make sure you've signed up for Chillist with this phone number, or add it to your profile in the app."
 
-No further interactions are allowed until identification succeeds.
+Note: A participant who was added to a plan but hasn't yet accepted their invite (their participant row has no `userId` and no `guestProfileId`) is also considered unidentified. The chatbot can respond:
+
+> "It looks like you haven't accepted your Chillist invite yet. Open the link you received to join your plan."
 
 ### No OTP / no login
 
@@ -236,14 +264,21 @@ The key is a long random string (e.g., 32-64 hex characters), generated once and
 
 ### Two-header pattern for data routes
 
-Most internal routes need to know **which Chillist user** is making the request (to enforce access control). The chatbot passes the resolved userId as a second header:
+Most internal routes need to know **which Chillist user** is making the request (to enforce access control). The chatbot passes the resolved user identity as a second header:
 
 ```
-Header: x-service-key: <CHATBOT_SERVICE_KEY>   ← proves the caller is the chatbot
-Header: x-user-id: <supabase-user-id>           ← identifies which user this is for
+Header: x-service-key: <CHATBOT_SERVICE_KEY>      ← proves the caller is the chatbot
+Header: x-user-id: <supabase-user-id>              ← registered user path
+  OR
+Header: x-guest-participant-id: <participantId>    ← guest user path (v1.5)
 ```
 
-**Exception: `/auth/identify` only needs `x-service-key`.** It does not have a `x-user-id` because its whole purpose is to _resolve_ the user — the userId isn't known yet at this point.
+This mirrors the FE access patterns exactly:
+
+- **JWT (signed-in users)** ↔ `x-user-id`
+- **invite token (guest users)** ↔ `x-guest-participant-id`
+
+**Exception: `/auth/identify` only needs `x-service-key`.** It does not have a user identity header because its whole purpose is to _resolve_ the user — the identity isn't known yet at this point.
 
 ### App BE `internal-auth` plugin
 
@@ -260,15 +295,30 @@ This plugin is registered globally with `fp()` but only activates on paths start
 
 #### POST /api/internal/auth/identify
 
-Resolves a phone number to a Chillist user. Only requires service key — no `x-user-id`.
+Resolves a WhatsApp phone number to a Chillist user — registered or guest. Only requires service key — no `x-user-id`.
 
 ```
 Request:
   Header: x-service-key: <CHATBOT_SERVICE_KEY>
   Body: { "phoneNumber": "+972501234567" }
 
-Response 200:
-  { "userId": "abc-123", "displayName": "Alex" }
+Response 200 — registered user:
+  {
+    "userType": "registered",
+    "userId": "abc-123",
+    "displayName": "Alex Cohen",
+    "guestParticipants": null
+  }
+
+Response 200 — guest user:
+  {
+    "userType": "guest",
+    "userId": null,
+    "displayName": "Dana Smith",
+    "guestParticipants": [
+      { "participantId": "p-uuid-1", "planId": "plan-uuid-1", "displayName": "Dana" }
+    ]
+  }
 
 Response 404:
   { "message": "User not found" }
@@ -277,10 +327,12 @@ Response 401:
   { "message": "Unauthorized" }   (wrong or missing service key)
 
 Response 400:
-  { "message": "phoneNumber is required" }   (missing body field)
+  { "message": "." }   (schema validation — e.g., missing phoneNumber)
 ```
 
 > **Why `{ message }` and not `{ error }`?** All app BE error responses use the `ErrorResponse` schema: `{ message: string }`. Using `{ error }` would be inconsistent and break any error-handling middleware the chatbot uses.
+
+> **Chatbot session after identify:** For registered users, store `userId` and use `x-user-id` on all subsequent data route calls. For guest users, store the `guestParticipants[]` array — they can only access the plans listed there. `x-guest-participant-id` header support on data routes is planned for v1.5.
 
 #### GET /api/internal/plans
 
