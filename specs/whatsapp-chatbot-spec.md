@@ -12,8 +12,8 @@
 | Phase | Name                          | Status         | What it delivers                                                                                                                     |
 | ----- | ----------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | **1** | Project Scaffold              | ✅ Done        | Fastify server + health endpoint, TypeScript, ESLint, Prettier, Husky, Vitest, Dockerfile, GitHub Actions CI/CD, Railway setup guide |
-| **2** | Green API Webhook             | Pending        | Receive incoming WhatsApp messages, parse them, reply with static echo (no AI)                                                       |
-| **3** | User Identification           | 🚧 In Progress | Phone → user identity lookup (registered or guest) via internal API on app BE + session creation in Redis (Upstash)                  |
+| **2** | Green API Webhook             | ✅ Done        | Receive incoming WhatsApp messages, parse them, identify user, reply with welcome/signup (no AI)                                     |
+| **3** | User Identification           | 🚧 In Progress | Phone → user identity lookup via internal API on app BE (done) + session creation in Redis/Upstash (pending)                         |
 | **4** | AI Layer + Tools              | Pending        | Vercel AI SDK, system prompt, tool definitions (getMyPlans, getPlanDetails, updateItemStatus) calling internal API                   |
 | **5** | Session & Conversation Memory | Pending        | Redis-backed message history, TTL, context carry-over between messages                                                               |
 | **6** | Polish & Hardening            | Pending        | Rate limiting, error handling, logging analysis, security review, production env var validation                                      |
