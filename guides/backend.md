@@ -34,16 +34,17 @@ cp .env.example .env
 
 Key variables:
 
-| Variable              | Description                                                            | Default                                                  |
-| --------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------- |
-| `PORT`                | Server port                                                            | `3333`                                                   |
-| `HOST`                | Server host                                                            | `0.0.0.0`                                                |
-| `NODE_ENV`            | Environment                                                            | `development`                                            |
-| `LOG_LEVEL`           | Pino log level                                                         | `info`                                                   |
-| `DATABASE_URL`        | PostgreSQL connection string                                           | `postgresql://postgres:postgres@localhost:5432/chillist` |
-| `FRONTEND_URL`        | Allowed CORS origin                                                    | `http://localhost:5173`                                  |
-| `SUPABASE_URL`        | Supabase project URL for JWKS-based JWT verification                   | (optional in dev, required in prod)                      |
-| `CHATBOT_SERVICE_KEY` | Shared secret for internal chatbot API routes (`x-service-key` header) | (optional in dev, required in prod)                      |
+| Variable                    | Description                                                                                      | Default                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
+| `PORT`                      | Server port                                                                                      | `3333`                                                   |
+| `HOST`                      | Server host                                                                                      | `0.0.0.0`                                                |
+| `NODE_ENV`                  | Environment                                                                                      | `development`                                            |
+| `LOG_LEVEL`                 | Pino log level                                                                                   | `info`                                                   |
+| `DATABASE_URL`              | PostgreSQL connection string                                                                     | `postgresql://postgres:postgres@localhost:5432/chillist` |
+| `FRONTEND_URL`              | Allowed CORS origin                                                                              | `http://localhost:5173`                                  |
+| `SUPABASE_URL`              | Supabase project URL for JWKS-based JWT verification                                             | (optional in dev, required in prod)                      |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key — used server-side only to fetch user metadata from Supabase Admin API | (optional in dev, required in prod)                      |
+| `CHATBOT_SERVICE_KEY`       | Shared secret for internal chatbot API routes (`x-service-key` header)                           | (optional in dev, required in prod)                      |
 
 ### Database setup
 
@@ -217,6 +218,7 @@ LOG_LEVEL=info
 DATABASE_URL=<railway-postgres-url>
 FRONTEND_URL=<your-frontend-url>
 SUPABASE_URL=<your-supabase-project-url>
+SUPABASE_SERVICE_ROLE_KEY=<your-supabase-service-role-key>
 ```
 
 ### CI/CD (GitHub Actions)
@@ -281,7 +283,7 @@ npm run test:run
 
 ### Supabase JWT Auth
 
-- **Architecture:** FE signs up/in directly with Supabase. BE only verifies JWTs — no Supabase client on the BE.
+- **Architecture:** FE signs up/in directly with Supabase. BE verifies JWTs via JWKS and also calls the Supabase Admin REST API (server-side only) to fetch `user_metadata` for display name resolution.
 - **JWKS verification:** `jose` library fetches public keys from `${SUPABASE_URL}/auth/v1/.well-known/jwks.json` (asymmetric ES256 keys). No secrets stored on the BE.
 - **`request.user`:** Decorated on every request when a valid `Authorization: Bearer <jwt>` header is present. Contains `{ id, email, role }` from JWT claims.
 - **PII separation:** Supabase is the single store for registered user PII (name, email, phone). Railway DB stores only Supabase UUIDs as references — no user PII. `user_details` table holds app-specific preferences (food prefs, equipment). `guest_profiles` table holds temporary PII for unregistered participants.

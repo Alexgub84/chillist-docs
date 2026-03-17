@@ -1,7 +1,7 @@
 # Chillist — Current Status
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
-> **Last updated:** 2026-03-12
+> **Last updated:** 2026-03-17
 > **BE version:** —
 > **FE version:** —
 
@@ -206,23 +206,23 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 
 ### Backend API Routes
 
-| Area           | Routes                                                                     | What They Do                                                                   |
-| -------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Health         | `GET /health`                                                              | Server and database status check                                               |
-| Plans          | `POST`, `GET`, `GET /:id`, `GET /:id/preview`, `PATCH /:id`, `DELETE /:id` | Create, list, read, preview, update, delete plans                              |
-| Plans          | `GET /plans/pending-requests`                                              | List plans with pending join requests                                          |
-| Participants   | `POST`, `GET`, `GET /:id`, `PATCH /:id`, `DELETE /:id`                     | Add, list, read, update, remove participants                                   |
-| Participants   | `POST /.../regenerate-token`                                               | Regenerate a participant's invite token                                        |
-| Items          | `POST`, `GET`, `PATCH /:id`                                                | Create, list, update items                                                     |
-| Items          | `POST /bulk`, `PATCH /bulk`                                                | Bulk create and bulk update items                                              |
-| Invite (guest) | `GET /invite/:token`                                                       | Get plan data as a guest via invite token                                      |
-| Invite (guest) | `PATCH /invite/:token/preferences`                                         | Update guest preferences and RSVP                                              |
-| Invite (guest) | `POST`, `PATCH`, `POST /bulk`, `PATCH /bulk` on items                      | Guest item CRUD (single + bulk)                                                |
-| Join Requests  | `POST`, `PATCH /:id`                                                       | Submit a join request, approve or reject                                       |
-| Claim          | `POST /claim/:token`                                                       | Link a registered user to a participant spot                                   |
-| Internal       | `POST /api/internal/auth/identify`                                         | Resolve phone number to Chillist user (registered or guest) — chatbot use only |
-| Auth           | `GET /me`, `GET /profile`, `PATCH /profile`, `POST /sync-profile`          | Current user, read/update preferences, sync from Supabase                      |
-| Expenses       | `POST`, `GET`, `PATCH /:id`, `DELETE /:id`                                 | Create, list, update, delete expenses                                          |
+| Area           | Routes                                                                     | What They Do                                                                                                                                                                |
+| -------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Health         | `GET /health`                                                              | Server and database status check                                                                                                                                            |
+| Plans          | `POST`, `GET`, `GET /:id`, `GET /:id/preview`, `PATCH /:id`, `DELETE /:id` | Create, list, read, preview, update, delete plans                                                                                                                           |
+| Plans          | `GET /plans/pending-requests`                                              | List plans with pending join requests                                                                                                                                       |
+| Participants   | `POST`, `GET`, `GET /:id`, `PATCH /:id`, `DELETE /:id`                     | Add, list, read, update, remove participants                                                                                                                                |
+| Participants   | `POST /.../regenerate-token`                                               | Regenerate a participant's invite token                                                                                                                                     |
+| Items          | `POST`, `GET`, `PATCH /:id`                                                | Create, list, update items                                                                                                                                                  |
+| Items          | `POST /bulk`, `PATCH /bulk`                                                | Bulk create and bulk update items                                                                                                                                           |
+| Invite (guest) | `GET /invite/:token`                                                       | Get plan data as a guest via invite token                                                                                                                                   |
+| Invite (guest) | `PATCH /invite/:token/preferences`                                         | Update guest preferences and RSVP                                                                                                                                           |
+| Invite (guest) | `POST`, `PATCH`, `POST /bulk`, `PATCH /bulk` on items                      | Guest item CRUD (single + bulk)                                                                                                                                             |
+| Join Requests  | `POST`, `PATCH /:id`                                                       | Submit a join request, approve or reject                                                                                                                                    |
+| Claim          | `POST /claim/:token`                                                       | Link a registered user to a participant spot                                                                                                                                |
+| Internal       | `POST /api/internal/auth/identify`                                         | Resolve phone number to Chillist user — returns `userId` + `displayName` (from Supabase `user_metadata`, falling back to newest-plan participant record). Chatbot use only. |
+| Auth           | `GET /me`, `GET /profile`, `PATCH /profile`, `POST /sync-profile`          | Current user, read/update preferences, sync from Supabase                                                                                                                   |
+| Expenses       | `POST`, `GET`, `PATCH /:id`, `DELETE /:id`                                 | Create, list, update, delete expenses                                                                                                                                       |
 
 ### CI/CD
 
@@ -241,7 +241,7 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 See [MVP Target](mvp-target.md) for the full breakdown. Key gaps:
 
 - WhatsApp send list — FE UI done, BE `/api/send-list` endpoint implemented; actual Green API delivery integration in progress
-- WhatsApp chatbot — internal auth infrastructure implemented (`POST /api/internal/auth/identify` with registered + guest user support); chatbot service and AI layer pending
+- WhatsApp chatbot — Phase 3 complete: session management implemented (`chatbot_sessions` table, direct PostgreSQL connection, 15-min idle TTL, `continuingConversation` reply for active sessions); AI layer (Phase 4) pending
 - Error tracking and structured logging (BE + FE)
 - Analytics event collection (BE + FE)
 - Health monitoring and alerts

@@ -1,23 +1,23 @@
 # Chillist WhatsApp AI Chatbot — Architecture Spec v1.0
 
-> **Status:** In Progress — Phase 3 BE work in progress
+> **Status:** In Progress — Phase 3 complete, Phase 4 (AI Layer) pending
 > **Scope:** This document defines the chatbot as a standalone service that communicates with the existing Chillist app backend via internal HTTP API. No implementation code is included.
 > **Prerequisite:** WhatsApp Integration Phase 1 & 2 (notifications + list sharing via Green API) must be complete before chatbot work begins.
-> **Last updated:** 2026-03-17 — Security & architecture review: service key rationale documented; session storage changed to DB-primary (`chatbot_sessions` + `chatbot_messages` tables); 15-min idle TTL; sign-up link on 404; ORDER BY determinism note on phone lookup.
+> **Last updated:** 2026-03-17 — Phase 3 complete: session management implemented with direct PostgreSQL connection (`chatbot_sessions` table), 15-min idle TTL, `continuingConversation` reply for active sessions, session e2e tests against real DB.
 
 ---
 
 ## Implementation Phases
 
-| Phase | Name                          | Status         | What it delivers                                                                                                                     |
-| ----- | ----------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| **1** | Project Scaffold              | ✅ Done        | Fastify server + health endpoint, TypeScript, ESLint, Prettier, Husky, Vitest, Dockerfile, GitHub Actions CI/CD, Railway setup guide |
-| **2** | Green API Webhook             | ✅ Done        | Receive incoming WhatsApp messages, parse them, identify user, reply with welcome/signup (no AI)                                     |
-| **3** | User Identification           | 🚧 In Progress | Phone → user identity lookup via internal API on app BE (done) + session creation in Redis/Upstash (pending)                         |
-| **4** | AI Layer + Tools              | Pending        | Vercel AI SDK, system prompt, tool definitions (getMyPlans, getPlanDetails, updateItemStatus) calling internal API                   |
-| **5** | Session & Conversation Memory | Pending        | Redis-backed message history, TTL, context carry-over between messages                                                               |
-| **6** | Polish & Hardening            | Pending        | Rate limiting, error handling, logging analysis, security review, production env var validation                                      |
-| **7** | Group Chat (v1.5)             | Pending        | Mention/prefix triggers, linkPlan, group sessions (per Section 13)                                                                   |
+| Phase | Name                          | Status  | What it delivers                                                                                                                                                         |
+| ----- | ----------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **1** | Project Scaffold              | ✅ Done | Fastify server + health endpoint, TypeScript, ESLint, Prettier, Husky, Vitest, Dockerfile, GitHub Actions CI/CD, Railway setup guide                                     |
+| **2** | Green API Webhook             | ✅ Done | Receive incoming WhatsApp messages, parse them, identify user, reply with welcome/signup (no AI)                                                                         |
+| **3** | User Identification           | ✅ Done | Phone → user identity lookup via internal API + session creation in PostgreSQL (`chatbot_sessions`); 15-min idle TTL; `continuingConversation` reply for active sessions |
+| **4** | AI Layer + Tools              | Pending | Vercel AI SDK, system prompt, tool definitions (getMyPlans, getPlanDetails, updateItemStatus) calling internal API                                                       |
+| **5** | Session & Conversation Memory | Pending | Redis-backed message history, TTL, context carry-over between messages                                                                                                   |
+| **6** | Polish & Hardening            | Pending | Rate limiting, error handling, logging analysis, security review, production env var validation                                                                          |
+| **7** | Group Chat (v1.5)             | Pending | Mention/prefix triggers, linkPlan, group sessions (per Section 13)                                                                                                       |
 
 > Phases 2–5 each require corresponding **app BE** work (internal routes, internal-auth plugin). Those BE changes will be called out in each phase's plan.
 > Phase 3 app BE work is complete: `POST /api/internal/auth/identify` implemented with registered + guest user support.

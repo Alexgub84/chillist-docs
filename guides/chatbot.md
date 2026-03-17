@@ -17,7 +17,8 @@ Setup, development, and deployment guide for `chillist-whatsapp-bot`.
 | Testing         | Vitest (unit, integration, E2E)            | ✅ Implemented |
 | AI SDK          | Vercel AI SDK (`ai` package)               | Pending        |
 | LLM Provider    | TBD (Anthropic or OpenAI)                  | Pending        |
-| Session storage | Redis via Upstash                          | Pending        |
+| Database        | PostgreSQL (`postgres` package)            | ✅ Implemented |
+| Session storage | Direct DB connection (`chatbot_sessions`)  | ✅ Implemented |
 | Hosting         | Railway (same project as app BE)           | ✅ Configured  |
 
 ---
@@ -26,18 +27,21 @@ Setup, development, and deployment guide for `chillist-whatsapp-bot`.
 
 See `.env.example` in the repo for full annotated config. Summary:
 
-| Variable                | Local                        | Production                      | Required in prod |
-| ----------------------- | ---------------------------- | ------------------------------- | ---------------- |
-| `PORT`                  | `3334`                       | `3334`                          | yes              |
-| `HOST`                  | `0.0.0.0`                    | `0.0.0.0`                       | yes              |
-| `NODE_ENV`              | `development`                | `production`                    | yes              |
-| `LOG_LEVEL`             | `info`                       | `info`                          | yes              |
-| `WHATSAPP_PROVIDER`     | `fake` (noop client)         | `green_api`                     | yes              |
-| `GREEN_API_INSTANCE_ID` | —                            | from Green API dashboard        | when `green_api` |
-| `GREEN_API_TOKEN`       | —                            | from Green API dashboard        | when `green_api` |
-| `APP_BE_INTERNAL_URL`   | `http://localhost:3333`      | Railway internal URL            | yes              |
-| `CHATBOT_SERVICE_KEY`   | any string (optional in dev) | shared secret with chillist-be  | yes              |
-| `FE_BASE_URL`           | `http://localhost:5173`      | `https://chillist-fe.pages.dev` | yes              |
+| Variable                   | Local                                         | Production                                                          | Required in prod |
+| -------------------------- | --------------------------------------------- | ------------------------------------------------------------------- | ---------------- |
+| `PORT`                     | `3334`                                        | `3334`                                                              | yes              |
+| `HOST`                     | `0.0.0.0`                                     | `0.0.0.0`                                                           | yes              |
+| `NODE_ENV`                 | `development`                                 | `production`                                                        | yes              |
+| `LOG_LEVEL`                | `info`                                        | `info`                                                              | yes              |
+| `WHATSAPP_PROVIDER`        | `fake` (noop client)                          | `green_api`                                                         | yes              |
+| `GREEN_API_INSTANCE_ID`    | —                                             | from Green API dashboard                                            | when `green_api` |
+| `GREEN_API_TOKEN`          | —                                             | from Green API dashboard                                            | when `green_api` |
+| `APP_BE_INTERNAL_URL`      | `http://localhost:3333`                       | `http://zealous-beauty.railway.internal:${{chillist-be-prod.PORT}}` | yes              |
+| `CHATBOT_SERVICE_KEY`      | any string (optional in dev)                  | shared secret with chillist-be                                      | yes              |
+| `FE_BASE_URL`              | `http://localhost:5173`                       | `https://chillist-fe.pages.dev`                                     | yes              |
+| `DATABASE_URL`             | — (optional; sessions use in-memory if unset) | Supabase **pooled** connection (port 6543)                          | yes              |
+| `DATABASE_URL_PUBLIC`      | — (optional; only needed for migrations)      | Supabase **direct** connection (port 5432)                          | for migrations   |
+| `SESSION_IDLE_TTL_MINUTES` | `15`                                          | `15`                                                                | no (default 15)  |
 
 **Env validation:** All variables are validated at startup via Zod (`src/config.ts`). If invalid, the process exits with a clear error listing each failing field.
 
@@ -64,10 +68,12 @@ src/
 ├── config.ts                # Zod env schema + parseConfig()
 ├── bot-replies/             # i18n message templates (en/he)
 ├── handlers/
-│   └── incoming-message.handler.ts  # business logic — identify user, choose reply, send
+│   └── incoming-message.handler.ts  # business logic — session lookup, identify, reply
 ├── plugins/
+│   ├── database.ts          # decorates app.db (postgres Sql | null)
 │   ├── green-api.ts         # decorates app.greenApiClient
-│   └── internal-api.ts      # decorates app.internalApiClient
+│   ├── internal-api.ts      # decorates app.internalApiClient
+│   └── session-store.ts     # decorates app.sessionStore
 ├── routes/
 │   └── webhook.ts           # HTTP parsing only — delegates to handler
 └── services/
@@ -76,10 +82,17 @@ src/
     │   ├── green-api.client.ts       # createHttpGreenApiClient (real HTTP)
     │   ├── noop-green-api.client.ts  # createNoopGreenApiClient (dev mode)
     │   └── fake-green-api.client.ts  # createFakeGreenApiClient (tests)
-    └── internal-api/
-        ├── types.ts          # IInternalApiClient, IdentifyResult
-        ├── internal-api.client.ts       # createHttpInternalApiClient (real HTTP)
-        └── fake-internal-api.client.ts  # createFakeInternalApiClient (tests)
+    ├── internal-api/
+    │   ├── types.ts          # IInternalApiClient, IdentifyResult
+    │   ├── internal-api.client.ts       # createHttpInternalApiClient (real HTTP)
+    │   └── fake-internal-api.client.ts  # createFakeInternalApiClient (tests)
+    └── session/
+        ├── types.ts          # ISessionStore, ChatbotSession, CreateSessionData
+        ├── postgres-session-store.ts  # createPostgresSessionStore (real DB)
+        ├── fake-session-store.ts      # createFakeSessionStore (tests)
+        └── index.ts          # re-exports all session types and factories
+migrations/
+└── 001_chatbot_sessions.sql  # CREATE TABLE chatbot_sessions + index
 ```
 
 ---
@@ -118,23 +131,33 @@ export async function handleXxx(
 ): Promise<void>;
 ```
 
+### Session management (Phase 3 — done)
+
+The handler now runs session logic before calling `identify`:
+
+1. `sessionStore.getActiveSession(phone)` — looks up a non-expired session
+2. If found → `touchSession()` (extend TTL) → send `continuingConversation` reply
+3. If not found → `identify()` → if user found, `createSession()` → send `welcome` reply
+4. If user not found → send `signup` link (unchanged)
+
+`SESSION_IDLE_TTL_MINUTES` (default 15) controls the idle expiry window.
+
 ### Adding the AI layer (Phase 4)
 
 Only `src/handlers/incoming-message.handler.ts` changes. Routes, plugins, and integration tests are untouched.
 
 1. **Add `src/services/ai/`** — `IAiClient`, `createVercelAiClient()`, `createFakeAiClient()` (same pattern as green-api, internal-api)
-2. **Add `src/services/session/`** — `ISessionStore`, `createRedisSessionStore()`, `createFakeSessionStore()`
-3. **Add plugins** — `src/plugins/ai.ts`, `src/plugins/session.ts` decorate `app.aiClient`, `app.sessionStore`
-4. **Extend `IncomingMessageHandlerDeps`** — add `aiClient: IAiClient`, `sessionStore: ISessionStore`
-5. **Update handler logic** — load session → run AI → save session → send reply
-6. **Add unit tests** — `tests/unit/incoming-message-handler.test.ts` grows, no HTTP needed
+2. **Add `src/plugins/ai.ts`** — decorates `app.aiClient`
+3. **Extend `IncomingMessageHandlerDeps`** — add `aiClient: IAiClient`
+4. **Update handler logic** — run AI with session context → send AI reply
+5. **Add unit tests** — `tests/unit/incoming-message-handler.test.ts` grows, no HTTP needed
 
 ---
 
 ## Config & DI Pattern
 
 - `parseConfig()` in `src/config.ts` validates `process.env` via Zod — the **only** place `process.env` is read.
-- `buildApp({ config, greenApiClient?, internalApiClient? })` accepts the validated config and optional client overrides for testing.
+- `buildApp({ config, greenApiClient?, internalApiClient?, sessionStore? })` accepts the validated config and optional client overrides for testing.
 - Config is passed to plugins and routes via Fastify's plugin options — never imported globally.
 - Service clients are factory functions (`createXxx()`) — no classes.
 
@@ -209,42 +232,101 @@ error { err, phone, chatId, idMessage }       → "Unexpected error during webho
 ### Commands
 
 ```bash
-npm run test:run          # typecheck + lint + all tests
-npm run test:unit         # unit tests only
-npm run test:e2e          # E2E tests (in-process mock BE + fake Green API)
-npm run test:e2e:docker   # Docker E2E (builds containers, runs tests, tears down)
+npm run test:run            # typecheck + lint + all tests
+npm run test:unit           # unit tests only
+npm run test:e2e            # E2E tests (in-process mock BE + fake Green API)
+npm run test:e2e:docker     # Docker E2E (builds containers, runs tests, tears down)
+npm run test:e2e:session    # Session DB E2E (starts postgres in Docker, runs session tests)
+```
+
+**Session E2E locally:**
+
+```bash
+docker compose -f docker-compose.test.yml up -d postgres --wait
+npm run test:e2e:session
+# or with custom DB:
+TEST_DATABASE_URL=postgresql://... vitest run tests/e2e/session-postgres.e2e.test.ts
 ```
 
 ### Test Layers
 
-| Layer       | Files                               | What it tests                                              |
-| ----------- | ----------------------------------- | ---------------------------------------------------------- |
-| Unit        | `tests/unit/*.test.ts`              | Zod schemas, message templates, client factories, handlers |
-| Integration | `tests/integration/webhook.test.ts` | Full webhook flow with fake clients (no network)           |
-| E2E         | `tests/e2e/webhook-e2e.test.ts`     | Real HTTP to mock BE server + fake Green API               |
-| E2E Docker  | `tests/e2e/docker-e2e.test.ts`      | Real Docker containers, real HTTP between services         |
-| E2E Prod    | `tests/e2e/green-api.e2e.test.ts`   | Real Green API with real creds (`skipIf` no creds)         |
+| Layer          | Files                                    | What it tests                                                             |
+| -------------- | ---------------------------------------- | ------------------------------------------------------------------------- |
+| Unit           | `tests/unit/*.test.ts`                   | Zod schemas, message templates, client factories, handlers, session store |
+| Integration    | `tests/integration/webhook.test.ts`      | Full webhook flow incl. session scenarios (fake session store)            |
+| E2E            | `tests/e2e/webhook-e2e.test.ts`          | Real HTTP to mock BE server + fake Green API + fake session store         |
+| E2E Session DB | `tests/e2e/session-postgres.e2e.test.ts` | Real postgres session store — create/touch/expire sessions                |
+| E2E Docker     | `tests/e2e/docker-e2e.test.ts`           | Real Docker containers, real HTTP between services                        |
+| E2E Prod       | `tests/e2e/green-api.e2e.test.ts`        | Real Green API with real creds (`skipIf` no creds)                        |
 
 ### Fake Client Rules
 
 - Fakes are **only** injected via `buildApp()` options — never created by the factory plugins.
 - `WHATSAPP_PROVIDER=fake` is blocked in production by Zod `.refine()`.
-- Env guard tests (`env-guards.test.ts`) verify fake is rejected in production.
+- `DATABASE_URL` is required in production by Zod `.refine()`.
+- Env guard tests (`env-guards.test.ts`) verify both constraints.
+- `FakeSessionStore` extends `ISessionStore` with `.seed()`, `.getSessions()`, `.clear()` helpers for test setup.
 
 ---
 
 ## Deployment
 
 - Deployed to Railway in the same project as the app backend.
-- Internal networking: chatbot reaches app BE via `http://chillist-api.railway.internal:<PORT>/api/internal/*`.
 - Has its own Dockerfile and deploy pipeline.
 - Can be deployed independently of the app BE.
-- Docker E2E available via `docker-compose.test.yml` (mock-be + chatbot containers).
+- Docker E2E available via `docker-compose.test.yml` (postgres + mock-be + chatbot containers).
+- The chatbot container receives `DATABASE_URL` pointing to the postgres service in Docker Compose.
+
+### Database Migrations
+
+Migrations live in `migrations/`. Run manually against the target DB before deploying:
+
+```bash
+psql $DATABASE_URL -f migrations/001_chatbot_sessions.sql
+```
+
+The `chatbot_sessions` table stores one row per active conversation session:
+
+| Column            | Type        | Notes                                            |
+| ----------------- | ----------- | ------------------------------------------------ |
+| `session_id`      | UUID PK     | Auto-generated                                   |
+| `phone_number`    | TEXT        | E.164 format                                     |
+| `user_id`         | UUID        | From internal API identify response              |
+| `display_name`    | TEXT        | From internal API identify response              |
+| `current_plan_id` | UUID        | Nullable — set when user selects a plan (future) |
+| `created_at`      | TIMESTAMPTZ | Immutable                                        |
+| `last_active_at`  | TIMESTAMPTZ | Updated on every `touchSession()`                |
+| `expires_at`      | TIMESTAMPTZ | `NOW() + SESSION_IDLE_TTL_MINUTES`               |
+
+### Railway Networking Pattern
+
+| Client               | How to connect                      | Why                                                     |
+| -------------------- | ----------------------------------- | ------------------------------------------------------- |
+| **Frontend**         | Public HTTPS URL (no port)          | Goes through Railway's edge on port 443                 |
+| **WhatsApp chatbot** | Private domain + PORT reference var | Stays inside Railway's internal network; faster, no TLS |
+
+**Required Railway env vars:**
+
+```
+# On chillist-be-prod — makes PORT reference-able by other services:
+PORT=8080
+
+# On chillist-whatsapp-chatbot:
+APP_BE_INTERNAL_URL=http://zealous-beauty.railway.internal:${{chillist-be-prod.PORT}}
+```
+
+Railway resolves `${{chillist-be-prod.PORT}}` to `8080` at deploy time.
+
+> **`${{service.VAR}}` only resolves if VAR is user-defined** on the source service. Railway's runtime-injected PORT is not reference-able until explicitly set in the dashboard/CLI.
+>
+> When setting reference vars via CLI, always use **single quotes** to prevent shell expansion:
+> `railway variables set 'KEY=http://host:${{service.PORT}}'`
 
 ---
 
 ## What's Next
 
-- [ ] Session management with Upstash Redis
+- [x] Session management (direct DB via `chatbot_sessions` table)
 - [ ] AI SDK integration with tool definitions
 - [ ] Internal API data routes (`GET /plans`, `GET /plans/:id`, `PATCH /items/:id/status`)
+- [ ] `chatbot_messages` table — conversation history for AI context window

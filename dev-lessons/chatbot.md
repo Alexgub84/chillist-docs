@@ -8,6 +8,42 @@ _(Seeded with relevant lessons from `dev-lessons/backend.md`. Only add NEW lesso
 
 <!-- Add new entries at the top -->
 
+### [Infra] Railway PORT: never hardcode a specific value — use 8080 or let Railway assign it
+
+**Date:** 2026-03-17
+**Problem:** `PORT=3333` was hardcoded on `chillist-be-prod` in Railway. Railway assigns its own dynamic PORT (8080) and routes public traffic to it. When PORT was overridden to 3333 the BE listened on 3333 but Railway routed to 8080 → 502 on the public URL.
+**Solution:** Delete any hardcoded PORT that doesn't match what the app actually binds to. Railway injects `PORT=8080` by default for Node services. Set PORT explicitly only if needed for cross-service references (see lesson below).
+**Prevention:** Never set PORT to an arbitrary value in Railway. Check the service logs (`Server listening at http://...:XXXX`) to confirm what port the app actually uses before hardcoding it.
+
+---
+
+### [Infra] Railway reference variable `${{service.PORT}}` only resolves if PORT is explicitly set on that service
+
+**Date:** 2026-03-17
+**Problem:** Tried to set `APP_BE_INTERNAL_URL=http://zealous-beauty.railway.internal:${{chillist-be-prod.PORT}}` on the chatbot. It resolved to empty (`http://zealous-beauty.railway.internal:`) because Railway's dynamically-injected PORT is not exposed as a reference variable unless PORT is explicitly defined in the service's env vars.
+**Solution:** Explicitly set `PORT=8080` (or the actual port) on `chillist-be-prod` in Railway. After that `${{chillist-be-prod.PORT}}` resolves to `8080` and the internal URL works.
+**Prevention:** For `${{service.VAR}}` reference variables to resolve, the variable must be user-defined (visible in Railway dashboard) — Railway's runtime-injected vars are not reference-able. Always verify with `railway variables --json` (shows resolved values) after setting.
+
+---
+
+### [Infra] `railway variables --json` shows resolved values; `railway variables set` needs single quotes for `${{...}}`
+
+**Date:** 2026-03-17
+**Problem:** Running `railway variables set APP_BE_INTERNAL_URL=http://...railway.internal:${{chillist-be-prod.PORT}}` without single quotes caused the shell to expand (or mangle) the `${{...}}` syntax before it reached Railway.
+**Solution:** Always use single quotes: `railway variables set 'KEY=value with ${{ref}}'`. Verify immediately after with `railway variables --json | python3 -c "..."`.
+**Prevention:** Single quotes in zsh prevent ALL expansion. Double quotes allow `$VAR` expansion. Always single-quote Railway variable values that contain reference syntax.
+
+---
+
+### [Infra] `railway up` deploys local working directory — including uncommitted changes
+
+**Date:** 2026-03-17
+**Problem:** Ran `railway up` to force a fresh build. It deployed the local working directory which contained uncommitted session-feature code that wasn't ready for production, causing `PostgresError: relation "chatbot_sessions" does not exist`.
+**Solution:** Railway rolled back (via a subsequent `railway up` from the correct state). The session code is safe because `railway up` re-ran after the issue was identified.
+**Prevention:** Only run `railway up` from a clean git state on the intended branch. Prefer `railway redeploy --yes` to reuse the last production image when only env vars changed.
+
+---
+
 ### [Infra] Railway internal networking requires HOST=0.0.0.0 and correct PORT on every service
 
 **Date:** 2026-03-17

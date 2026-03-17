@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Display name for chatbot resolved from Supabase user_metadata, not participant table
+
+**Date:** 2026-03-17
+**Problem:** `resolveUserByPhone` picked the display name from whichever `participants` row matched the phone number. A user can have participant records across many plans with different names (stale syncs, manual edits). The query ordered by `participants.createdAt DESC` which didn't guarantee the most up-to-date name.
+**Solution:** (1) After resolving `userId` from DB, call the Supabase Admin REST API (`GET /auth/v1/admin/users/{userId}`) using `SUPABASE_SERVICE_ROLE_KEY` to fetch `user_metadata`. (2) Parse `first_name`/`last_name`/`full_name`/`name` fields (shared `parseNameFromMetadata` util in `src/utils/name.ts`). (3) Fall back to the participant record from the most recently **created plan** (`orderBy(plans.createdAt DESC)` via JOIN) if Supabase has no name. (4) Gracefully returns `null` when `SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` are not configured (dev/test safety). Uses native `fetch` — no `@supabase/supabase-js` dependency needed.
+**Prevention:** User display name is canonical in Supabase `user_metadata`. Never use the `participants` table as the source of truth for identity fields — it may be stale. When querying participant records as a fallback, always join with `plans` and order by `plans.createdAt DESC` to pick the most recently created plan context.
+
 ### [Arch] FakeWhatsAppService leaked into production — fake test doubles must never be a runtime default
 
 **Date:** 2026-03-13
