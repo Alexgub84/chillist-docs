@@ -1,9 +1,9 @@
 # Chillist WhatsApp AI Chatbot — Architecture Spec v1.0
 
-> **Status:** In Progress — Phase 3 complete, Phase 4 (AI Layer) pending
+> **Status:** In Progress — Phase 3 complete, Phase 4 (AI Layer) in progress
 > **Scope:** This document defines the chatbot as a standalone service that communicates with the existing Chillist app backend via internal HTTP API. No implementation code is included.
 > **Prerequisite:** WhatsApp Integration Phase 1 & 2 (notifications + list sharing via Green API) must be complete before chatbot work begins.
-> **Last updated:** 2026-03-17 — Phase 3 complete: session management implemented with direct PostgreSQL connection (`chatbot_sessions` table), 15-min idle TTL, `continuingConversation` reply for active sessions, session e2e tests against real DB.
+> **Last updated:** 2026-03-17 — Phase 4 BE partially done: `GET /api/internal/plans` implemented (chatbot-friendly plan summaries). Remaining Phase 4 BE work: `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status`.
 
 ---
 
@@ -21,6 +21,7 @@
 
 > Phases 2–5 each require corresponding **app BE** work (internal routes, internal-auth plugin). Those BE changes will be called out in each phase's plan.
 > Phase 3 app BE work is complete: `POST /api/internal/auth/identify` implemented with registered + guest user support.
+> Phase 4 app BE work in progress: `GET /api/internal/plans` implemented (schema: `InternalPlanSummary` + `InternalPlansResponse` registered in OpenAPI). Remaining: `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status`.
 
 ---
 
@@ -340,7 +341,7 @@ Response 400:
 
 > **Chatbot session after identify:** For registered users, store `userId` and use `x-user-id` on all subsequent data route calls. For guest users, store the `guestParticipants[]` array — they can only access the plans listed there. `x-guest-participant-id` header support on data routes is planned for v1.5.
 
-#### GET /api/internal/plans
+#### GET /api/internal/plans ✅ Implemented
 
 Returns plans where the user is owner or participant. Requires both headers.
 
@@ -355,7 +356,7 @@ Response 200:
       {
         "id": "plan-1",
         "name": "Camping in the Golan",
-        "date": "2026-04-15",
+        "date": "2026-04-15T00:00:00.000Z",
         "role": "owner",
         "participantCount": 6,
         "itemCount": 24,
@@ -363,7 +364,17 @@ Response 200:
       }
     ]
   }
+
+Response 401:
+  { "message": "x-user-id header required" }   (missing x-user-id — x-service-key already checked globally)
 ```
+
+**Implementation notes:**
+
+- `date` maps to `plans.startDate` (ISO 8601 datetime string, nullable)
+- `name` maps to `plans.title`
+- `completedItemCount`: items where `assignmentStatusList` is non-empty AND every entry has `status` of `packed` or `purchased`
+- OpenAPI schemas: `InternalPlanSummary`, `InternalPlansResponse` (registered in `src/schemas/internal.schema.ts`)
 
 #### GET /api/internal/plans/:planId
 
