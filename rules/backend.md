@@ -51,6 +51,7 @@ Strict, minimal instructions for `chillist-be`. Read these before executing any 
 - **Auth in Tests:** When adding auth to existing routes, update all tests to pass valid JWTs or mock the auth layer.
 - **Mocking DB:** If a unit test mocks DB calls, ensure the mock chain matches the exact Drizzle query builder chain used in the handler.
 - **Combine Similar Tests:** Use `it.each` for repetitive validation tests.
+- **All Entry Points:** When writing tests for a new handler behavior, cover every entry point that reaches that behavior — DM and group — in the same commit. Do not test only the path you just modified.
 - **Fake Services:** When creating a fake/mock service for tests (e.g., `FakeWhatsAppService`): (a) block the fake provider in production via env `.refine()`, (b) never let the factory function create the fake — only inject via `buildApp` options, (c) add env guard unit tests that verify `fake` is rejected in production, (d) add an E2E prod test (`describe.skipIf(!CREDS)`) that validates the real service with real credentials before deploy.
 
 ## 6. Seed Maintenance
