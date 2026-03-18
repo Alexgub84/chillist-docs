@@ -6,6 +6,15 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Logic] Supabase updateUser — phone must be a top-level field, not only in metadata
+
+**Date:** 2026-03-18
+**Problem:** Phone number entered on the complete-profile page was not saved to the `phone` column on the Supabase `auth.users` row. The phone was only stored in `user_metadata.phone` (via the `data` field), which does not update the actual `phone` column.
+**Solution:** In `updateUserProfile` (`src/core/profile-utils.ts`), pass the normalized E.164 phone as a top-level `phone` field in the `supabase.auth.updateUser()` payload (alongside keeping it in `data` for `user_metadata`). Updated the payload type to include `phone?: string`.
+**Prevention:** When updating Supabase auth user fields (`email`, `phone`), always pass them as top-level fields in the `updateUser` payload. The `data` field only writes to `raw_user_meta_data` JSONB — it does not update the dedicated columns on `auth.users`.
+
+---
+
 ### [UI] Form components designed for inline use need an inModal prop for modal context
 
 **Date:** 2026-03-17

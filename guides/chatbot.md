@@ -141,9 +141,9 @@ Group messages (`chatId` ending in `@g.us`) are handled separately from DMs:
    - `@mention`: bot's JID appears in `extendedTextMessageData.mentionedJidList` (requires `BOT_PHONE_NUMBER`)
    - Prefix: message starts with `/chillist` or `/cl` (case-insensitive)
 2. **Not triggered** → silently ignore, log `"Ignored group message"`
-3. **Triggered** → per-message identify (`senderData.sender` → phone) → reply welcome or signup to **group** `chatId`
+3. **Triggered** → strip leading `@mention` from text → run same `handleSessionAndPlansFlow()` as DMs, replying to **group** `chatId`
 
-No session lookup for group messages — identity is resolved per-message. Group sessions (linked plan, shared history) are Phase 7.
+Group and DM messages share the same session+plans flow — welcome, yes/no detection, plans list, deleteSession.
 
 Key helpers in `src/services/green-api/group-triggers.ts`:
 
@@ -156,21 +156,21 @@ Key helpers in `src/services/green-api/group-triggers.ts`:
 
 ### Session management & plans flow (Phase 3 — done, plans flow added)
 
-For DM messages, the handler runs session logic:
+Group and DM messages run the same unified `handleSessionAndPlansFlow()` function.
 
 1. `sessionStore.getActiveSession(phone)` — looks up a non-expired session
 2. **No active session:**
    - `identify()` → if user found, `createSession()` → `sendMessage()` welcome + plans prompt ("Reply _yes_ or _no_.")
    - If user not found → `sendMessage()` signup link
-3. **Active session + yes/no reply** (button response OR plain text):
+3. **Active session:**
    - `touchSession()` (extend TTL)
    - Detects yes/no: checks `getButtonResponse()` first, then `getTextYesNo()` on text (handles `yes`/`כן`/`no`/`לא`)
-   - `yes` → `internalApi.getPlans(userId)` → format + `sendMessage()` plans list (or no-plans message)
-   - `no` → `sendMessage()` stillLearning message
-4. **Active session + other text:**
-   - `touchSession()` → `sendMessage()` `continuingConversation` reply
+   - `yes` → `internalApi.getPlans(userId)` → format + `sendMessage()` plans list (or no-plans message) → `deleteSession()` (fresh start on next message)
+   - `no` or any other text → `sendMessage()` stillLearning message (session stays alive)
 
 `SESSION_IDLE_TTL_MINUTES` (default 15) controls the idle expiry window.
+
+`ISessionStore` interface methods: `getActiveSession`, `createSession`, `touchSession`, `deleteSession`.
 
 > **Why plain text instead of buttons?** Green API's `/sendButtons` returns `403` on the current instance plan. Plain text with reply instructions works universally. Button response handling is kept for forward compatibility.
 
@@ -239,18 +239,18 @@ Every log line includes relevant entity IDs for production debugging:
 | `instanceId` | string | Green API plugin init            |
 | `provider`   | string | Green API plugin init            |
 
-### Webhook Log Flow (happy path — DM)
+### Webhook Log Flow (happy path — DM or group trigger)
 
 ```
 info  { typeWebhook }                         → "Ignored non-message webhook event" (status events)
 info  { chatId, idMessage, phone, lang }      → "Processing incoming text message"
-info  { phone, userId, lang }                 → "User identified — sending welcome"
+info  { phone, userId, lang }                 → "User identified — new session created — sending welcome with plans prompt"
 info  { chatId, messageId }                   → "Welcome with plans prompt sent"
-info  { chatId, userId }                      → "User selected yes — fetching plans"
+info  { phone, sessionId, yesNo }             → "Yes/no response received"
 info  { chatId, planCount }                   → "Plans list sent"
-info  { chatId }                              → "No plans found — sent noPlans message"
-info  { chatId }                              → "User selected no — sent stillLearning"
-info  { chatId, sessionId }                   → "Continuing conversation"
+info  { chatId }                              → "No plans message sent"
+info  { chatId }                              → "Still learning message sent"
+info  { phone, sessionId }                    → "Unrecognised input — sending still learning message"
 ```
 
 ### Webhook Log Flow (group messages)
@@ -258,10 +258,7 @@ info  { chatId, sessionId }                   → "Continuing conversation"
 ```
 info  { chatId, idMessage }                   → "Ignored group message" (not triggered)
 info  { chatId, sender, phone, groupLang }    → "Processing triggered group message"
-info  { chatId, phone, userId }               → "Group sender identified — sending welcome"
-info  { chatId, messageId }                   → "Group welcome message sent"
-info  { chatId, phone }                       → "Group sender not found — sending signup link"
-info  { chatId, messageId }                   → "Group signup message sent"
+(then same flow as DM above)
 ```
 
 ### Webhook Log Flow (error paths)
