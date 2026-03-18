@@ -8,6 +8,31 @@ _(Seeded with relevant lessons from `dev-lessons/backend.md`. Only add NEW lesso
 
 <!-- Add new entries at the top -->
 
+### [Infra] Railway skips redeploy when only env vars change — trigger manually
+
+**Date:** 2026-03-18
+**Problem:** Set `BOT_PHONE_NUMBER` via `railway variables set`. Railway created a new deployment record with status `SKIPPED` — the running container was not restarted, so the new env var was never picked up.
+**Solution:** After setting env vars, force a redeploy via the Railway dashboard (Redeploy button) or `railway deployment redeploy`.
+**Prevention:** `railway variables set` does not guarantee a redeploy. Always verify the deployment list with `railway deployment list` after changing env vars. If the latest entry is `SKIPPED`, redeploy manually.
+
+---
+
+### [Infra] Use `tsx scripts/migrate.ts` instead of raw `psql` for CI migrations
+
+**Date:** 2026-03-18
+**Problem:** GitHub Actions ran `psql "$DATABASE_URL_PUBLIC" -f migration.sql` and got `FATAL: database "railway" does not exist`. Raw `psql` does not handle Railway's proxy connection string (SSL negotiation, database name resolution) the same way Node.js does.
+**Solution:** Replaced psql with a TypeScript migration script (`scripts/migrate.ts`) that uses the `postgres` npm package — the same library the app uses at runtime. No `postgresql-client` install needed.
+**Prevention:** Follow the same pattern as `chillist-be` (`src/db/migrate.ts`). Always use the Node.js `postgres` package for migrations in CI — it uses the same connection handling as production and avoids psql SSL/proxy compatibility issues.
+
+---
+
+### [Integration] Green API `extendedTextMessageData` field names differ from assumptions
+
+**Date:** 2026-03-18
+**Problem:** Implemented @mention detection using `extendedTextMessageData.textMessage` and `mentionedJidList`. In production, Green API sends `text` (not `textMessage`) and `mentioned` (not `mentionedJidList`). Every @mention message failed to parse and was silently dropped.
+**Solution:** Updated Zod schema and helper functions to use the correct field names: `text` and `mentioned`.
+**Prevention:** Always verify Green API payload field names against real webhook deliveries before implementing logic that depends on them. Add a log of the raw payload at `DEBUG` level or inspect from a real test send before writing schema code.
+
 ### [Infra] Railway PORT: never hardcode a specific value — use 8080 or let Railway assign it
 
 **Date:** 2026-03-17
