@@ -8,6 +8,16 @@ _(Seeded with relevant lessons from `dev-lessons/backend.md`. Only add NEW lesso
 
 <!-- Add new entries at the top -->
 
+### [Integration] Green API `mentioned` array is empty when user types `@PHONE` manually
+
+**Date:** 2026-03-18
+**Problem:** Implemented @mention detection by checking `extendedTextMessageData.mentioned` for the bot's JID. In production, `mentioned` was always `[]` even when the message text contained `@972545053620`. Bot never responded to @mentions.
+**Root cause:** Green API only populates `mentioned` when the user picks the contact from WhatsApp's @mention autocomplete UI. When the user types `@PHONENUMBER` as plain text, `mentioned` is empty but the phone number appears in the `text` field.
+**Solution:** Added a text-based fallback in `isBotMentioned`: if `mentioned` is empty, check whether `@botPhone` (digits only, no `+`) appears in the message text.
+**Prevention:** Never rely solely on the `mentioned` array for @mention detection in Green API. Always add a text-based fallback. Verified via debug log showing `mentioned: [], textSnippet: "@972545053620 היי"`.
+
+---
+
 ### [Infra] Railway skips redeploy when only env vars change — trigger manually
 
 **Date:** 2026-03-18

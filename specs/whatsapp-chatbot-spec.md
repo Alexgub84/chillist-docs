@@ -3,7 +3,7 @@
 > **Status:** In Progress — Phase 3 complete, Phase 4 (AI Layer) in progress
 > **Scope:** This document defines the chatbot as a standalone service that communicates with the existing Chillist app backend via internal HTTP API. No implementation code is included.
 > **Prerequisite:** WhatsApp Integration Phase 1 & 2 (notifications + list sharing via Green API) must be complete before chatbot work begins.
-> **Last updated:** 2026-03-17 — Phase 4 BE partially done: `GET /api/internal/plans` implemented (chatbot-friendly plan summaries). Remaining Phase 4 BE work: `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status`.
+> **Last updated:** 2026-03-18 — Welcome flow updated: after identification, bot sends interactive Yes/No buttons asking if user wants to see their plans. "Yes" fetches plans via `GET /api/internal/plans` and sends a formatted list. "No" sends a "still learning" message. `sendButtons` added to `IGreenApiClient`. Remaining Phase 4 BE work: `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status`.
 
 ---
 
@@ -684,7 +684,32 @@ Each WhatsApp phone number gets one active session at a time. The session repres
 
 > **Why 15 minutes (not 24 hours)?** Chatbot conversations are short bursts. If a user doesn't reply for 15 minutes they've mentally moved on. A fresh session on next contact avoids carrying stale AI context.
 
-### First message flow
+### First message flow (current implementation)
+
+```
+1. Message arrives from +972501234567
+2. Check local session store: getActiveSession(phone)
+   → returns active session if exists (expiresAt > now), else null
+3a. If no active session:
+    → call POST /api/internal/auth/identify
+    → on success: create session in session store
+    → send interactive buttons: "Hey {name}! I'm Chilli. Would you like to see your plans?"
+      with [Yes please 📋] [No thanks] buttons
+    → on 404: send signup link message
+3b. If active session + button response (typeMessage = buttonsResponseMessage):
+    → touch session TTL
+    → if selectedButtonId = "yes":
+        → call GET /api/internal/plans (with x-user-id header)
+        → format plan list and send as text message
+        → if no plans: send "no plans yet" message
+    → if selectedButtonId = "no":
+        → send "still learning new functions" message
+3c. If active session + regular text message:
+    → touch session TTL
+    → send continuingConversation reply (placeholder until AI layer is ready)
+```
+
+### Future flow (Phase 4 — AI Layer)
 
 ```
 1. Message arrives from +972501234567
@@ -727,10 +752,17 @@ Green API's webhook URL points to the **chatbot server**. The app BE continues t
 2. Parse event type:
    - "incomingMessageReceived" → process as chatbot message
    - Delivery/status events → forward to app BE or ignore
-3. Extract sender phone number and message text
-4. Run through session + AI pipeline (section 6)
-5. Send response via Green API sendMessage API
+3. Extract sender phone number and message text (or button response)
+4. Run through session + flow pipeline (section 6)
+5. Send response via Green API sendMessage or sendButtons API
 ```
+
+### Green API client capabilities
+
+| Method        | Green API endpoint          | When used                                                                        |
+| ------------- | --------------------------- | -------------------------------------------------------------------------------- |
+| `sendMessage` | `POST /sendMessage/{token}` | Plain text replies (signup, continuing conversation, plans list, still learning) |
+| `sendButtons` | `POST /sendButtons/{token}` | Welcome prompt with Yes/No interactive buttons                                   |
 
 ### Rate limiting
 

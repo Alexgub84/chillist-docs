@@ -1,7 +1,7 @@
 # Chillist — Current Status
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
-> **Last updated:** 2026-03-17
+> **Last updated:** 2026-03-18
 > **BE version:** —
 > **FE version:** —
 
@@ -190,6 +190,7 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 - Rate limiting (100 req/min global, 10 req/min on auth endpoints, 30 req/min on internal identify).
 - Security headers (Helmet), CORS restricted to frontend URL in production.
 - All input validated with Zod. SQL injection prevented via Drizzle ORM parameterized queries.
+- **Session ID tracking:** Every request carries a `sessionId` for log correlation. For authenticated users this is the Supabase `session_id` JWT claim; for guests it is a `guest_<sha256-prefix>` derived from the invite token. Returned from `GET /auth/me` for FE use. No DB storage — analytics integration planned for a later phase.
 
 ### Database Tables
 

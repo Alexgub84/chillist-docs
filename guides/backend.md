@@ -285,7 +285,8 @@ npm run test:run
 
 - **Architecture:** FE signs up/in directly with Supabase. BE verifies JWTs via JWKS and also calls the Supabase Admin REST API (server-side only) to fetch `user_metadata` for display name resolution.
 - **JWKS verification:** `jose` library fetches public keys from `${SUPABASE_URL}/auth/v1/.well-known/jwks.json` (asymmetric ES256 keys). No secrets stored on the BE.
-- **`request.user`:** Decorated on every request when a valid `Authorization: Bearer <jwt>` header is present. Contains `{ id, email, role }` from JWT claims.
+- **`request.user`:** Decorated on every request when a valid `Authorization: Bearer <jwt>` header is present. Contains `{ id, email, role, sessionId? }` from JWT claims.
+- **`request.sessionId`:** Decorated on every request with the session's correlation ID. For authenticated users, this is the Supabase `session_id` JWT claim (stable across token refreshes, changes on new login). For guests, it is `guest_<sha256-prefix-of-invite-token>` (deterministic, no DB needed). Included in all key log entries (auth, incoming request, response) and returned from `GET /auth/me` so the FE can use it for client-side logging and analytics.
 - **PII separation:** Supabase is the single store for registered user PII (name, email, phone). Railway DB stores only Supabase UUIDs as references — no user PII. `user_details` table holds app-specific preferences (food prefs, equipment). `guest_profiles` table holds temporary PII for unregistered participants.
 - **Protected routes:** All plans, items, and participants routes require JWT (return 401 without valid token). Auth routes (`GET /auth/me`, `GET /auth/profile`, `PATCH /auth/profile`) also require JWT. Invite routes use token-based auth (no JWT needed). `/health` is public.
 - **Rate limiting:** `@fastify/rate-limit` active — 100 req/min global, 10 req/min on `/auth/*` endpoints.

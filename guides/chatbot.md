@@ -79,15 +79,15 @@ src/
 │   └── webhook.ts           # HTTP parsing only — delegates to handler
 └── services/
     ├── green-api/
-    │   ├── types.ts          # IGreenApiClient, SendResult, Zod webhook schemas
+    │   ├── types.ts          # IGreenApiClient, SendResult, Button, SendButtonsParams, ButtonResponse, Zod webhook schemas
     │   ├── green-api.client.ts       # createHttpGreenApiClient + chatIdToPhone, isGroupChatId, phoneToChatId
-    │   ├── group-triggers.ts         # isBotMentioned, hasBotPrefix, isTriggeredGroupMessage, getMessageText
+    │   ├── group-triggers.ts         # isBotMentioned, hasBotPrefix, isTriggeredGroupMessage, getMessageText, getButtonResponse
     │   ├── noop-green-api.client.ts  # createNoopGreenApiClient (dev mode)
-    │   └── fake-green-api.client.ts  # createFakeGreenApiClient (tests)
+    │   └── fake-green-api.client.ts  # createFakeGreenApiClient (tests) + getSentButtons()
     ├── internal-api/
-    │   ├── types.ts          # IInternalApiClient, IdentifyResult
+    │   ├── types.ts          # IInternalApiClient, IdentifyResult, PlanSummary, PlansResult
     │   ├── internal-api.client.ts       # createHttpInternalApiClient (real HTTP)
-    │   └── fake-internal-api.client.ts  # createFakeInternalApiClient (tests)
+    │   └── fake-internal-api.client.ts  # createFakeInternalApiClient (tests) + setPlans()
     └── session/
         ├── types.ts          # ISessionStore, ChatbotSession, CreateSessionData
         ├── postgres-session-store.ts  # createPostgresSessionStore (real DB)
@@ -151,17 +151,26 @@ Key helpers in `src/services/green-api/group-triggers.ts`:
 - `getMessageText(message)` — extracts text from `textMessageData` or `extendedTextMessageData`
 - `isBotMentioned(message, botJid)` — mention check
 - `hasBotPrefix(text)` — prefix check
+- `getButtonResponse(message)` — returns `{ selectedButtonId, selectedButtonText }` from `buttonsResponseMessage`, or `null`
 
-### Session management (Phase 3 — done)
+### Session management & plans flow (Phase 3 — done, plans flow added)
 
-For DM messages, the handler runs session logic before calling `identify`:
+For DM messages, the handler runs session logic:
 
 1. `sessionStore.getActiveSession(phone)` — looks up a non-expired session
-2. If found → `touchSession()` (extend TTL) → send `continuingConversation` reply
-3. If not found → `identify()` → if user found, `createSession()` → send `welcome` reply
-4. If user not found → send `signup` link (unchanged)
+2. **No active session:**
+   - `identify()` → if user found, `createSession()` → `sendButtons()` with welcome + Yes/No plans prompt
+   - If user not found → `sendMessage()` signup link
+3. **Active session + `buttonsResponseMessage`:**
+   - `touchSession()` (extend TTL)
+   - `selectedButtonId === 'yes'` → `internalApi.getPlans(userId)` → format + `sendMessage()` plans list (or no-plans message)
+   - `selectedButtonId === 'no'` → `sendMessage()` stillLearning message
+4. **Active session + regular text:**
+   - `touchSession()` → `sendMessage()` `continuingConversation` reply
 
 `SESSION_IDLE_TTL_MINUTES` (default 15) controls the idle expiry window.
+
+**Button response messages** (`typeMessage === 'buttonsResponseMessage'`) are passed through the early-return guard via an explicit check — they have no `textMessageData` but carry `buttonsResponseMessageData.selectedButtonId`.
 
 ### Adding the AI layer (Phase 4)
 
@@ -192,7 +201,7 @@ Only `src/handlers/incoming-message.handler.ts` changes. Routes, plugins, and in
 | **Plugins**       | Throw on missing required config — Fastify catches and prevents startup |
 | **Webhook route** | `safeParse` on every payload — malformed input returns 200 + warn log   |
 | **Handler**       | `try/catch` wraps all service calls — logs `error` with all entity IDs  |
-| **Green API**     | `sendMessage` returns `{ success, error }` — never throws               |
+| **Green API**     | `sendMessage` / `sendButtons` return `{ success, error }` — never throw |
 | **Internal API**  | `identify` returns `null` for 404, throws for unexpected HTTP errors    |
 
 **Why 200 on bad payloads:** Green API retries on non-200. Returning 200 acknowledges receipt and prevents infinite retry loops.
@@ -234,7 +243,12 @@ Every log line includes relevant entity IDs for production debugging:
 info  { typeWebhook }                         → "Ignored non-message webhook event" (status events)
 info  { chatId, idMessage, phone, lang }      → "Processing incoming text message"
 info  { phone, userId, lang }                 → "User identified — sending welcome"
-info  { chatId, messageId }                   → "Welcome message sent"
+info  { chatId, messageId }                   → "Welcome with plans prompt sent"
+info  { chatId, userId }                      → "User selected yes — fetching plans"
+info  { chatId, planCount }                   → "Plans list sent"
+info  { chatId }                              → "No plans found — sent noPlans message"
+info  { chatId }                              → "User selected no — sent stillLearning"
+info  { chatId, sessionId }                   → "Continuing conversation"
 ```
 
 ### Webhook Log Flow (group messages)
@@ -361,7 +375,8 @@ Railway resolves `${{chillist-be-prod.PORT}}` to `8080` at deploy time.
 
 - [x] Session management (direct DB via `chatbot_sessions` table)
 - [x] Group message trigger detection (`@mention` + `/cl` prefix) with per-message identify
+- [x] Plans flow — welcome with Yes/No buttons, `GET /api/internal/plans` on yes, stillLearning on no
 - [ ] AI SDK integration with tool definitions
-- [ ] Internal API data routes (`GET /plans`, `GET /plans/:id`, `PATCH /items/:id/status`)
+- [ ] Internal API data routes (`GET /plans/:id`, `PATCH /items/:id/status`)
 - [ ] `chatbot_messages` table — conversation history for AI context window
 - [ ] Group sessions (linked plan, shared message history) — Phase 7

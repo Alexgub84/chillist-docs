@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Session ID for log correlation — use Supabase JWT session_id, not a custom DB table
+
+**Date:** 2026-03-18
+**Problem:** Needed to correlate all BE log entries belonging to the same user session without a DB table, complex session management, or inactivity timers.
+**Solution:** Supabase JWTs already contain a `session_id` UUID claim that is stable across token refreshes and changes on new login. Extracted it in the auth plugin, stored on `request.sessionId`, and included it in the key log entries (auth, incoming request, response). For guests (no JWT), derived a stable `guest_<sha256-prefix>` from the invite token via `node:crypto`. The `sessionId` is returned from `GET /auth/me` so the FE can use it as a correlation key for client-side logging and future analytics.
+**Prevention:** Before adding a new DB table for sessions, check what the auth provider already gives you. Supabase's `session_id` JWT claim is the canonical session identifier — no storage, no expiry logic, no refresh handling needed.
+
 ### [Arch] Display name for chatbot resolved from Supabase user_metadata, not participant table
 
 **Date:** 2026-03-17
