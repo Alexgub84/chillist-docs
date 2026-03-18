@@ -693,20 +693,20 @@ Each WhatsApp phone number gets one active session at a time. The session repres
 3a. If no active session:
     → call POST /api/internal/auth/identify
     → on success: create session in session store
-    → send interactive buttons: "Hey {name}! I'm Chilli. Would you like to see your plans?"
-      with [Yes please 📋] [No thanks] buttons
+    → send plain text: "Hey {name}! I'm Chilli. Would you like to see your plans?
+      Reply *yes* or *no*."
     → on 404: send signup link message
-3b. If active session + button response (typeMessage = buttonsResponseMessage):
+3b. If active session + yes/no reply (button response OR plain text yes/כן/no/לא):
     → touch session TTL
-    → if selectedButtonId = "yes":
-        → call GET /api/internal/plans (with x-user-id header)
+    → if yes: call GET /api/internal/plans (with x-user-id header)
         → format plan list and send as text message
         → if no plans: send "no plans yet" message
-    → if selectedButtonId = "no":
-        → send "still learning new functions" message
-3c. If active session + regular text message:
+    → if no: send "still learning new functions" message
+3c. If active session + other text:
     → touch session TTL
     → send continuingConversation reply (placeholder until AI layer is ready)
+
+> Note: `/sendButtons` is kept in the Green API client interface but not used — it returns 403 on the current instance plan.
 ```
 
 ### Future flow (Phase 4 — AI Layer)

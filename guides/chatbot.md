@@ -152,6 +152,7 @@ Key helpers in `src/services/green-api/group-triggers.ts`:
 - `isBotMentioned(message, botJid)` — mention check
 - `hasBotPrefix(text)` — prefix check
 - `getButtonResponse(message)` — returns `{ selectedButtonId, selectedButtonText }` from `buttonsResponseMessage`, or `null`
+- `getTextYesNo(text)` — returns `'yes'` for `yes`/`כן` (startsWith, case-insensitive), `'no'` for `no`/`לא`, else `null`
 
 ### Session management & plans flow (Phase 3 — done, plans flow added)
 
@@ -159,18 +160,19 @@ For DM messages, the handler runs session logic:
 
 1. `sessionStore.getActiveSession(phone)` — looks up a non-expired session
 2. **No active session:**
-   - `identify()` → if user found, `createSession()` → `sendButtons()` with welcome + Yes/No plans prompt
+   - `identify()` → if user found, `createSession()` → `sendMessage()` welcome + plans prompt ("Reply _yes_ or _no_.")
    - If user not found → `sendMessage()` signup link
-3. **Active session + `buttonsResponseMessage`:**
+3. **Active session + yes/no reply** (button response OR plain text):
    - `touchSession()` (extend TTL)
-   - `selectedButtonId === 'yes'` → `internalApi.getPlans(userId)` → format + `sendMessage()` plans list (or no-plans message)
-   - `selectedButtonId === 'no'` → `sendMessage()` stillLearning message
-4. **Active session + regular text:**
+   - Detects yes/no: checks `getButtonResponse()` first, then `getTextYesNo()` on text (handles `yes`/`כן`/`no`/`לא`)
+   - `yes` → `internalApi.getPlans(userId)` → format + `sendMessage()` plans list (or no-plans message)
+   - `no` → `sendMessage()` stillLearning message
+4. **Active session + other text:**
    - `touchSession()` → `sendMessage()` `continuingConversation` reply
 
 `SESSION_IDLE_TTL_MINUTES` (default 15) controls the idle expiry window.
 
-**Button response messages** (`typeMessage === 'buttonsResponseMessage'`) are passed through the early-return guard via an explicit check — they have no `textMessageData` but carry `buttonsResponseMessageData.selectedButtonId`.
+> **Why plain text instead of buttons?** Green API's `/sendButtons` returns `403` on the current instance plan. Plain text with reply instructions works universally. Button response handling is kept for forward compatibility.
 
 ### Adding the AI layer (Phase 4)
 
