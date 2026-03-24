@@ -35,7 +35,7 @@ Every plan has participants with roles:
 
 Plans can have multiple owners. The current owner can promote another participant via "Make owner" — both keep owner privileges.
 
-Each participant has group details: number of adults and kids, food preferences, allergies, and free-text notes. The owner can edit anyone's preferences; participants can edit only their own.
+Each participant has group details: number of adults and kids, food preferences, allergies, and free-text notes. The owner can edit anyone's preferences; participants can edit only their own. Per-person structured dietary data is stored in `dietaryMembers` (JSONB) — each adult/kid in the group gets their own diet enum and allergies array.
 
 RSVP status (Pending / Confirmed / Not sure) is shown as a badge next to each participant. Only the plan owner can see RSVP statuses.
 
@@ -154,7 +154,7 @@ Admin users (platform-level role, not per-plan) can:
 ### Happy path (owner)
 
 1. Sign up / sign in.
-2. Create plan → add title, dates, location.
+2. Create plan → add title, pick tags, optionally add description, then set dates, location.
 3. Set your group preferences (adults, kids, dietary).
 4. Add participants by name/phone, or share invite links.
 5. Add items — single or bulk from the suggested library.

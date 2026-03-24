@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Supabase phone is in `user_metadata.phone`, not `auth.users.phone`
+
+**Date:** 2026-03-18
+**Problem:** Phone saved via `supabase.auth.updateUser({ data: { phone } })` goes into `raw_user_meta_data.phone`, not the top-level `auth.users.phone` column. Reading `auth.users.phone` (or `data.user?.phone` from the Admin SDK) always returns empty unless Supabase phone auth is explicitly enabled (which causes a 500 if not).
+**Solution:** Updated `fetchSupabaseUserMetadata` to read `user_metadata.phone` (i.e. `meta.phone` from the Admin REST API response) and return it alongside `displayName`. Updated `POST /auth/sync-profile` to call Supabase Admin API for fresh phone data and merge it into the user object before syncing `participants.contactPhone` — so the sync works even when the JWT is stale.
+**Prevention:** Never read from `auth.users.phone` or `data.user?.phone`. Always read from `data.user_metadata?.phone` (REST API) or `data.user?.user_metadata?.phone` (Admin SDK). When syncing identity fields to participant records, always enrich from the Supabase Admin API — don't rely solely on the JWT which may be stale.
+
 ### [Arch] Session ID for log correlation — use Supabase JWT session_id, not a custom DB table
 
 **Date:** 2026-03-18

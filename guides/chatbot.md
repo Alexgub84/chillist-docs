@@ -94,7 +94,8 @@ src/
         ├── fake-session-store.ts      # createFakeSessionStore (tests)
         └── index.ts          # re-exports all session types and factories
 migrations/
-└── 001_chatbot_sessions.sql  # CREATE TABLE chatbot_sessions + index
+├── 001_chatbot_sessions.sql  # CREATE TABLE chatbot_sessions + index
+└── 002_chatbot_sessions_chat_id.sql  # ADD COLUMN chat_id; updated index on (phone_number, chat_id, expires_at)
 ```
 
 ---
@@ -158,7 +159,9 @@ Key helpers in `src/services/green-api/group-triggers.ts`:
 
 Group and DM messages run the same unified `handleSessionAndPlansFlow()` function.
 
-1. `sessionStore.getActiveSession(phone)` — looks up a non-expired session
+**Session scoping:** Sessions are keyed by `(phone_number, chat_id)` — each WhatsApp context (DM or group) gets its own independent session for the same user. A user's active session in Group A does not affect their session in Group B or in a DM.
+
+1. `sessionStore.getActiveSession(phone, chatId)` — looks up a non-expired session for this specific chatId
 2. **No active session:**
    - `identify()` → if user found, `createSession()` → `sendMessage()` welcome + plans prompt ("Reply _yes_ or _no_.")
    - If user not found → `sendMessage()` signup link
@@ -170,7 +173,7 @@ Group and DM messages run the same unified `handleSessionAndPlansFlow()` functio
 
 `SESSION_IDLE_TTL_MINUTES` (default 15) controls the idle expiry window.
 
-`ISessionStore` interface methods: `getActiveSession`, `createSession`, `touchSession`, `deleteSession`.
+`ISessionStore` interface methods: `getActiveSession(phoneNumber, chatId)`, `createSession`, `touchSession`, `deleteSession`.
 
 > **Why plain text instead of buttons?** Green API's `/sendButtons` returns `403` on the current instance plan. Plain text with reply instructions works universally. Button response handling is kept for forward compatibility.
 
@@ -328,21 +331,33 @@ TEST_DATABASE_URL=postgresql://... vitest run tests/e2e/session-postgres.e2e.tes
 Migrations live in `migrations/`. Run manually against the target DB before deploying:
 
 ```bash
-psql $DATABASE_URL -f migrations/001_chatbot_sessions.sql
+npx tsx scripts/migrate.ts
 ```
+
+Or apply individually:
+
+```bash
+npx tsx scripts/migrate.ts  # runs all pending migrations in order
+```
+
+Migration files:
+
+- `001_chatbot_sessions.sql` — creates `chatbot_sessions` table
+- `002_chatbot_sessions_chat_id.sql` — adds `chat_id` column + updated index
 
 The `chatbot_sessions` table stores one row per active conversation session:
 
-| Column            | Type        | Notes                                            |
-| ----------------- | ----------- | ------------------------------------------------ |
-| `session_id`      | UUID PK     | Auto-generated                                   |
-| `phone_number`    | TEXT        | E.164 format                                     |
-| `user_id`         | UUID        | From internal API identify response              |
-| `display_name`    | TEXT        | From internal API identify response              |
-| `current_plan_id` | UUID        | Nullable — set when user selects a plan (future) |
-| `created_at`      | TIMESTAMPTZ | Immutable                                        |
-| `last_active_at`  | TIMESTAMPTZ | Updated on every `touchSession()`                |
-| `expires_at`      | TIMESTAMPTZ | `NOW() + SESSION_IDLE_TTL_MINUTES`               |
+| Column            | Type        | Notes                                              |
+| ----------------- | ----------- | -------------------------------------------------- |
+| `session_id`      | UUID PK     | Auto-generated                                     |
+| `phone_number`    | TEXT        | E.164 format                                       |
+| `chat_id`         | TEXT        | WhatsApp chatId — DM = user JID, group = group JID |
+| `user_id`         | UUID        | From internal API identify response                |
+| `display_name`    | TEXT        | From internal API identify response                |
+| `current_plan_id` | UUID        | Nullable — set when user selects a plan (future)   |
+| `created_at`      | TIMESTAMPTZ | Immutable                                          |
+| `last_active_at`  | TIMESTAMPTZ | Updated on every `touchSession()`                  |
+| `expires_at`      | TIMESTAMPTZ | `NOW() + SESSION_IDLE_TTL_MINUTES`                 |
 
 ### Railway Networking Pattern
 
@@ -375,6 +390,7 @@ Railway resolves `${{chillist-be-prod.PORT}}` to `8080` at deploy time.
 - [x] Session management (direct DB via `chatbot_sessions` table)
 - [x] Group message trigger detection (`@mention` + `/cl` prefix) with per-message identify
 - [x] Plans flow — welcome with Yes/No buttons, `GET /api/internal/plans` on yes, stillLearning on no
+- [x] Session scoping by `(phone_number, chat_id)` — DM and each group get independent sessions
 - [ ] AI SDK integration with tool definitions
 - [ ] Internal API data routes (`GET /plans/:id`, `PATCH /items/:id/status`)
 - [ ] `chatbot_messages` table — conversation history for AI context window

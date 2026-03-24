@@ -117,20 +117,22 @@ The app gates UI elements based on authentication state and plan ownership. Thes
 
 ### Plan Tag Wizard (`src/components/PlanTagWizard.tsx`)
 
-3-tier tag wizard integrated as **Step 1** in `CreatePlanWizard` (fun, low-effort start). Collects structured tags describing the plan type (e.g., Camping → Cooking → Shared meals). Tag options are driven by `src/data/plan-creation-tags.json`. The `onBack` prop is optional — omitted when the wizard is the first step.
+3-tier tag wizard integrated as **Step 1** in `CreatePlanWizard` (fun, low-effort start). Step 1 layout: **title input** (required, validated before advancing) → **PlanTagWizard** → **description textarea** (optional, supplements tags). Title and description are managed as parent-level state in `CreatePlanWizard` and passed to `DetailsForm` (step 2) via props + hidden inputs.
+
+Tag options are driven by `src/data/plan-creation-tags.json`. The `onBack` prop is optional — omitted when the wizard is the first step.
 
 - **Tier 1:** Single-select (plan type: camping, beach, hotel trip, etc.)
 - **Tier 2:** Multi-select (logistics: cooking, tent setup, day trip, etc.) — conditional on tier 1 selection
 - **Tier 3:** Multi-select (specifics: shared meals, BYO food, etc.) — conditional on tier 2 selections, capped at 5 options
-- **Summary:** Shows all selected tags as chips before confirming
+- **Summary:** Shows all selected tags as chips before confirming (SelectedChips hidden on summary to avoid duplication)
 - **Chip navigation:** Clicking a chip navigates back to that tier for editing
-- **Skip:** Each tier and the whole step can be skipped
+- **Skip:** Each tier and the whole step can be skipped (title still validated)
 - Tags are passed as `string[]` in the plan creation payload (`tags` field on `PlanCreateWithOwner`)
 - i18n keys under `tagWizard.*` namespace in all locale files
 
 ### Bulk Add Wizard (`src/components/BulkItemAddWizard.tsx`)
 
-3-step wizard (category → subcategory → items). Single search filters common items; when typed text doesn't match, "Add [name]" row appears and Enter adds custom item. Line layout with rounded borders, hover, and selected background for full title visibility.
+3-step wizard (category → subcategory → items). Single search filters common items; when typed text doesn't match, "Add [name]" row appears and Enter adds custom item. Items step uses a 2–3 column grid of compact cards (name centered, quantity controls stacked below when selected).
 
 ### Common Items Data (`src/data/common-items.json`)
 

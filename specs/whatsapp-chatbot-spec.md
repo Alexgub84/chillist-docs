@@ -3,21 +3,21 @@
 > **Status:** In Progress — Phase 3 complete, Phase 4 (AI Layer) in progress
 > **Scope:** This document defines the chatbot as a standalone service that communicates with the existing Chillist app backend via internal HTTP API. No implementation code is included.
 > **Prerequisite:** WhatsApp Integration Phase 1 & 2 (notifications + list sharing via Green API) must be complete before chatbot work begins.
-> **Last updated:** 2026-03-18 — Welcome flow updated: after identification, bot sends interactive Yes/No buttons asking if user wants to see their plans. "Yes" fetches plans via `GET /api/internal/plans` and sends a formatted list. "No" sends a "still learning" message. `sendButtons` added to `IGreenApiClient`. Remaining Phase 4 BE work: `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status`.
+> **Last updated:** 2026-03-18 — Session scoping changed from per-phone to per-(phone, chatId). Each WhatsApp context (DM or group) now gets its own independent session. `chat_id` column added to `chatbot_sessions` (migration `002`). `ISessionStore.getActiveSession` signature updated to take `(phoneNumber, chatId)`.
 
 ---
 
 ## Implementation Phases
 
-| Phase | Name                          | Status  | What it delivers                                                                                                                                                         |
-| ----- | ----------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **1** | Project Scaffold              | ✅ Done | Fastify server + health endpoint, TypeScript, ESLint, Prettier, Husky, Vitest, Dockerfile, GitHub Actions CI/CD, Railway setup guide                                     |
-| **2** | Green API Webhook             | ✅ Done | Receive incoming WhatsApp messages, parse them, identify user, reply with welcome/signup (no AI)                                                                         |
-| **3** | User Identification           | ✅ Done | Phone → user identity lookup via internal API + session creation in PostgreSQL (`chatbot_sessions`); 15-min idle TTL; `continuingConversation` reply for active sessions |
-| **4** | AI Layer + Tools              | Pending | Vercel AI SDK, system prompt, tool definitions (getMyPlans, getPlanDetails, updateItemStatus) calling internal API                                                       |
-| **5** | Session & Conversation Memory | Pending | Redis-backed message history, TTL, context carry-over between messages                                                                                                   |
-| **6** | Polish & Hardening            | Pending | Rate limiting, error handling, logging analysis, security review, production env var validation                                                                          |
-| **7** | Group Chat (v1.5)             | Pending | Mention/prefix triggers, linkPlan, group sessions (per Section 13)                                                                                                       |
+| Phase | Name                          | Status  | What it delivers                                                                                                                                                                                     |
+| ----- | ----------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1** | Project Scaffold              | ✅ Done | Fastify server + health endpoint, TypeScript, ESLint, Prettier, Husky, Vitest, Dockerfile, GitHub Actions CI/CD, Railway setup guide                                                                 |
+| **2** | Green API Webhook             | ✅ Done | Receive incoming WhatsApp messages, parse them, identify user, reply with welcome/signup (no AI)                                                                                                     |
+| **3** | User Identification           | ✅ Done | Phone → user identity lookup via internal API + session creation in PostgreSQL (`chatbot_sessions`); 15-min idle TTL; sessions scoped by `(phone_number, chat_id)` for independent DM/group contexts |
+| **4** | AI Layer + Tools              | Pending | Vercel AI SDK, system prompt, tool definitions (getMyPlans, getPlanDetails, updateItemStatus) calling internal API                                                                                   |
+| **5** | Session & Conversation Memory | Pending | Redis-backed message history, TTL, context carry-over between messages                                                                                                                               |
+| **6** | Polish & Hardening            | Pending | Rate limiting, error handling, logging analysis, security review, production env var validation                                                                                                      |
+| **7** | Group Chat (v1.5)             | Pending | Mention/prefix triggers, linkPlan, group sessions (per Section 13)                                                                                                                                   |
 
 > Phases 2–5 each require corresponding **app BE** work (internal routes, internal-auth plugin). Those BE changes will be called out in each phase's plan.
 > Phase 3 app BE work is complete: `POST /api/internal/auth/identify` implemented with registered + guest user support.
@@ -609,15 +609,16 @@ Sessions are stored **in the app BE's PostgreSQL database** — not only Redis. 
 
 #### `chatbot_sessions`
 
-| Column            | Type        | Notes                                                     |
-| ----------------- | ----------- | --------------------------------------------------------- |
-| `session_id`      | UUID PK     | Generated on creation                                     |
-| `phone_number`    | text        | E.164 — one active session per phone at a time            |
-| `user_id`         | UUID        | Supabase userId (null for guest sessions)                 |
-| `current_plan_id` | UUID        | Nullable — plan currently in focus for this conversation  |
-| `created_at`      | timestamptz |                                                           |
-| `last_active_at`  | timestamptz | Updated on every message; used for idle expiry            |
-| `expires_at`      | timestamptz | `last_active_at + 15 minutes`; recomputed on each message |
+| Column            | Type        | Notes                                                         |
+| ----------------- | ----------- | ------------------------------------------------------------- |
+| `session_id`      | UUID PK     | Generated on creation                                         |
+| `phone_number`    | text        | E.164                                                         |
+| `chat_id`         | text        | WhatsApp chatId — scopes session per DM or group conversation |
+| `user_id`         | UUID        | Supabase userId (null for guest sessions)                     |
+| `current_plan_id` | UUID        | Nullable — plan currently in focus for this conversation      |
+| `created_at`      | timestamptz |                                                               |
+| `last_active_at`  | timestamptz | Updated on every message; used for idle expiry                |
+| `expires_at`      | timestamptz | `last_active_at + 15 minutes`; recomputed on each message     |
 
 #### `chatbot_messages`
 
@@ -640,6 +641,7 @@ Each WhatsApp phone number gets one active session at a time. The session repres
 {
   "sessionId": "sess-uuid-xxx",
   "phoneNumber": "+972501234567",
+  "chatId": "972501234567@c.us",
   "userType": "registered",
   "userId": "supabase-uid-xxx",
   "guestParticipants": null,
@@ -688,8 +690,8 @@ Each WhatsApp phone number gets one active session at a time. The session repres
 
 ```
 1. Message arrives from +972501234567
-2. Check local session store: getActiveSession(phone)
-   → returns active session if exists (expiresAt > now), else null
+2. Check local session store: getActiveSession(phone, chatId)
+   → returns active session for this specific chatId if exists (expiresAt > now), else null
 3a. If no active session:
     → call POST /api/internal/auth/identify
     → on success: create session in session store

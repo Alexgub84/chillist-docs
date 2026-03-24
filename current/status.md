@@ -1,7 +1,7 @@
 # Chillist — Current Status
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
-> **Last updated:** 2026-03-18
+> **Last updated:** 2026-03-19
 > **BE version:** —
 > **FE version:** —
 
@@ -19,8 +19,8 @@ A web app for organizing group activities — camping trips, dinner parties, bea
 
 Create a plan for any group event using a **4-step wizard**:
 
-1. **Plan Type** — a 3-tier tag wizard that collects structured tags describing the plan (e.g., Camping → Cooking → Shared meals). Tier 1 is single-select, tiers 2 and 3 are multi-select. Tags are stored as `string[]` on the plan. The step can be skipped entirely. Selected tags are shown as chips with back-navigation to edit previous tiers. A summary screen shows all selections before confirming.
-2. **Plan Details** — title, description (optional), date/time (one-day toggle or date range), location (Google Maps autocomplete — only place name is shown; city/country/region/lat/lon are auto-populated), language, and currency.
+1. **Plan Type** — title (required) at the top, then a 3-tier tag wizard that collects structured tags describing the plan (e.g., Camping → Cooking → Shared meals), then an optional description textarea below the tags. Tier 1 is single-select, tiers 2 and 3 are multi-select. Tags are stored as `string[]` on the plan. The step can be skipped entirely (title is validated before advancing). Selected tags are shown as chips with back-navigation to edit previous tiers. A summary screen shows all selections before confirming.
+2. **Plan Details** — date/time (one-day toggle or date range), location (Google Maps autocomplete — only place name is shown; city/country/region/lat/lon are auto-populated), language, and currency.
 3. **Preferences** — two clearly separated sections: **Your Details** (owner's adults/kids count, food preferences, allergies, notes; RSVP auto-set to "confirmed") and **Total Group Estimate** (estimated total adults and kids for planning quantities). The plan is created silently at this step — the user sees a seamless transition to the next step.
 4. **Add Items** — the bulk add wizard is embedded inline so the owner can immediately pick items from the 700+ item library. This step can be skipped.
 
@@ -64,6 +64,8 @@ Every plan has participants with roles:
 Plans can have multiple owners. The current owner can promote another participant via "Make owner."
 
 Each participant has group details: number of adults and kids, food preferences, allergies, and free-text notes. The owner can edit anyone's preferences; participants can only edit their own. RSVP status (Pending / Confirmed / Not sure) is shown as a badge next to each participant, visible to the owner.
+
+Per-person dietary data is supported via `dietaryMembers` — a structured JSONB field on each participant where each adult/kid in the group gets their own `diet` (single-select enum) and `allergies` (multi-select enum array). The legacy `foodPreferences`/`allergies` text fields are retained for backward compatibility.
 
 ### Assignments
 
@@ -127,8 +129,8 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 
 1. Sign up or sign in (email or Google).
 2. Start the 4-step plan creation wizard.
-3. Step 1: Pick plan type tags via the 3-tier tag wizard (e.g., Camping → Cooking → Shared meals), or skip.
-4. Step 2: Enter title, description (optional), dates, location (Google Maps autocomplete), language, currency → click Next.
+3. Step 1: Enter title, pick plan type tags via the 3-tier tag wizard (e.g., Camping → Cooking → Shared meals), optionally add a description, or skip tags.
+4. Step 2: Enter dates, location (Google Maps autocomplete), language, currency → click Next.
 5. Step 3: Fill in your details (adults/kids count, dietary needs, allergies) and estimate total group size → click Next (plan is created silently).
 6. Step 4: Bulk-pick items from the 700+ item library, or skip to go straight to the plan.
 7. From the plan page: add participants by name/phone, or share invite links.
@@ -195,12 +197,12 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 ### Database Tables
 
 - **plans** — event details, location, dates, status, visibility, currency
-- **participants** — per-plan members with roles, preferences, invite tokens, RSVP. Stores `contactPhone` (E.164) and optionally `userId` (set when invite is claimed) or `guestProfileId` (set when guest accesses without signing up)
+- **participants** — per-plan members with roles, preferences, invite tokens, RSVP. Stores `contactPhone` (E.164) and optionally `userId` (set when invite is claimed) or `guestProfileId` (set when guest accesses without signing up). `dietaryMembers` JSONB column holds per-person structured dietary data (diet enum + allergies array per adult/kid)
 - **items** — equipment/food with per-participant status tracking
 - **item_changes** — audit log of item modifications
 - **user_details** — default user preferences (food, allergies, equipment)
 - **guest_profiles** — anonymous guest users (accessed plan via invite link, no Supabase account). Stores name, phone, email, dietary preferences
-- **participant_join_requests** — pending/approved/rejected join requests
+- **participant_join_requests** — pending/approved/rejected join requests. Also carries `dietaryMembers` JSONB, passed through to the `participants` record on approval
 - **participant_expenses** — per-participant expenses with item linking
 - **plan_invites** — invite send history and acceptance tracking per participant
 - **whatsapp_notifications** — audit log of WhatsApp messages sent (invitation_sent, join_request_pending/approved/rejected)

@@ -8,6 +8,26 @@ _(Seeded with relevant lessons from `dev-lessons/backend.md`. Only add NEW lesso
 
 <!-- Add new entries at the top -->
 
+### [Bug] Sessions keyed only by phone caused cross-context bleed between groups and DMs
+
+**Date:** 2026-03-18
+**Problem:** The same user in Group A and Group B (or a DM) shared a single session. If the user triggered the bot in Group A and got a welcome prompt, then triggered it in Group B, Group B's message would find Group A's session — responding with "still learning" instead of a fresh welcome.
+**Root cause:** `chatbot_sessions` had no `chat_id` column. `getActiveSession(phone)` returned ANY active session for that phone number regardless of which chat it came from.
+**Solution:** Added `chat_id` column to `chatbot_sessions` (migration `002`). Session key is now `(phone_number, chat_id)` — each WhatsApp chat context (DM or group) gets its own independent session.
+**Prevention:** When designing session keys for multi-context systems, the key must always include the full conversation context, not just the user identity. The pattern is `(user_identifier, context_identifier)`. A session scoped only by user silently bleeds across independent conversations.
+
+---
+
+### [Debug] Green API replays queued webhooks after a new deployment
+
+**Date:** 2026-03-18
+**Problem:** After deploying a new Railway build, the bot processed old messages (sent while the server was restarting) as if they were new — triggering welcome flows for conversations that had already happened.
+**Root cause:** Green API queues webhook deliveries and retries them when the server is unavailable. On restart, it flushes the queue in order, replaying all unacknowledged messages.
+**Solution:** Not a code bug. Cleared stale sessions from the DB (`DELETE FROM chatbot_sessions`) and re-tested. After the replay burst settled, the bot behaved correctly.
+**Prevention:** After any deploy, expect a burst of replayed messages. If testing session state immediately after a deploy, clear the `chatbot_sessions` table first to avoid false "broken" signals. The queue drains within seconds.
+
+---
+
 ### [Integration] Green API `mentioned` array is empty when user types `@PHONE` manually
 
 **Date:** 2026-03-18
