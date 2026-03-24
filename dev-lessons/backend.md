@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [Testing] Route bypassed service + integration test bypassed route — double false confidence
+
+**Date:** 2026-03-24
+**Problem:** `POST /plans/:planId/participants` did a raw `db.insert(participants)` instead of calling `addParticipantToPlan()`, so new participants were never auto-assigned to `isAllParticipants` items. The integration test for this behavior called `addParticipantToPlan(db, ...)` directly instead of `app.inject()`, so it passed despite the route being broken. Three root causes: (1) the route predated the "use `addParticipantToPlan`" rule and was never updated when the rule was added, (2) the integration test called the service function directly instead of the HTTP route, giving false confidence, (3) no audit was done on existing code when the participant creation rule was added to `rules/backend.md`.
+**Solution:** (1) Added `addParticipantToAllFlaggedItems()` call to the route handler after the insert. (2) Rewrote the integration test to use `app.inject({ method: 'POST' })` through the actual HTTP endpoint. (3) Added general rules to `rules/backend.md`: routes must use services for side effects, integration tests must use `app.inject()` not direct service calls, and new rules require auditing existing code for compliance.
+**Prevention:** Integration tests must always go through `app.inject()` — never call service functions directly to trigger the behavior under test. When multiple routes can trigger the same business action, they must all call the same service/side-effect functions. When adding a new rule to `rules/backend.md`, audit existing code for violations in the same commit.
+
 ### [Arch] Supabase phone is in `user_metadata.phone`, not `auth.users.phone`
 
 **Date:** 2026-03-18

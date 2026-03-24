@@ -138,7 +138,7 @@ Tag options are driven by `src/data/plan-creation-tags.json`. The `onBack` prop 
 
 Static JSON for autocomplete suggestions.
 
-- **Rules:** Every item must have a unique `id`, `category` (equipment/food), and a valid `subcategory` from `src/data/subcategories.ts`.
+- **Rules:** Every item must have a unique `id`, `category` (group_equipment/personal_equipment/food), and a valid `subcategory` from `src/data/subcategories.ts`.
 - **Enrichment:** Run `npx tsx scripts/enrich-common-items-with-subcategory.ts` to bulk-assign subcategories.
 
 ## Testing & CI/CD

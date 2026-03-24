@@ -6,6 +6,15 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Split equipment category into group_equipment and personal_equipment
+
+**Date:** 2026-03-24
+**Problem:** The backend split the `equipment` item category into `group_equipment` (shared gear) and `personal_equipment` (individual gear). The frontend needed to propagate this change across schemas, constants, i18n, UI components, data files, mock server, and all tests.
+**Solution:** (1) Ran `api:sync` to pull updated OpenAPI spec. (2) Updated `CATEGORY_VALUES` in `schemas/item.ts` to `['group_equipment', 'personal_equipment', 'food']`, split the discriminated union into 3 branches, and added an `isEquipmentCategory()` helper for shared "force pcs" logic. (3) Updated `CATEGORY_OPTIONS` (3 entries), `SUBCATEGORIES_BY_CATEGORY` (both equipment categories map to the same subcategory list), and i18n keys in all 3 locales. (4) Updated `BulkItemAddWizard` from 2 to 3 category buttons, `ItemForm`/`ItemCard` to use `isEquipmentCategory()`, `ItemsList`/`CategorySection` for 3 categories, invite route for 3 options. (5) Split `common-items.json`/`.he.json`/`.es.json` using the existing `isPersonal` field (80 EN items → `personal_equipment`, rest → `group_equipment`). (6) Updated mock server schemas, mock data, and all 22 test files.
+**Prevention:** When the BE renames or splits an enum value: (1) always sync the OpenAPI spec first; (2) add a centralized helper function for shared behavior (`isEquipmentCategory`) instead of updating every `=== 'equipment'` check individually; (3) use the data flow: schemas → constants → i18n → UI → data files → mock server → tests; (4) check `common-items.json` for existing flags (`isPersonal`) that make the migration mechanical.
+
+---
+
 ### [E2E] HeadlessUI Modal — simplified rendering for WebKit E2E tests
 
 **Date:** 2026-03-22
@@ -1150,3 +1159,15 @@ Route file dropped from ~600 to ~460 lines, with each extracted module independe
 **Solution:** Replaced `page.on('websocket', ...)` with a JavaScript-level interception via `addInitScript`: monkeypatch the `WebSocket` constructor to record URLs into `window.__wsUrls`, then use `expect.poll(() => page.evaluate(...))` to assert. This captures connection attempts at the application layer regardless of network outcome.
 
 **Lesson:** Do not rely on Playwright's `page.on('websocket')` to detect connection _attempts_ when the target server is not running. The event depends on the TCP handshake progressing to the HTTP upgrade phase. For verifying that app code calls `new WebSocket(url)`, intercept the constructor in the page context instead.
+
+### [Test] E2E/Unit selectors must use `data-testid` — never `getByText`/`getByRole` for interactive elements
+
+**Date:** 2026-03-24
+
+**Problem:** BulkItemAddWizard E2E and unit tests broke repeatedly (5+ times) when UI text changed — adding description spans under category buttons changed the accessible name, breaking `getByRole('button', { name: 'Food', exact: true })`. Same pattern with subcategory buttons, submit buttons, back buttons, and select-all toggles.
+
+**Root Cause:** Tests used `getByText`, `getByRole({ name })`, and `getByPlaceholderText` to find interactive elements. Any text change (adding descriptions, i18n updates, rewording) silently broke selectors. The `getByRole` accessible name includes all descendant text, so adding a `<span>` child changes it.
+
+**Solution:** Added `data-testid` to every interactive element in BulkItemAddWizard: category buttons (`bulk-cat-{category}`), subcategory buttons (`bulk-subcat-{name}`), item cards (`bulk-item-{name}`), select-all toggles (`bulk-select-all-{subcategory}`), submit button (`bulk-submit`), back button (`bulk-back`), search input (`bulk-search-input`). Converted all E2E and unit tests to use these testids exclusively.
+
+**Lesson:** NEVER use `getByText`, `getByRole({ name })`, or `getByPlaceholderText` to interact with or assert on interactive elements (buttons, links, inputs). Always add `data-testid` to the component first, then use `getByTestId` in tests. `getByText` is only acceptable for asserting data content (e.g., checking a plan name appears on screen). This applies to both unit tests (Testing Library) and E2E tests (Playwright). When adding any new interactive element, add `data-testid` immediately — don't wait for a test to break.

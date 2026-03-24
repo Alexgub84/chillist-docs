@@ -9,7 +9,9 @@ Strict, minimal instructions for `chillist-be`. Read these before executing any 
 - **Dependency Injection:** Use DI (`buildApp({ db })`). Never import `db` directly in routes. Tests must inject the testcontainer DB.
 - **Enums:** Never hardcode enum values. Derive const arrays and TypeScript types from Drizzle `pgEnum` in `db/schema.ts` and import them everywhere.
 - **Service Layer:** Reusable business logic that may be called from multiple routes belongs in `src/services/`. Services are pure functions that receive `db` (or a transaction handle) as their first argument — no Fastify coupling. Route handlers orchestrate (auth, validation, error handling) and delegate to services. Examples: `participant.service.ts` (participant creation), `profile-sync.ts` (identity field mapping).
-- **Participant Creation:** All new participant creation (join request approval, future invite flows, etc.) should go through `addParticipantToPlan()` in `src/services/participant.service.ts`. This is the single place to add side effects (notifications, activity logs) when a new participant joins a plan.
+- **Routes Must Use Services for Side Effects:** When a business action has side effects (auto-assignment, cleanup, notifications), every route that triggers that action must call the same service/side-effect functions. Routes must never do raw DB operations that skip side effects a service already handles. If a route cannot use the full service function (e.g. a required param is unavailable), it must still call every individual side-effect function the service calls.
+- **Participant Creation:** All new participant creation (join request approval, future invite flows, etc.) should go through `addParticipantToPlan()` in `src/services/participant.service.ts`. Routes that create participants without `addParticipantToPlan` (e.g. the invite route, which has no `userId` yet) must explicitly call `addParticipantToAllFlaggedItems()` after the insert.
+- **Audit When Adding Rules:** When a new rule is added to this file about existing code patterns, audit the codebase for pre-existing violations and fix them in the same commit. A rule added without fixing existing code is a time bomb.
 
 ## 2. API & Schema Design
 
@@ -48,6 +50,8 @@ Strict, minimal instructions for `chillist-be`. Read these before executing any 
 ## 5. Testing
 
 - **Write Alongside Code:** Every new route or behavior change requires a matching integration test _before_ finalization.
+- **Test Layering:** Unit tests cover service functions in isolation. Integration tests cover full route behavior via `app.inject()`. Never call service functions directly in an integration test — that bypasses route-level logic (middleware, hooks, side effects) and creates false confidence. If a test description says "when X happens via the API" but the code calls a service function directly, the test is wrong.
+- **Happy + Unhappy Paths:** Every integration test for a route must include the happy path (success) and key unhappy paths (validation errors, auth failures, not-found, conflicts).
 - **Auth in Tests:** When adding auth to existing routes, update all tests to pass valid JWTs or mock the auth layer.
 - **Mocking DB:** If a unit test mocks DB calls, ensure the mock chain matches the exact Drizzle query builder chain used in the handler.
 - **Combine Similar Tests:** Use `it.each` for repetitive validation tests.

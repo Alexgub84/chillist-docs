@@ -48,7 +48,7 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 ## 6) Testing Rules
 
 - Every behavioral change requires matching test updates.
-- **Use `getByTestId` / `data-testid` as the primary way to select elements** in E2E and unit tests. Add test IDs to components when writing tests — do not rely on `getByText`, `getByRole`, or `getByLabel` alone; they are brittle with i18n, layout changes, and Headless UI transitions.
+- **MANDATORY: Use `getByTestId` / `data-testid` for ALL interactive elements** in E2E and unit tests. NEVER use `getByText`, `getByRole({ name })`, or `getByPlaceholderText` to click or interact with buttons, links, inputs, or toggles — these break when text changes (i18n, added descriptions, rewording). `getByText` is ONLY acceptable for asserting that data content appears (e.g., checking a plan name is visible). When adding a new interactive element to a component, always add `data-testid` immediately.
 - Cross-boundary flow change (route + context + API + UI) requires integration or E2E coverage, not only unit tests.
 - E2E should assert final outcomes, not transient loading states.
 - For responsive flows, include mobile/desktop paths when UI differs (use Playwright's `isMobile`).

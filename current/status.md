@@ -38,7 +38,7 @@ The plan detail page shows a **Headcount** section with two cards: **Reported** 
 
 ### Items & Checklists
 
-Items are the core of every plan — the shared list of everything the group needs. Each item has a name, category (Equipment or Food), quantity, unit, optional subcategory, and optional notes.
+Items are the core of every plan — the shared list of everything the group needs. Each item has a name, category (Group Equipment, Personal Equipment, or Food), quantity, unit, optional subcategory, and optional notes.
 
 You can add a single item with full details, or use the **bulk add wizard** to pick from a library of 700+ suggested items organized by subcategory (Cooking Equipment, Fresh Vegetables, Dairy, First Aid, Lighting, Beverages, Vegan, and many more). Search, select, and add multiple items at once.
 
@@ -87,7 +87,7 @@ When someone opens an invite link:
 - **Signed-in users** are automatically added to the plan and redirected to it.
 - **Not signed in** — they see a plan preview and can choose to sign in, sign up, or continue as a guest.
 
-**Guest access (no account required):** Guests can view the plan, set their RSVP, fill in preferences (group size, dietary info), and add or edit items. The items section appears after the guest responds to RSVP. Guests see limited participant info (display name and role only — no phone or email).
+**Guest access (no account required):** Guests can view the plan, set their RSVP, fill in preferences (group size, dietary info), and add or edit items. The items section appears after the guest responds to RSVP. The invite response includes the guest's own identity fields (`name`, `lastName`, `contactPhone`) in `myPreferences` so the frontend can prefill forms without asking the guest to re-enter details the owner already provided. Other participants' PII remains hidden (display name and role only — no phone or email).
 
 **Request to join:** If someone has a link to an invite-only plan but isn't a participant, they see a plan preview and a "Request to Join" form. The owner can approve or reject requests from the Manage Participants page.
 
@@ -218,7 +218,7 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 | Participants   | `POST /.../regenerate-token`                                               | Regenerate a participant's invite token                                                                                                                                                                                      |
 | Items          | `POST`, `GET`, `PATCH /:id`                                                | Create, list, update items                                                                                                                                                                                                   |
 | Items          | `POST /bulk`, `PATCH /bulk`                                                | Bulk create and bulk update items                                                                                                                                                                                            |
-| Invite (guest) | `GET /invite/:token`                                                       | Get plan data as a guest via invite token                                                                                                                                                                                    |
+| Invite (guest) | `GET /invite/:token`                                                       | Get plan data as a guest via invite token. Returns `myPreferences` with the guest's own `name`, `lastName`, `contactPhone` plus dietary/RSVP fields                                                                          |
 | Invite (guest) | `PATCH /invite/:token/preferences`                                         | Update guest preferences and RSVP                                                                                                                                                                                            |
 | Invite (guest) | `POST`, `PATCH`, `POST /bulk`, `PATCH /bulk` on items                      | Guest item CRUD (single + bulk)                                                                                                                                                                                              |
 | Join Requests  | `POST`, `PATCH /:id`                                                       | Submit a join request, approve or reject                                                                                                                                                                                     |
