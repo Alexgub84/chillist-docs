@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [Items] Duplicated create/update in routes + empty `assignmentStatusList` for `personal_equipment`
+
+**Date:** 2026-03-24
+**Problem:** Invite and JWT item routes duplicated insert/update and assignment merge logic. `personal_equipment` defaulted to `isAllParticipants` in logic but, when the client sent an empty `assignmentStatusList`, the list stayed empty — inconsistent with “assign to all” semantics.
+**Solution:** Centralized create in `createPlanItems` (using `prepareItemForCreate` + `getPlanParticipantIds`) and updates in `processItemUpdate`. When `isAllParticipants` is true and the resolved list is empty, fill pending entries for all plan participants. Routed both `items.route` and `invite` item endpoints through these helpers.
+**Prevention:** Do not add parallel item insert/update paths in new routes; extend `item.service.ts` / `item-mutation.ts` and reuse. See [item-handling.md](../current/item-handling.md).
+
 ### [Testing] Route bypassed service + integration test bypassed route — double false confidence
 
 **Date:** 2026-03-24
@@ -41,7 +48,7 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 **Date:** 2026-03-13
 **Problem:** `WHATSAPP_PROVIDER` in `env.ts` defaulted to `'fake'` with no production guard. The factory (`createWhatsAppService`) had a `fake` fallback path, and the plugin caught init errors silently falling back to a `NoopWhatsAppService`. On Railway without `WHATSAPP_PROVIDER=green_api`, the app booted with `FakeWhatsAppService` which returned `{ success: true, messageId: "fake-..." }` for every send — the FE showed "sent successfully" but nothing was actually sent. The `whatsapp_notifications` table was also corrupted with `status: 'sent'` for messages that never left the server.
 **Solution:** (1) Added `.refine()` in `env.ts` to block `WHATSAPP_PROVIDER=fake` in production and require `GREEN_API_INSTANCE_ID` + `GREEN_API_TOKEN` when provider is `green_api`. (2) Removed `fake` fallback from the factory — it only creates `GreenApiWhatsAppService` now. `FakeWhatsAppService` is only injectable via `buildApp` options in tests. (3) Removed silent catch/Noop fallback in the plugin — if `createWhatsAppService` throws, the app crashes. (4) Added env guard regression tests. (5) Added E2E prod test (`describe.skipIf(!CREDS)`) that validates the real Green API before deploy.
-**Prevention:** When creating a fake service for tests: (a) never make the fake provider a default in env — block it in production via `.refine()`, (b) never let the factory create the fake — only inject via `buildApp` options, (c) add an E2E prod test (`describe.skipIf(!CREDS)`) that validates the real service before deploy. See `.windsurf/workflows/new-external-service.md` for the full checklist.
+**Prevention:** When creating a fake service for tests: (a) never make the fake provider a default in env — block it in production via `.refine()`, (b) never let the factory create the fake — only inject via `buildApp` options, (c) add an E2E prod test (`describe.skipIf(!CREDS)`) that validates the real service before deploy. See `.cursor/rules/new-external-service.mdc` for the full checklist.
 
 ### [Infra] Drizzle migrator skips migrations with out-of-order timestamps
 

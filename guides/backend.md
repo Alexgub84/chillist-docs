@@ -322,6 +322,10 @@ Done (continued):
 - ~~Participant expenses~~ (v1.21.0, PR #132) — `participant_expenses` table (`amount` numeric(10,2), optional `description`, FK to participants + plans). Full CRUD: `GET /plans/:planId/expenses` (list + per-participant totals), `POST`, `PATCH /expenses/:expenseId`, `DELETE`. Access control: owner/admin manage all, participants manage own (via `participant.userId`, not expense creator). `checkPlanAccess` enforced on PATCH/DELETE. 30 tests.
 - ~~Plan detail fields~~ (v1.21.0, PR #132) — `defaultLang` and `currency` nullable varchar columns on plans. Supported in create/update/read. Currency is the plan-level setting for expense display.
 
+Architecture notes:
+
+- Item create/update flows are documented in [Item handling](../current/item-handling.md) (shared helpers `createPlanItems` / `processItemUpdate`, invite + JWT parity).
+
 Future:
 
 - Invite route reduction (Phase 3 Step 4, BREAKING)

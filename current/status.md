@@ -1,8 +1,8 @@
 # Chillist — Current Status
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
-> **Last updated:** 2026-03-19
-> **BE version:** —
+> **Last updated:** 2026-03-24
+> **BE version:** 3811299 (chillist-be `fix/item-mutation-consolidation`)
 > **FE version:** —
 
 ---
@@ -77,6 +77,8 @@ Items can be assigned to specific participants so everyone knows who's responsib
 - **Bulk assign per subcategory** lets you assign all items in a subcategory to one participant at once.
 
 Each participant has their own status per item (pending → purchased → packed), so you can track who bought or packed what independently.
+
+For **personal equipment**, new items default to “assign to all” (`isAllParticipants`). If the client omits `assignmentStatusList`, the backend fills one pending entry per plan participant so lists stay consistent (same behavior on JWT and invite flows). Details: [item-handling.md](./item-handling.md).
 
 ### Invitations & Sharing
 
