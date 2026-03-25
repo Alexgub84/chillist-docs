@@ -112,7 +112,7 @@ _(Seeded with relevant lessons from `dev-lessons/backend.md`. Only add NEW lesso
 **Date:** 2026-03-16 (ported from backend lesson 2026-03-13)
 **Problem:** In the app backend, `WHATSAPP_PROVIDER` defaulted to `'fake'` with no production guard. The factory had a `fake` fallback, and the plugin silently fell back to a noop service. On Railway without the correct env var, the app ran with a fake that returned `{ success: true }` for every call — masking total failure.
 **Applies to chatbot:** The chatbot has three external services that need the same discipline: (1) Green API (WhatsApp messaging), (2) AI provider (Anthropic/OpenAI), (3) Upstash Redis (session storage). Each must follow the pattern below.
-**Prevention:** For every external service: (a) never make a fake provider the default in env — block it in production via `.refine()`, (b) never let the factory create the fake — only inject via `buildApp` options in tests, (c) if the real service fails to initialize, crash — no silent fallback, (d) add an E2E prod test (`describe.skipIf(!CREDS)`) that validates the real service before deploy. See `.windsurf/workflows/new-external-service.md` for the full checklist.
+**Prevention:** For every external service: (a) never make a fake provider the default in env — block it in production via `.refine()`, (b) never let the factory create the fake — only inject via `buildApp` options in tests, (c) if the real service fails to initialize, crash — no silent fallback, (d) add an E2E prod test (`describe.skipIf(!CREDS)`) that validates the real service before deploy. See `.cursor/rules/new-external-service.mdc` for the full checklist.
 
 ### [Arch] Decouple business logic from route handlers into services
 
