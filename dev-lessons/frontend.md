@@ -6,6 +6,23 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [E2E] Bulk add E2E mocks not updated when API refactored to /bulk endpoint
+
+**Date:** 2026-03-26
+**Failing tests:**
+- `Item CRUD › bulk adds multiple items via wizard modal` (all 4 browsers)
+- `Invite Landing Page › guest can bulk add items from invite items page` (all 4 browsers)
+**Problem:** 8 E2E tests failed with `toBeVisible` timeout on the success toast after bulk add submission. The tests submitted the bulk add wizard but the toast never appeared.
+**Root Cause:** A previous PR (`b6367c7`) refactored bulk item creation to use a dedicated `POST /plans/:planId/items/bulk` endpoint (replacing the old Promise.allSettled loop over individual POSTs). The `api/server.ts` mock server and unit tests were updated in that PR, but `tests/e2e/fixtures.ts` and `tests/e2e/main-flow.spec.ts` were not. The E2E fixtures only mocked `POST .../items` (single-item endpoint). The `/bulk` request had no mock, fell through to the real server, failed silently, and the success toast was never shown.
+
+For the guest bulk add test, there was a second bug: the mock URL was `.../items` instead of `.../items/bulk`, AND the response was `{ ok: true }` instead of the required `{ items: [...], errors: [] }` shape — which would have caused `bulkItemResponseSchema.parse()` to throw even if the URL had matched.
+**Solution:**
+1. In `fixtures.ts` (`mockPlanRoutes`): added mock for `POST /plans/${planId}/items/bulk` that builds items from the request body and returns `{ items: [...newItems], errors: [] }`. Also expanded `MockItem.category` and `buildItem()` types to include `'personal_equipment'`.
+2. In `main-flow.spec.ts` test 2: fixed mock URL from `.../items` to `.../items/bulk` and updated the response from `{ ok: true }` to a valid `BulkItemResponse` shape.
+**Lesson:** When a PR introduces a new API endpoint that replaces an existing one, the E2E fixtures must be updated in the same PR — not just `api/server.ts`. The two mock layers serve different test environments and both must stay in sync with the real API contract. Always check `tests/e2e/fixtures.ts` whenever any of these change: endpoint URL, HTTP method, or response shape.
+
+---
+
 ### [Arch] Split equipment category into group_equipment and personal_equipment
 
 **Date:** 2026-03-24
