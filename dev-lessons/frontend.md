@@ -6,6 +6,23 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [E2E] Mobile Safari — plan wizard “Go to plan” URL assertion timed out on `/create-plan`
+
+**Date:** 2026-03-28
+**Problem:** Pre-push E2E: `creates a plan with owner and navigates to detail page` failed on **Mobile Safari only**. After `wizard-create-plan` click, `expect(page).toHaveURL(/\/plan\//)` waited 15s while the URL stayed `http://localhost:5174/create-plan`.
+**Solution:** Race navigation with the click: `await Promise.all([page.waitForURL(/\/plan\//, { timeout }), createPlanBtn.click({ force: isMobile })])`, and use **30s** timeout on mobile (15s desktop). Same pattern as elsewhere in `main-flow.spec.ts` (`waitForResponse` + click).
+**Prevention:** For client-side router navigations triggered by a button, prefer `Promise.all([waitForURL(...), click])` over click-then-assert URL — WebKit can complete navigation on a timeline where a sequential assertion races and flakes.
+
+### [Test] Unit tests asserting on i18n headings — same failure mode as “use getByTestId for buttons”
+
+**Date:** 2026-03-28
+**Problem:** `EditPlanForm.test.tsx` failed pre-push twice: first the test matched `/your preferences/i`, later `/your group details/i`. The real UI now shows **You and Your Family** (and other locales) via `t()`. The rule in `rules/frontend.md` §6 already required `getByTestId` for **interactive** elements; contributors still used English regex for **section headings**, which are equally unstable.
+**Solution:** Assert step/section presence with stable hooks: `getByTestId('edit-wizard-step2')` (already waited on in the helper) and `getByTestId('preferences-steppers')` for the owner-preferences block — not translated copy.
+**Prevention:**
+- Treat **any** user-visible string from `t()` as unsafe in tests unless you are explicitly testing one locale with `i18n.changeLanguage` and accept maintenance cost.
+- When writing or reviewing tests: if you see `getByText` / `getByRole({ name: … })` matching marketing or form **labels**, replace with `data-testid` on the container (add one if missing).
+- **Rule updated (§6):** “Did this step render?” must use testids, not English — see [rules/frontend.md](../rules/frontend.md).
+
 ### [Wizard / State] Navigate after AI bulk-add — don’t infer success from modal `onClose` + React state
 
 **Date:** 2026-03-28

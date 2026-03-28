@@ -50,6 +50,8 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 
 - Every behavioral change requires matching test updates.
 - **MANDATORY: Use `getByTestId` / `data-testid` for ALL interactive elements** in E2E and unit tests. NEVER use `getByText`, `getByRole({ name })`, or `getByPlaceholderText` to click or interact with buttons, links, inputs, or toggles — these break when text changes (i18n, added descriptions, rewording). `getByText` is ONLY acceptable for asserting that data content appears (e.g., checking a plan name is visible). When adding a new interactive element to a component, always add `data-testid` immediately.
+- **MANDATORY for “did this step/section render?” assertions:** Treat wizard steps, section headings, empty states, and modal titles as **i18n surfaces** — copy changes constantly. Do **not** use `getByText(/some english/i)` or `getByRole('heading', { name: /…/ })` against UX copy from `t()`. Add or reuse a stable `data-testid` on the step root, form, or region (e.g. `edit-wizard-step2`, `preferences-steppers`) and assert with `getByTestId`. Reserve `getByText` for **domain data** the test created (a specific item name, a known plan title), not for labels that designers/translators edit.
+- **Why this keeps getting missed:** Section 6’s first bullet only said “interactive elements,” so tests still used English regex for headings. That is the same class of fragility — extend the rule to **any** selector that would break when `en.json` changes.
 - Cross-boundary flow change (route + context + API + UI) requires integration or E2E coverage, not only unit tests.
 - E2E should assert final outcomes, not transient loading states.
 - For responsive flows, include mobile/desktop paths when UI differs (use Playwright's `isMobile`).
@@ -88,6 +90,7 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 - If API contract changed on backend, run `npm run api:sync`.
 - Update `src/data/changelog.ts` for user-visible changes.
 - Ensure changed behavior is reflected in tests.
+- If you change **i18n** or user-visible labels: grep the test tree for `getByText` / `getByRole` matchers that might target that copy — switch to `data-testid` + `getByTestId` instead of updating English strings in assertions.
 - If a new endpoint or response variant was added: confirm **both** `api/server.ts` AND `tests/e2e/fixtures.ts` were updated, and a unit test covers the new variant in `tests/unit/core/api.test.ts`.
 - If any E2E tests failed during this push cycle: add a dev-lesson entry in `dev-lessons/frontend.md` before considering the task done.
 

@@ -149,6 +149,12 @@ Static JSON for autocomplete suggestions.
 - **E2E:** Playwright. Pre-push hook runs all 4 browsers. CI runs Chrome only. Use `npm run e2e:docker` for Linux-WebKit parity.
 - **WebKit Quirks:** Use `click({ force: true })` on submit buttons in Headless UI modals and increase `toBeHidden` timeouts for WebKit.
 
+### Selector strategy (RTL + Playwright)
+
+Full rules: [rules/frontend.md §6](../rules/frontend.md) — Testing Rules.
+
+**Short version:** Use `data-testid` + `getByTestId` for anything you **click** and for assertions that a **step, section, or modal** is visible. Do not assert wizard/section presence with `getByText(/English/i)` on strings that come from `t()` — those tests break on every copy or locale change. See dev-lessons: *Unit tests asserting on i18n headings* (search `dev-lessons/frontend.md`).
+
 ### Mock Server (`api/server.ts`)
 
 The mock server is a Fastify instance that mirrors the real backend API. It is used by E2E tests and local development (`npm run mock:server`). It does **not** auto-sync with the OpenAPI spec — it must be maintained manually.
