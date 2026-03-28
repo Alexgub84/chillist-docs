@@ -8,6 +8,34 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [AI] Vercel AI SDK v5 — version compatibility and `generateObject` with `output: 'array'`
+
+**Date:** 2026-03-26
+**Problem:** Multiple dependency conflicts when integrating `ai@5` (Vercel AI SDK): (1) `ai@5` requires `zod@^3.25`, but the project had `zod@3.24`. (2) `@ai-sdk/anthropic@3` and `@ai-sdk/openai@3` implement spec v3, but `ai@5` expects v2 providers — causing TS error `Type '"v3"' is not assignable to type '"v2"'`. (3) `ai/test` module requires `msw` as a peer dependency. (4) `generateObject` with `output: 'array'` internally wraps the Zod schema in `{ elements: z.array(schema) }`, so mock models must return `{ "elements": [...] }` not a bare JSON array — this caused all mock tests to fail with "value must be an object that contains an array of elements".
+**Solution:** (1) Upgraded Zod to `3.25.76`. (2) Downgraded providers to v2: `@ai-sdk/anthropic@2.0.71` and `@ai-sdk/openai@2.0.101`. (3) Installed `msw` as devDependency. (4) Updated all mock model responses to wrap arrays in `{ elements: [...] }`.
+**Prevention:** When installing `ai@5`, pin compatible provider versions (`@ai-sdk/anthropic@2`, `@ai-sdk/openai@2`). Always check the `output: 'array'` wrapping behavior in tests — mock models must return the wrapped format. Check `ai/test` peer dependencies (`msw`).
+
+### [AI] Adding new env vars can break existing env guard tests
+
+**Date:** 2026-03-26
+**Problem:** Adding `AI_PROVIDER` (defaulting to `anthropic`) with a `.refine()` guard requiring `ANTHROPIC_API_KEY` in production caused existing WhatsApp and internal-auth env guard tests to fail. Their `PROD_BASE` fixtures didn't include the new AI key, so the global production validation rejected them.
+**Solution:** Updated `PROD_BASE` in `tests/unit/whatsapp/env-guards.test.ts` and `tests/unit/internal-auth/env-guards.test.ts` to include `ANTHROPIC_API_KEY: 'sk-ant-test-key'`.
+**Prevention:** When adding a new env variable with a production `.refine()` guard, search for all `PROD_BASE` / production env fixtures in test files and add the new variable. Global validation means any production test fixture must satisfy ALL refine guards, not just the ones being tested.
+
+### [AI] Prompt templates should be in a separate file from prompt assembly logic
+
+**Date:** 2026-03-26
+**Problem:** Initial prompt builder mixed static instruction text (system role, category rules, closing instructions) with dynamic assembly logic (inserting plan context, computing duration labels) in a single file. This made it hard to iterate on prompt content without risking logic changes.
+**Solution:** Extracted all static prompt text into `prompt-templates.ts` (SYSTEM_INSTRUCTION, CONTEXT_GUIDANCE, CATEGORY_RULES, SUBCATEGORY_GUIDANCE, VALID_ENUMS, CLOSING_INSTRUCTION). The `build-prompt.ts` file only handles dynamic assembly: reading plan context and inserting template sections.
+**Prevention:** For AI features, always separate prompt content (what the AI sees) from prompt assembly (how plan data is formatted). This lets prompt engineers iterate on wording without touching logic, and lets developers test assembly independently.
+
+### [AI] Self-explanatory naming for AI modules — plan for future AI features
+
+**Date:** 2026-03-26
+**Problem:** Initial file names (`context.ts`, `types.ts`) were too generic. As more AI features are added (chatbot, meal planning, etc.), generic names would cause confusion.
+**Solution:** Renamed to descriptive names: `plan-context-formatters.ts` (reusable formatters), `item-suggestions/` (feature-specific module), `build-prompt.ts`, `output-schema.ts`, `prompt-templates.ts`, `generate.ts`. Shared utilities live in `src/services/ai/` and feature-specific modules in subdirectories.
+**Prevention:** When creating AI service files, use the pattern: shared utilities in `src/services/ai/` with descriptive names, feature-specific code in `src/services/ai/<feature-name>/` subdirectories.
+
 ### [Items] Duplicated create/update in routes + empty `assignmentStatusList` for `personal_equipment`
 
 **Date:** 2026-03-24
@@ -119,6 +147,48 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 **Problem:** The WebSocket `/plans/:planId/ws` endpoint validated the JWT and checked that the plan existed, but did not verify the authenticated user was actually a participant/creator of the plan. Any user with a valid JWT could subscribe to any plan's WebSocket.
 **Solution:** Replaced the raw plan-exists query with `checkPlanAccess()` — the same utility used by REST routes — which enforces creator, participant, public/private visibility, and admin checks. Also added warn/error logs on all rejection paths and try/catch on `ws.send()` in broadcast.
 **Prevention:** When adding new access-controlled endpoints (including WebSocket), always reuse the existing access-check utility (`checkPlanAccess`) rather than writing ad-hoc queries. Every new feature should pass through a log-level analysis per backend rule #4.
+
+### [AI] Anthropic model IDs get deprecated — use latest aliases or dated IDs
+
+**Date:** 2026-03-26
+**Problem:** `claude-3-5-haiku-20241022` returned 404 from the Anthropic API — the model was deprecated without warning.
+**Solution:** Updated `model-provider.ts` to use `claude-haiku-4-5-20251001` (the current Haiku model as of March 2026).
+**Prevention:** When setting AI model IDs, periodically verify they are still active. Consider using `latest` aliases where available, or pin to a dated version and add a comment noting when to check for updates.
+
+### [AI] generateObject with output:'array' rejects entire response if one item fails validation
+
+**Date:** 2026-03-26
+**Problem:** The AI model occasionally drops required fields (quantity, unit) on 1-2 items out of 40. `generateObject` validates all items and throws `NoObjectGeneratedError` if any single item fails, discarding 38+ valid items.
+**Solution:** Added `salvageFromRawText()` fallback: when `NoObjectGeneratedError` is caught, extract the raw JSON text, parse each item individually with `safeParse`, and return only the valid items.
+**Prevention:** When using `generateObject` with `output: 'array'` and large output arrays, always implement a salvage/fallback path. LLMs will occasionally produce malformed items in large batches — don't let one bad item destroy the entire response.
+
+### [AI] AI models return decimal quantities for food items — schema must allow floats
+
+**Date:** 2026-03-26
+**Problem:** Schema used `z.number().int().positive()` for quantity, but the AI naturally returns fractional values like `0.5 kg cheese`, `1.5 l milk`. Every food-heavy scenario failed Zod validation.
+**Solution:** Changed to `z.number().positive()` (allowing decimals). Updated JSON schema from `type: 'integer'` to `type: 'number'`.
+**Prevention:** When designing schemas for AI-generated content, consider how the model naturally expresses quantities. Food/weight/volume quantities are inherently fractional — don't force integers.
+
+### [AI] Personal equipment qty=1 rule must be stated THREE times in the prompt
+
+**Date:** 2026-03-26
+**Problem:** Prompt said "Quantity = 1 per person" for personal_equipment, but the AI interpreted this as "1 × N people = N" and set qty to match group size.
+**Solution:** Added the instruction in THREE places: (1) CATEGORY_RULES with "IMPORTANT:" prefix, (2) explicit "Do NOT multiply by group size", (3) CLOSING_INSTRUCTION reminder. After this triple reinforcement, all scenarios produce qty=1 consistently.
+**Prevention:** For critical constraints the AI must follow, state them multiple times in different parts of the prompt — definition, explicit do/don't, and closing reminder. One mention is not enough.
+
+### [Docker] New env vars break Docker E2E tests when required in production
+
+**Date:** 2026-03-28
+**Problem:** After adding `AI_PROVIDER` / `ANTHROPIC_API_KEY` env vars with production-required Zod `.refine()` guards, the `docker-compose.test.yml` (which uses `NODE_ENV=production`) was missing them. The API container crashed on startup during the Docker E2E test (`docker-health.test.ts`), blocking `git push`.
+**Solution:** Added dummy values (`AI_PROVIDER=anthropic`, `ANTHROPIC_API_KEY=sk-ant-docker-test-dummy`) to `docker-compose.test.yml`.
+**Prevention:** Whenever adding a new env var that is required in production, immediately update `docker-compose.test.yml` with a dummy value. Treat it as part of the same change.
+
+### [AI] Localized subcategories break "known vocabulary" assertions
+
+**Date:** 2026-03-28
+**Problem:** After updating the prompt to generate subcategories in the plan language (he/es) and encouraging custom labels, the prompt-quality test assertion `≥70% subcategories from known vocabulary` failed on every non-camping scenario (hotel 27%, winter 12%).
+**Solution:** Replaced with a simpler `every item has a non-empty subcategory` assertion. Also removed the duplicated subcategory guidance from `plan-context-formatters.ts` (imported `SUBCATEGORY_GUIDANCE` from `prompt-templates.ts` instead).
+**Prevention:** When changing prompt guidance from "prefer this list" to "use as inspiration", immediately check test assertions that assumed the old behavior (percentage-based vocabulary compliance checks).
 
 ### [Category] Short Title
 

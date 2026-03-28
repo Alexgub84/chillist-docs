@@ -55,6 +55,9 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 - Wrap async state updates (navigation, timers, provider mounts) in `act()` in unit tests.
 - **Test every API response variant, not only the happy path.** For each `fetchX` function in `src/core/api.ts`, write a unit test in `tests/unit/core/api.test.ts` for every shape the backend can return — success, access-restricted (e.g. `not_participant`), empty list, and Zod schema mismatch. A function with only a happy-path test has incomplete coverage and is a production risk.
 - **Updating `api/server.ts` is mandatory** whenever any of the following change: a new endpoint is added, an existing endpoint gains a new response shape or access-control state, a field is renamed or removed. The mock server is the test contract — letting it drift from the real API is the most common cause of bugs that pass all tests but fail in production. Treat `api/server.ts` as a first-class code artifact, not a one-time scaffold.
+- **`tests/e2e/fixtures.ts` must be updated in the same PR as any API endpoint change.** `api/server.ts` (unit test mock) and `fixtures.ts` (E2E mock) are two separate mock layers — updating one does NOT update the other. Whenever an endpoint URL, HTTP method, or response shape changes: update both files. Common failure: refactoring to a `/bulk` endpoint, updating `api/server.ts`, but leaving `fixtures.ts` pointing at the old URL. This passes all unit tests but breaks every E2E test that exercises the flow.
+- **E2E mock responses must match the Zod schema the app parses.** Never mock an endpoint with `{ ok: true }` when the real handler returns a structured response. Check `src/core/api.ts` to see what `bulkItemResponseSchema`, `itemSchema`, etc. require, and make mock responses satisfy those schemas exactly.
+- **Every E2E test failure must be recorded in `dev-lessons/frontend.md`.** When an E2E test fails during a push: (1) identify the root cause before patching; (2) fix the underlying issue; (3) add a dev-lesson entry at the top with: date, failing test names, root cause, solution, and lesson. This prevents the same category of breakage from recurring silently.
 
 ## 7) Logging and Error Handling
 
@@ -84,7 +87,8 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 - If API contract changed on backend, run `npm run api:sync`.
 - Update `src/data/changelog.ts` for user-visible changes.
 - Ensure changed behavior is reflected in tests.
-- If a new endpoint or response variant was added: confirm `api/server.ts` was updated and a unit test covers the new variant in `tests/unit/core/api.test.ts`.
+- If a new endpoint or response variant was added: confirm **both** `api/server.ts` AND `tests/e2e/fixtures.ts` were updated, and a unit test covers the new variant in `tests/unit/core/api.test.ts`.
+- If any E2E tests failed during this push cycle: add a dev-lesson entry in `dev-lessons/frontend.md` before considering the task done.
 
 ## 11) Docs Updates
 

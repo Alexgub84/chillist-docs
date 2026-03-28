@@ -148,6 +148,7 @@ All routes that require JWT will return 401. Guest invite routes (`/plans/:planI
 | `npm run test:unit`        | Unit tests only                                              |
 | `npm run test:integration` | Integration tests only (requires Docker)                     |
 | `npm run test:e2e`         | E2E tests only (requires Docker)                             |
+| `npm run test:ai-prompt-quality` | Real AI API — item-suggestion prompt quality (optional; costs tokens; needs `AI_PROVIDER` + key in `.env`) |
 | `npm run db:generate`      | Generate Drizzle migration files                             |
 | `npm run db:migrate`       | Run pending migrations                                       |
 | `npm run db:studio`        | Open Drizzle Studio                                          |

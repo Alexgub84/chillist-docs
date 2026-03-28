@@ -6,6 +6,45 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [E2E] Mobile Safari flakiness in plans.spec.ts — error states and filter clicks
+
+**Date:** 2026-03-26
+**Failing tests (Mobile Safari only):**
+- `Plans Page › displays user-friendly error when API fails` — "Server Error" not found within 15s
+- `Plans Page › displays connection error when network fails` — "Connection Problem" not found within 15s
+- `Plans Page › displays config error when API returns HTML` — "Server Configuration Error" not found within 15s
+- `Membership Filter › user can filter plans by owned and invited` — `membership-filter-owned` click timed out (locator resolved but element not "stable")
+- `Plans List Auth CTA › unauthenticated user sees sign-in and sign-up buttons` — "My Plans" not found within 15s
+**Root Cause:** Two distinct Mobile Safari issues:
+1. **Timeout too short for error/auth states**: On Mobile Safari/WebKit, React Query's initial loading state resolves more slowly than on Chrome/Firefox. Error states (500, network abort, HTML response) and auth-dependent content need more than 15s to surface after `page.goto()`. This is consistent with WebKit's slower event loop and stricter security model.
+2. **Element "not stable" on click**: The membership filter buttons have CSS transitions that cause Playwright's stability check to block the click indefinitely on Mobile Safari. Even with the `transition-duration: 10ms` CSS injection in fixtures, WebKit sometimes doesn't honor `!important` overrides fast enough for Playwright's assertion timing.
+**Solution:**
+1. **Error state / auth state timeouts**: Added `data-testid="plans-error-title"`, `data-testid="plans-error-message"`, `data-testid="plans-error-retry"` to the error block, and `data-testid="plans-unauthenticated"` to the unauthenticated container in `plans.lazy.tsx`. Updated tests to use `getByTestId` — this is faster and more reliable than `getByText` on all browsers because it doesn't depend on text rendering order.
+2. **Filter button "not stable" on click**: Added a `isWebKitTest` flag at module level in `PlansList.tsx` (same pattern as `useSimpleModal` in `Modal.tsx`) — activates when `VITE_AUTH_MOCK === 'true'` AND the UA is WebKit without Chrome/jsdom. When active, `transition-all` is omitted from filter button classNames so Playwright's stability check completes immediately. Production and Chrome/Firefox tests are unaffected.
+**Pattern to apply when Mobile Safari E2E tests have element stability failures:**
+- First check: is there a `data-testid` on the element being asserted? If not, add one — `getByTestId` is inherently more stable than `getByText`.
+- If click times out "waiting for stable": check if the element has `transition-all` or `transition-*` Tailwind classes. If yes, apply the `isWebKitTest` guard to conditionally omit the transition class (same pattern as `PlansList.tsx` filter buttons and `Modal.tsx`'s `useSimpleModal`). Do NOT just add `force: true` or increase timeouts — fix the root cause.
+- Never increase assertion timeouts without first ruling out a missing `data-testid` or an animation issue.
+
+---
+
+### [E2E] Bulk add E2E mocks not updated when API refactored to /bulk endpoint
+
+**Date:** 2026-03-26
+**Failing tests:**
+- `Item CRUD › bulk adds multiple items via wizard modal` (all 4 browsers)
+- `Invite Landing Page › guest can bulk add items from invite items page` (all 4 browsers)
+**Problem:** 8 E2E tests failed with `toBeVisible` timeout on the success toast after bulk add submission. The tests submitted the bulk add wizard but the toast never appeared.
+**Root Cause:** A previous PR (`b6367c7`) refactored bulk item creation to use a dedicated `POST /plans/:planId/items/bulk` endpoint (replacing the old Promise.allSettled loop over individual POSTs). The `api/server.ts` mock server and unit tests were updated in that PR, but `tests/e2e/fixtures.ts` and `tests/e2e/main-flow.spec.ts` were not. The E2E fixtures only mocked `POST .../items` (single-item endpoint). The `/bulk` request had no mock, fell through to the real server, failed silently, and the success toast was never shown.
+
+For the guest bulk add test, there was a second bug: the mock URL was `.../items` instead of `.../items/bulk`, AND the response was `{ ok: true }` instead of the required `{ items: [...], errors: [] }` shape — which would have caused `bulkItemResponseSchema.parse()` to throw even if the URL had matched.
+**Solution:**
+1. In `fixtures.ts` (`mockPlanRoutes`): added mock for `POST /plans/${planId}/items/bulk` that builds items from the request body and returns `{ items: [...newItems], errors: [] }`. Also expanded `MockItem.category` and `buildItem()` types to include `'personal_equipment'`.
+2. In `main-flow.spec.ts` test 2: fixed mock URL from `.../items` to `.../items/bulk` and updated the response from `{ ok: true }` to a valid `BulkItemResponse` shape.
+**Lesson:** When a PR introduces a new API endpoint that replaces an existing one, the E2E fixtures must be updated in the same PR — not just `api/server.ts`. The two mock layers serve different test environments and both must stay in sync with the real API contract. Always check `tests/e2e/fixtures.ts` whenever any of these change: endpoint URL, HTTP method, or response shape.
+
+---
+
 ### [Arch] Split equipment category into group_equipment and personal_equipment
 
 **Date:** 2026-03-24
