@@ -183,6 +183,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 **Solution:** Added dummy values (`AI_PROVIDER=anthropic`, `ANTHROPIC_API_KEY=sk-ant-docker-test-dummy`) to `docker-compose.test.yml`.
 **Prevention:** Whenever adding a new env var that is required in production, immediately update `docker-compose.test.yml` with a dummy value. Treat it as part of the same change.
 
+### [AI] Localized subcategories break "known vocabulary" assertions
+
+**Date:** 2026-03-28
+**Problem:** After updating the prompt to generate subcategories in the plan language (he/es) and encouraging custom labels, the prompt-quality test assertion `≥70% subcategories from known vocabulary` failed on every non-camping scenario (hotel 27%, winter 12%).
+**Solution:** Replaced with a simpler `every item has a non-empty subcategory` assertion. Also removed the duplicated subcategory guidance from `plan-context-formatters.ts` (imported `SUBCATEGORY_GUIDANCE` from `prompt-templates.ts` instead).
+**Prevention:** When changing prompt guidance from "prefer this list" to "use as inspiration", immediately check test assertions that assumed the old behavior (percentage-based vocabulary compliance checks).
+
 ### [Category] Short Title
 
 **Date:** YYYY-MM-DD

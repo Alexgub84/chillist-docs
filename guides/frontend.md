@@ -13,6 +13,8 @@ Before opening deep docs or scanning folders, start in the frontend repo with:
 
 Then open only files relevant to the task. Use this guide when you need deeper setup and operational detail.
 
+**Subcategories + multiple languages:** see [`frontend-subcategories-i18n.md`](./frontend-subcategories-i18n.md) for refactor guidance (grouping, autocomplete, bulk-add, AI alignment).
+
 ## Tech Stack
 
 React 19, TypeScript, Vite 7, Tailwind CSS v4, TanStack Router, TanStack React Query, React Hook Form + Zod, openapi-fetch, Headless UI, i18next, Vitest, Playwright.

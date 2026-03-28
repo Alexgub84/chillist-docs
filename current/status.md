@@ -42,7 +42,7 @@ Items are the core of every plan — the shared list of everything the group nee
 
 You can add a single item with full details, or use the **bulk add wizard** to pick from a library of 700+ suggested items organized by subcategory (Cooking Equipment, Fresh Vegetables, Dairy, First Aid, Lighting, Beverages, Vegan, and many more). Search, select, and add multiple items at once.
 
-**AI** — You can **suggest items with AI** from the last step of plan creation (before the library picker) or from the plan page via the floating action menu. The app calls the backend to generate suggestions from your plan (dates, location, tags, group size). You preview suggestions in a modal, adjust quantities, deselect items, then add the rest in one bulk action. Personal equipment suggestions are assigned to everyone (one per participant).
+**AI** — You can **suggest items with AI** from the last step of plan creation (before the library picker) or from the plan page via the floating action menu. The app calls the backend to generate suggestions from your plan (dates, location, tags, group size). Item names, subcategories, and reasons are generated in the **plan's language** (English, Hebrew, or Spanish). The AI may create plan-specific subcategory labels (e.g. "Fishing Gear", "Ski Equipment") beyond the built-in examples. You preview suggestions in a modal, adjust quantities, deselect items, then add the rest in one bulk action. Personal equipment suggestions are assigned to everyone (one per participant).
 
 Items are grouped by category, then by subcategory. Four views are available:
 

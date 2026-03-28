@@ -228,12 +228,12 @@ Uses `MockLanguageModelV2` from `ai/test` — drop-in replacement for any `Langu
 Each scenario validates:
 - Valid category/unit enum values
 - Non-empty name and reason
-- 70%+ subcategories from known vocabulary
+- Every item has a non-empty subcategory (custom labels allowed)
 - `personal_equipment` items have `quantity = 1`
 - At least one item from each category
 - Sleeping gear presence/absence based on accommodation tags
 
-Run manually: `AI_PROVIDER=anthropic ANTHROPIC_API_KEY=sk-ant-... npx vitest run tests/unit/ai/item-suggestions/prompt-quality.test.ts`
+Run manually: `npm run test:ai-prompt-quality` (see `scripts/test-ai-prompt-quality.sh`).
 
 ---
 
