@@ -1,7 +1,7 @@
 # Chillist — AI Item Generation
 
 > **Purpose:** Single source of truth for the AI-powered item suggestion feature — architecture, API contract, test strategy, decisions, and implementation phases.
-> **Last updated:** 2026-03-26
+> **Last updated:** 2026-03-28
 
 ---
 
@@ -33,7 +33,9 @@ All fields are optional. AI degrades gracefully when some are absent.
 
 **Auth:** JWT required. Caller must be a participant of the plan (enforced via `checkPlanAccess`).
 
-**Request:** No body. All context is derived from the plan record.
+**Request:** No body. All trip context is derived from the plan record.
+
+**Language:** `name`, `subcategory`, and `reason` follow the plan’s `defaultLang` (`en`, `he`, or `es`; null/unknown → English). `category` and `unit` stay English enum values.
 
 **Response (200):**
 
@@ -67,7 +69,7 @@ All fields are optional. AI degrades gracefully when some are absent.
 |---|---|---|
 | `name` | `string` | Free text (AI-generated) |
 | `category` | `enum` | `group_equipment`, `personal_equipment`, `food` — from `ITEM_CATEGORY_VALUES` in `src/db/schema.ts` |
-| `subcategory` | `string` | Prompt-guided to use known vocabulary (see section 4), but free text |
+| `subcategory` | `string` | Free text in the plan language. The prompt lists example subcategories as inspiration; the model may invent new labels (e.g. plan-specific gear groupings) when they fit the trip better than any example. |
 | `quantity` | `number` | Positive integer. `personal_equipment` items use quantity=1 (assigned per participant) |
 | `unit` | `enum` | `pcs`, `kg`, `g`, `lb`, `oz`, `l`, `ml`, `m`, `cm`, `pack`, `set` — from `UNIT_VALUES` in `src/db/schema.ts` |
 | `reason` | `string` | Short explanation of why the AI suggested this item |
@@ -87,12 +89,12 @@ Both are imported directly from `src/db/schema.ts` — single source of truth.
 
 **Soft constraint** (prompt-guided):
 
-Subcategory is `varchar(255)` in the DB (not an enum). The AI prompt lists the known subcategory vocabulary. AI is instructed to prefer these values but may create new ones for novel activity types.
+Subcategory is `varchar(255)` in the DB (not an enum). The lists below are **example** subcategories to guide grouping; output language matches `defaultLang` for Hebrew/Spanish plans, and the model is encouraged to create new subcategory labels when the trip’s activities need a grouping not covered by the examples.
 
-**Equipment subcategories:**
+**Example equipment subcategories:**
 `Venue Setup and Layout`, `Comfort and Climate Control`, `Cooking and Heating Equipment`, `First Aid and Safety`, `Games and Activities`, `Food Storage and Cooling`, `Lighting and Visibility`, `Kids and Baby Gear`, `Drink and Beverage Equipment`, `Other`
 
-**Food subcategories:**
+**Example food subcategories:**
 `Beverages (non-alcoholic)`, `Beverages (alcoholic)`, `Grains and Pasta`, `Snacks and Chips`, `Breakfast Staples`, `Meat and Proteins`, `Vegan`, `Fresh Produce`, `Other`
 
 These values live in `src/services/ai/subcategories.ts` as const arrays and are injected into the prompt template — never hardcoded as inline strings.
@@ -113,11 +115,15 @@ Instead of a custom `IAiService` interface, the feature uses Vercel AI SDK primi
 ### Core function
 
 ```typescript
-generateItemSuggestions(model: LanguageModelV2, plan: PlanForAiContext)
+generateItemSuggestions(
+  model: LanguageModelV2,
+  plan: PlanForAiContext,
+  lang?: 'en' | 'he' | 'es'
+)
   → Promise<{ suggestions: ItemSuggestion[], prompt: string, usage: {...} }>
 ```
 
-Accepts any `LanguageModelV2` (real provider or mock). Returns parsed suggestions, the prompt that was sent, and token usage.
+`lang` defaults to `en`. Accepts any `LanguageModelV2` (real provider or mock). Returns parsed suggestions, the prompt that was sent, and token usage.
 
 ### Context formatters (reusable)
 
@@ -136,7 +142,7 @@ Prompt assembly in `src/services/ai/item-suggestions/build-prompt.ts` uses templ
 2. **Plan context** — title, duration, location, tags, group size (dynamic)
 3. **CONTEXT_GUIDANCE** — how to interpret duration, location, tags+accommodation, group size
 4. **CATEGORY_RULES** — personal_equipment (qty=1/person), group_equipment (shared), food (scaled)
-5. **SUBCATEGORY_GUIDANCE** — preferred subcategory vocabulary
+5. **SUBCATEGORY_GUIDANCE** — example subcategories (inspiration; model may invent new labels)
 6. **VALID_ENUMS** — allowed category and unit values
 7. **CLOSING_INSTRUCTION** — 15-40 items, each with a reason
 
@@ -248,7 +254,7 @@ Run manually: `AI_PROVIDER=anthropic ANTHROPIC_API_KEY=sk-ant-... npx vitest run
 
 ### New files (BE)
 
-- `src/services/ai/subcategories.ts` — subcategory vocabulary constants
+- `src/services/ai/subcategories.ts` — example subcategory labels used in prompts
 - `src/services/ai/plan-context-formatters.ts` — reusable plan→AI context formatters
 - `src/services/ai/model-provider.ts` — resolveLanguageModel + createProviderRegistry
 - `src/services/ai/index.ts` — barrel exports
