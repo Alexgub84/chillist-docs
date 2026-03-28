@@ -6,6 +6,20 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Wizard / State] Navigate after AI bulk-add — don’t infer success from modal `onClose` + React state
+
+**Date:** 2026-03-28
+**Problem:** After confirming AI suggestions in `CreatePlanWizard` `ItemsStep`, the modal called `onAdd` then `onClose`. Closing only cleared local modal state, so the user stayed on the items step until they tapped **Go to plan**.
+**Solution:** Introduced `handleAiAdd`: `await handleAdd(items)` then `onDone()` (navigate to plan). Wired `AiSuggestionsModal` with `onAdd={handleAiAdd}` while `BulkItemAddWizard` still uses `handleAdd` alone. Dismissing the AI modal without confirming never runs `onAdd`, so no navigation.
+**Prevention:** When a modal’s “success” path must trigger navigation or other side effects, chain them in the same async callback as the mutation/add — do not rely on `onClose` plus `useState` (e.g. `itemsAdded > 0`) that may lag or race with the close handler. Same pattern applies anytime `onClose` fires for both cancel and success.
+
+### [UX / Preview] AI duplicate hint vs real deduplication
+
+**Date:** 2026-03-28
+**Problem:** Contributors may assume we block or filter duplicate AI suggestions against existing plan items.
+**Reality:** `AiSuggestionsModal` compares `row.suggestion.name.trim().toLowerCase()` to a `Set` of existing `plan.items` names (lowercased). Matches only affect **UI** (amber row + `items.aiDuplicateHint`). Users can still select and submit; the bulk API owns real duplicate rules.
+**Prevention:** Document that the hint is advisory; if product should hard-block duplicates, implement in API or filter selections before `onAdd`, not only in styles.
+
 ### [UX / Auth] AI item suggestions entry points — owner-only on existing plans
 
 **Date:** 2026-03-28
