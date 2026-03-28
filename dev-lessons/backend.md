@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [AI] Claude Haiku and non-English output — add prompt guards and script checks
+
+**Date:** 2026-03-28
+**Problem:** Claude Haiku 4.5 produced low-quality Hebrew: invented words, mixed scripts (Latin/CJK/Arabic in Hebrew fields), and wrong meanings. Dietary data on `participants` was never passed into the AI prompt, so vegan/restricted guests were ignored. Unbounded subcategory labels fragmented lists.
+**Solution:** (1) Hebrew-specific instructions in `getLanguageInstruction` (natural Hebrew, no fake words, no mixed scripts). (2) Cap distinct subcategories (aim 4–8) in `SUBCATEGORY_GUIDANCE`. (3) Aggregate `foodPreferences` / `dietaryMembers` for confirmed+pending participants into `dietarySummary` and inject via `getDietaryInstruction`. (4) Use Claude Sonnet 4 for non-English (`resolveLanguageModel(..., lang)`), Haiku for English. (5) Prompt-quality tests: script contamination checks on Hebrew `name`/`subcategory`, vegan scenario, optional Hebrew vegan keywords.
+**Prevention:** For any non-English AI output, add explicit quality rules in the prompt, prefer a stronger model for that locale, and add automated checks (script regex, keyword coverage) in optional real-API prompt-quality tests.
+
 ### [AI] Vercel AI SDK v5 — version compatibility and `generateObject` with `output: 'array'`
 
 **Date:** 2026-03-26

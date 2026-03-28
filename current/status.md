@@ -2,7 +2,7 @@
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
 > **Last updated:** 2026-03-28
-> **BE version:** 3811299 (chillist-be `fix/item-mutation-consolidation`)
+> **BE version:** (update on deploy — AI suggestions: dietary context, Hebrew quality guards, Sonnet for non-English, `plans.ai_generation_count`)
 > **FE version:** —
 
 ---
@@ -42,9 +42,9 @@ Items are the core of every plan — the shared list of everything the group nee
 
 You can add a single item with full details, or use the **bulk add wizard** to pick from a library of 700+ suggested items organized by subcategory (Cooking Equipment, Fresh Vegetables, Dairy, First Aid, Lighting, Beverages, Vegan, and many more). Search, select, and add multiple items at once.
 
-**AI** — You can **suggest items with AI** from the last step of plan creation (before the library picker) or from the plan page via the floating action menu. The app calls the backend to generate suggestions from your plan (dates, location, tags, group size). Item names, subcategories, and reasons are generated in the **plan's language** (English, Hebrew, or Spanish). The AI may create plan-specific subcategory labels (e.g. "Fishing Gear", "Ski Equipment") beyond the built-in examples. You preview suggestions in a modal, adjust quantities, deselect items, then add the rest in one bulk action. Personal equipment suggestions are assigned to everyone (one per participant).
+**AI** — **Plan owners** can **suggest items with AI** from the last step of plan creation (before the library picker), from the plan page via a **Suggest items with AI** button beside the Items heading and via the floating action menu, and from the full **Manage Items** page via the same button and menu. Non-owners do not see these entry points (backend still enforces access on the AI endpoint). The app calls the backend to generate suggestions from your plan (dates, location, tags, group size, and **aggregated dietary preferences** from confirmed/pending participants). Item names, subcategories, and reasons are generated in the **plan's language** (English, Hebrew, or Spanish); non-English calls use a stronger model tier for quality. The AI may create plan-specific subcategory labels (e.g. "Fishing Gear", "Ski Equipment") beyond the built-in examples, guided to keep a moderate number of distinct subcategories. You preview suggestions in a modal, adjust quantities, deselect items, then add the rest in one bulk action. Personal equipment suggestions are assigned to everyone (one per participant). Confirming AI suggestions during plan creation closes the wizard and navigates to the plan page.
 
-Items are grouped by category, then by subcategory. Four views are available:
+Items are grouped by category, then by subcategory. **Subcategory handling is multilingual:** subcategory values are stored in the plan's language (English, Hebrew, or Spanish). Grouping uses the stored string, group headers display it directly, and sorting respects the active locale. The item form has a subcategory autocomplete with localized suggestions. Bulk-add translates subcategories to the plan language at creation time. Unknown/custom subcategories (from AI or user) are displayed as-is. Four views are available:
 
 - **All Items** — everything in the plan
 - **My Items** — only items assigned to you
@@ -136,7 +136,7 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 3. Step 1: Enter title, pick plan type tags via the 3-tier tag wizard (e.g., Camping → Cooking → Shared meals), optionally add a description, or skip tags.
 4. Step 2: Enter dates, location (Google Maps autocomplete), language, currency → click Next.
 5. Step 3: Fill in your details (adults/kids count, dietary needs, allergies) and estimate total group size → click Next (plan is created silently).
-6. Step 4: Bulk-pick items from the 700+ item library, or skip to go straight to the plan.
+6. Step 4: Bulk-pick items from the 700+ item library, confirm **Suggest items with AI** (then you land on the plan), or skip to go straight to the plan.
 7. From the plan page: add participants by name/phone, or share invite links.
 8. Assign items to participants (or let them self-assign).
 9. Track progress as people mark items purchased and packed.

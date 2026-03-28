@@ -41,6 +41,7 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 - Extract repeated patterns into shared components when used in 3+ places.
 - **Always use `data-testid` for testable elements.** It is the best way to target elements in E2E and unit tests. Add `data-testid` (or a `testId` prop on shared components like Modal) on: buttons, links, dialogs, forms, and any element tests need to interact with or assert on. Prefer `getByTestId` over `getByRole`, `getByText`, or `getByLabel` — test IDs are stable across i18n changes, layout shifts, and Headless UI transitions.
 - For auth-gated UI changes, cover owner, non-owner authenticated, and unauthenticated states.
+- **AI item suggestions** on the plan page and Manage Items route are **owner-only** in the UI (inline button + floating menu). Wizard step during plan creation remains available to the creator (owner flow).
 - All user-facing strings must use `t()` from `useTranslation()`. Add keys to both `en.json` and `he.json`.
 - **Form validation messages must use `t()`.** Never hardcode English strings in Zod schemas used by forms. Convert static schemas to factory functions: `function buildXxxSchema(t: (key: string) => string)` and call `buildXxxSchema(t)` inside the component. Use `validation.*` i18n keys. Type inference: `z.infer<ReturnType<typeof buildXxxSchema>>`.
 - API enum values must be translated at display time (`t('namespace.${value}')`), not stored translated.

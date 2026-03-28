@@ -6,6 +6,22 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [UX / Auth] AI item suggestions entry points — owner-only on existing plans
+
+**Date:** 2026-03-28
+**Problem:** The plan page and Manage Items page exposed "Suggest items with AI" in the floating action menu to every signed-in participant. AI bulk-add is an owner-level concern; the backend should enforce too, but the UI should not invite non-owners to open the flow.
+**Solution:** Pass `onSuggestItems` to `FloatingActions` only when `usePlanRole().isOwner` is true on `plan.$planId` and `items.$planId`. Add a visible **Suggest items with AI** button (`plan-ai-suggest-btn` / `items-view-ai-suggest-btn`) beside the Items heading for owners so the feature is discoverable without opening the speed dial.
+**Prevention:** When adding plan-scoped "power user" actions, default to owner (or explicit `canEdit` from role) for the UI; keep using `data-testid` on new buttons for E2E.
+
+### [Schema] AI suggestion quantity rejected — Zod schema too strict for LLM output
+
+**Date:** 2026-03-28
+**Problem:** `POST /plans/:planId/ai-suggestions` returned float quantities (0.5, 1.5) from the AI model. The frontend Zod schema `z.number().int().min(1)` rejected them, showing a red validation error wall instead of suggestions.
+**Solution:** Changed to `z.number().transform(v => Math.max(1, Math.ceil(v)))` — accept any number, round up, floor at 1.
+**Prevention:**
+- AI/LLM endpoints return unpredictable values (floats, zeros, unexpected ranges). Use `.transform()` to coerce rather than `.int()/.min()` to reject. Be lenient on input, strict on output.
+- Mock data for AI endpoints must include realistic messy values (floats like 0.5, edge values like 0), not only clean integers. All three mock layers (unit, mock server, E2E fixtures) used `quantity: 1` — the safest possible value — and missed this entirely.
+
 ### [E2E] Mobile Safari flakiness in plans.spec.ts — error states and filter clicks
 
 **Date:** 2026-03-26

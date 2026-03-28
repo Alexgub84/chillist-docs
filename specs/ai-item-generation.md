@@ -24,6 +24,7 @@ All fields are optional. AI degrades gracefully when some are absent.
 | `tags[]` | `plans.tags` | Activity type (camping, beach, skiing, etc.) |
 | `estimatedAdults` | `plans` table | Adult count |
 | `estimatedKids` | `plans` table | Child count |
+| Dietary summary | `participants` rows with `rsvp_status` in `confirmed` or `pending` | Aggregated from `dietary_members` (per-person diets) or legacy `food_preferences` JSON string / plain diet keyword — formatted human-readable line injected into the prompt as **Dietary needs** |
 
 ---
 
@@ -89,7 +90,9 @@ Both are imported directly from `src/db/schema.ts` — single source of truth.
 
 **Soft constraint** (prompt-guided):
 
-Subcategory is `varchar(255)` in the DB (not an enum). The lists below are **example** subcategories to guide grouping; output language matches `defaultLang` for Hebrew/Spanish plans, and the model is encouraged to create new subcategory labels when the trip’s activities need a grouping not covered by the examples.
+Subcategory is `varchar(255)` in the DB (not an enum). The lists below are **example** subcategories to guide grouping; output language matches `defaultLang` for Hebrew/Spanish plans, and the model is encouraged to create new subcategory labels when the trip’s activities need a grouping not covered by the examples. The prompt asks for roughly **4–8 distinct subcategory labels** so lists stay scannable.
+
+**Hebrew / non-English:** Extra instructions require natural text, no invented words, and no mixed scripts in Hebrew fields. For `AI_PROVIDER=anthropic`, **English** uses Claude Haiku 4.5; **Hebrew and Spanish** use Claude Sonnet 4 for higher quality. For OpenAI, English uses `gpt-4o-mini` and non-English uses `gpt-4o`.
 
 **Example equipment subcategories:**
 `Venue Setup and Layout`, `Comfort and Climate Control`, `Cooking and Heating Equipment`, `First Aid and Safety`, `Games and Activities`, `Food Storage and Cooling`, `Lighting and Visibility`, `Kids and Baby Gear`, `Drink and Beverage Equipment`, `Other`
@@ -148,9 +151,14 @@ Prompt assembly in `src/services/ai/item-suggestions/build-prompt.ts` uses templ
 
 ### Model provider
 
-`src/services/ai/model-provider.ts` — `resolveLanguageModel(aiProvider)` returns:
-- `anthropic:claude-3-5-haiku-20241022` for `AI_PROVIDER=anthropic`
-- `openai:gpt-4o-mini` for `AI_PROVIDER=openai`
+`src/services/ai/model-provider.ts` — `resolveLanguageModel(aiProvider, lang)` (used by the AI suggestions route per request; `fastify.aiModel` still defaults to English Haiku for other callers):
+
+- **Anthropic:** `anthropic:claude-haiku-4-5-20251001` when `lang` is `en`; `anthropic:claude-sonnet-4-20250514` when `lang` is `he` or `es`
+- **OpenAI:** `openai:gpt-4o-mini` when `lang` is `en`; `openai:gpt-4o` when `lang` is `he` or `es`
+
+### Analytics
+
+`plans.ai_generation_count` increments by 1 on each successful `POST /plans/:planId/ai-suggestions` response (atomic SQL increment).
 
 ### Fastify plugin
 
@@ -165,10 +173,13 @@ Every AI request logged at `info` level in the route handler:
 ```typescript
 request.log.info({
   planId,
+  lang,
+  modelId: model.modelId,
   promptLength: result.prompt.length,
   suggestionsCount: result.suggestions.length,
   usage: result.usage,
-}, 'AI item suggestions generated')
+  durationSec,
+}, `AI item suggestions generated — … (${model.modelId})`)
 ```
 
 Failure: `request.log.error({ err, planId }, 'Failed to generate AI suggestions')` → 503 or 500.
@@ -207,6 +218,7 @@ Uses `MockLanguageModelV2` from `ai/test` — drop-in replacement for any `Langu
 | `tests/unit/ai/env-guards.test.ts` | AI env variable validation guards |
 | `tests/unit/ai/item-suggestions/output-schema.test.ts` | Zod schema parsing, enum validation, rejection of invalid data |
 | `tests/unit/ai/item-suggestions/build-prompt.test.ts` | Prompt content for various plan scenarios |
+| `tests/unit/ai/dietary-summary.test.ts` | Aggregation of participant diets into prompt text |
 | `tests/unit/ai/item-suggestions/generate.test.ts` | `generateItemSuggestions` with MockLanguageModelV2 — happy path, usage, empty, invalid JSON, invalid category, model error |
 
 ### Integration tests
