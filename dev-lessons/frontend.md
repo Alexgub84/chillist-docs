@@ -6,12 +6,12 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
-### [E2E] Mobile Safari — plan wizard “Go to plan” URL assertion timed out on `/create-plan`
+### [E2E] Mobile Safari — plan wizard “Go to plan” `waitForURL` timed out (SPA + default `waitUntil: 'load'`)
 
 **Date:** 2026-03-28
-**Problem:** Pre-push E2E: `creates a plan with owner and navigates to detail page` failed on **Mobile Safari only**. After `wizard-create-plan` click, `expect(page).toHaveURL(/\/plan\//)` waited 15s while the URL stayed `http://localhost:5174/create-plan`.
-**Solution:** Race navigation with the click: `await Promise.all([page.waitForURL(/\/plan\//, { timeout }), createPlanBtn.click({ force: isMobile })])`, and use **30s** timeout on mobile (15s desktop). Same pattern as elsewhere in `main-flow.spec.ts` (`waitForResponse` + click).
-**Prevention:** For client-side router navigations triggered by a button, prefer `Promise.all([waitForURL(...), click])` over click-then-assert URL — WebKit can complete navigation on a timeline where a sequential assertion races and flakes.
+**Problem:** Pre-push E2E: `creates a plan with owner and navigates to detail page` failed on **Mobile Safari only**. After `wizard-create-plan`, `waitForURL` timed out. Logs showed Playwright **waiting for navigation until `"load"`**. TanStack Router updates the URL via client-side history; a full **page load** often does **not** fire again, so the default `waitUntil` never completes (WebKit especially strict).
+**Solution:** Pass **`waitUntil: 'commit'`** to `page.waitForURL` for SPA transitions (see Playwright docs). Race with `Promise.all([waitForURL(...), click])`. Do **not** compensate with 30s timeouts — fix the wait condition instead; keep a normal cap (e.g. 15s).
+**Prevention:** Any E2E that asserts post-click URL after **in-app** navigation should use `waitUntil: 'commit'` (or `domcontentloaded`) — not the default `load` — unless you truly expect a full document load.
 
 ### [Test] Unit tests asserting on i18n headings — same failure mode as “use getByTestId for buttons”
 
