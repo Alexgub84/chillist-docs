@@ -6,12 +6,16 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
-### [E2E] Mobile Safari — plan wizard “Go to plan” `waitForURL` timed out (SPA + default `waitUntil: 'load'`)
+### [E2E] Never use `page.waitForURL` for SPA navigation — use `toHaveURL` + `toPass`
 
 **Date:** 2026-03-28
-**Problem:** Pre-push E2E: `creates a plan with owner and navigates to detail page` failed on **Mobile Safari only**. After `wizard-create-plan`, `waitForURL` timed out. Logs showed Playwright **waiting for navigation until `"load"`**. TanStack Router updates the URL via client-side history; a full **page load** often does **not** fire again, so the default `waitUntil` never completes (WebKit especially strict).
-**Solution:** Pass **`waitUntil: 'commit'`** to `page.waitForURL` for SPA transitions (see Playwright docs). Race with `Promise.all([waitForURL(...), click])`. Do **not** compensate with 30s timeouts — fix the wait condition instead; keep a normal cap (e.g. 15s).
-**Prevention:** Any E2E that asserts post-click URL after **in-app** navigation should use `waitUntil: 'commit'` (or `domcontentloaded`) — not the default `load` — unless you truly expect a full document load.
+**Problem:** Pre-push E2E: `creates a plan with owner and navigates to detail page` failed on **Mobile Safari only**. After `wizard-create-plan`, `page.waitForURL(/\/plan\//)` timed out (even with `waitUntil: 'commit'`). `waitForURL` listens for a browser-level navigation event (`load`/`commit`), but TanStack Router does `history.pushState` — no real navigation fires. This is fundamentally the wrong API for SPA transitions.
+**Solution:** Use the established `toPass` retry pattern wrapping `click` + `expect(page).toHaveURL()`: `await expect(async () => { await btn.click({ force: true, timeout: 2000 }); await expect(page).toHaveURL(/\/plan\//, { timeout: 2000 }); }).toPass({ timeout: 15000 });`. `toHaveURL` is a Playwright web assertion that polls the current URL — no dependency on navigation events. `toPass` retries the entire click+assert if the click doesn't register (WebKit).
+**Prevention:**
+- **NEVER** use `page.waitForURL` for in-app (SPA) navigation. It depends on page load events that `history.pushState` does not fire.
+- Use `expect(page).toHaveURL(...)` for URL assertions after SPA navigation. If the preceding click is flaky, wrap both in `toPass`.
+- Do not compensate with longer timeouts (30s) or `waitUntil` options — fix the assertion mechanism.
+- The rest of the test suite uses `toHaveURL` for every SPA navigation check — follow that pattern.
 
 ### [Test] Unit tests asserting on i18n headings — same failure mode as “use getByTestId for buttons”
 
