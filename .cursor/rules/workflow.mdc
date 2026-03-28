@@ -1,0 +1,20 @@
+---
+description: Git workflow for chillist-docs
+alwaysApply: true
+---
+
+# Docs Repo Git Workflow
+
+**Always commit directly to `main`.** No feature branches, no PRs — docs changes ship immediately.
+
+## Commit steps
+
+1. `git add -A`
+2. Commit with a short conventional-commit message (e.g. `docs: update AI subcategory spec`)
+3. `git push origin main`
+
+If you're on a non-main branch, switch to main first:
+
+```bash
+git checkout main && git pull origin main
+```
