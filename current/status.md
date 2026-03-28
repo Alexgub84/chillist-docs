@@ -1,7 +1,7 @@
 # Chillist — Current Status
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
-> **Last updated:** 2026-03-24
+> **Last updated:** 2026-03-26
 > **BE version:** 3811299 (chillist-be `fix/item-mutation-consolidation`)
 > **FE version:** —
 
@@ -180,7 +180,7 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 | Layer        | Technology                                                                   |
 | ------------ | ---------------------------------------------------------------------------- |
 | Frontend     | React 19, TypeScript, Vite 7, Tailwind CSS v4, TanStack Router + React Query |
-| Backend      | Node.js 20+, Fastify 5, TypeScript (ESM), Zod validation                     |
+| Backend      | Node.js 20+, Fastify 5, TypeScript (ESM), Zod validation, Vercel AI SDK      |
 | Database     | PostgreSQL via Drizzle ORM                                                   |
 | Auth         | Supabase (email + Google OAuth), JWT verified via JWKS                       |
 | API contract | OpenAPI 3.1, auto-generated from Fastify schemas                             |
@@ -220,6 +220,7 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 | Participants   | `POST /.../regenerate-token`                                               | Regenerate a participant's invite token                                                                                                                                                                                      |
 | Items          | `POST`, `GET`, `PATCH /:id`                                                | Create, list, update items                                                                                                                                                                                                   |
 | Items          | `POST /bulk`, `PATCH /bulk`                                                | Bulk create and bulk update items                                                                                                                                                                                            |
+| AI Suggestions | `POST /plans/:planId/ai-suggestions`                                       | Generate AI-powered packing/food item suggestions based on plan context (dates, location, tags, participants). Uses Vercel AI SDK with Anthropic/OpenAI. See [AI spec](../specs/ai-item-generation.md)                        |
 | Invite (guest) | `GET /invite/:token`                                                       | Get plan data as a guest via invite token. Returns `myPreferences` with the guest's own `name`, `lastName`, `contactPhone` plus dietary/RSVP fields                                                                          |
 | Invite (guest) | `PATCH /invite/:token/preferences`                                         | Update guest preferences and RSVP                                                                                                                                                                                            |
 | Invite (guest) | `POST`, `PATCH`, `POST /bulk`, `PATCH /bulk` on items                      | Guest item CRUD (single + bulk)                                                                                                                                                                                              |
@@ -237,7 +238,7 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 
 ### Testing
 
-- **Backend:** Vitest integration tests with Testcontainers (PostgreSQL). 350+ tests covering auth, permissions, CRUD, and edge cases.
+- **Backend:** Vitest integration tests with Testcontainers (PostgreSQL). 300+ tests covering auth, permissions, CRUD, AI suggestion generation, and edge cases.
 - **Frontend:** Vitest + React Testing Library (unit + integration), Playwright E2E, mock API server for development.
 
 ---
