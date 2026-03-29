@@ -147,7 +147,7 @@ Static JSON for autocomplete suggestions.
 
 - **Unit/Integration:** Vitest + React Testing Library. Global mocks in `tests/setup.ts`.
 - **E2E:** Playwright. Pre-push hook runs all 4 browsers. CI runs Chrome only. Use `npm run e2e:docker` for Linux-WebKit parity.
-- **WebKit Quirks:** Use `click({ force: true })` on submit buttons in Headless UI modals and increase `toBeHidden` timeouts for WebKit.
+- **WebKit Quirks:** Use `click({ force: true })` on submit buttons in Headless UI modals and increase `toBeHidden` timeouts for WebKit. If a `click()` silently fails on Mobile Safari (e.g. after async re-renders), use `locator.evaluate((el: HTMLElement) => el.click())` as a reliable fallback. For SPA navigation assertions, use `expect(page).toHaveURL(...)` — never `page.waitForURL`. See [rules/frontend.md §6](../rules/frontend.md) and dev-lesson: *Mobile Safari click + SPA navigation*.
 
 ### Selector strategy (RTL + Playwright)
 

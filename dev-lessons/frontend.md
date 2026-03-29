@@ -6,16 +6,25 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
-### [E2E] Never use `page.waitForURL` for SPA navigation — use `toHaveURL` + `toPass`
+### [E2E] Mobile Safari click + SPA navigation — two separate problems, two fixes
 
 **Date:** 2026-03-28
-**Problem:** Pre-push E2E: `creates a plan with owner and navigates to detail page` failed on **Mobile Safari only**. After `wizard-create-plan`, `page.waitForURL(/\/plan\//)` timed out (even with `waitUntil: 'commit'`). `waitForURL` listens for a browser-level navigation event (`load`/`commit`), but TanStack Router does `history.pushState` — no real navigation fires. This is fundamentally the wrong API for SPA transitions.
-**Solution:** Use the established `toPass` retry pattern wrapping `click` + `expect(page).toHaveURL()`: `await expect(async () => { await btn.click({ force: true, timeout: 2000 }); await expect(page).toHaveURL(/\/plan\//, { timeout: 2000 }); }).toPass({ timeout: 15000 });`. `toHaveURL` is a Playwright web assertion that polls the current URL — no dependency on navigation events. `toPass` retries the entire click+assert if the click doesn't register (WebKit).
+**Problem (1 — URL assertion):** `page.waitForURL` timed out on Mobile Safari after clicking `wizard-create-plan`. `waitForURL` waits for a browser navigation event (`load`/`commit`), but TanStack Router uses `history.pushState` — no page navigation fires. This is the wrong API for SPA transitions.
+**Problem (2 — click dispatch):** Even after switching to `toHaveURL` (correct polling assertion), the URL still never changed on Mobile Safari. Retrying the click via `toPass` made things worse — each retry re-triggered the navigation handler, interrupting the previous attempt. Root cause: Playwright's `click()` on WebKit mobile dispatches a touch event chain (`touchstart → touchend → click`) that can silently fail to invoke the React handler on certain buttons (post-async-render, after bulk state updates). `force: true` does not help — it only skips actionability checks, events are still dispatched via the same path.
+**Solution:** Two layers:
+1. **URL assertion:** Use `expect(page).toHaveURL(...)` (polling web assertion), never `page.waitForURL`, for SPA navigation.
+2. **Click dispatch:** Use `el.evaluate((el: HTMLElement) => el.click())` instead of Playwright's `locator.click()` when a button click fails on WebKit mobile. This fires a native DOM click event directly on the element, bypassing Playwright's input device simulation.
+Final working code:
+```
+await btn.scrollIntoViewIfNeeded();
+await btn.evaluate((el: HTMLElement) => el.click());
+await expect(page).toHaveURL(/\/plan\//, { timeout: 15000 });
+```
 **Prevention:**
-- **NEVER** use `page.waitForURL` for in-app (SPA) navigation. It depends on page load events that `history.pushState` does not fire.
-- Use `expect(page).toHaveURL(...)` for URL assertions after SPA navigation. If the preceding click is flaky, wrap both in `toPass`.
-- Do not compensate with longer timeouts (30s) or `waitUntil` options — fix the assertion mechanism.
-- The rest of the test suite uses `toHaveURL` for every SPA navigation check — follow that pattern.
+- **NEVER** use `page.waitForURL` for in-app (SPA) navigation.
+- **NEVER** use `toPass` to retry-click a mutation/navigation button — each retry re-triggers the side effect and can interrupt the previous attempt. `toPass` retry-click is only safe for idempotent read-only interactions.
+- When a Playwright `click()` or `click({ force: true })` silently fails on WebKit mobile, switch to `el.evaluate((el: HTMLElement) => el.click())`. This is the reliable fallback for buttons rendered after async state updates on Mobile Safari.
+- Do not compensate with longer timeouts (30s) — fix the click/assertion mechanism.
 
 ### [Test] Unit tests asserting on i18n headings — same failure mode as “use getByTestId for buttons”
 

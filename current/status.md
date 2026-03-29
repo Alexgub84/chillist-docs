@@ -2,7 +2,7 @@
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
 > **Last updated:** 2026-03-28
-> **BE version:** (update on deploy — AI suggestions: dietary context, Hebrew quality guards, Sonnet for non-English, `plans.ai_generation_count`)
+> **BE version:** (update on deploy — AI usage tracking: `ai_usage_logs` table, `recordAiUsage()` service, `GET /admin/ai-usage` route, cost estimation)
 > **FE version:** —
 
 ---
@@ -210,6 +210,7 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 - **participant_expenses** — per-participant expenses with item linking
 - **plan_invites** — invite send history and acceptance tracking per participant
 - **whatsapp_notifications** — audit log of WhatsApp messages sent (invitation_sent, join_request_pending/approved/rejected)
+- **ai_usage_logs** — tracks every AI model invocation (tokens, cost, duration, model, feature type, status). Admin-queryable via `GET /admin/ai-usage`
 
 ### Backend API Routes
 
@@ -232,6 +233,7 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 | Internal       | `GET /api/internal/plans`                                                  | List plans for a resolved chatbot user — returns `InternalPlanSummary[]` with `id`, `name`, `date`, `role`, `participantCount`, `itemCount`, `completedItemCount`. Requires `x-service-key` + `x-user-id`. Chatbot use only. |
 | Auth           | `GET /me`, `GET /profile`, `PATCH /profile`, `POST /sync-profile`          | Current user, read/update preferences, sync from Supabase                                                                                                                                                                    |
 | Expenses       | `POST`, `GET`, `PATCH /:id`, `DELETE /:id`                                 | Create, list, update, delete expenses                                                                                                                                                                                        |
+| Admin          | `GET /admin/plans`, `GET /admin/ai-usage`                                  | Admin-only: list all plans, view AI usage logs with filters and cost summary                                                                                                                                                 |
 
 ### CI/CD
 

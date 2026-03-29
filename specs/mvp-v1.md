@@ -257,6 +257,13 @@ Admin users (platform-level role, not per-plan) can:
   - `expenseId`, `participantId`, `planId`, `amount` (numeric(10,2)), optional `description`, `itemIds` (JSONB array of item UUIDs, default `[]`), optional `createdByUserId`
   - Tracks individual expenses per participant within a plan. Currency is defined at the plan level (`plans.currency`). `itemIds` links the expense to specific items in the same plan — validated on create/update.
   - Timestamps: `createdAt`, `updatedAt`
+- **AiUsageLog**
+  - `id`, `featureType` ("item_suggestions"), `planId` (nullable FK to plans), `userId` (nullable Supabase UUID), `provider` (varchar), `modelId` (varchar), `lang` (nullable varchar), `status` ("success" | "partial" | "error")
+  - Token tracking: `inputTokens`, `outputTokens`, `totalTokens` (all nullable integers)
+  - `estimatedCost` (numeric(10,6), nullable) — computed from tokens × model pricing at insert time
+  - `durationMs` (integer) — wall-clock time of the AI call
+  - `promptLength` (nullable integer), `resultCount` (nullable integer), `errorMessage` (nullable text), `metadata` (nullable JSONB)
+  - Timestamps: `createdAt`
 
 ---
 
@@ -283,6 +290,7 @@ Base URL: `/` (versioning can be added later: `/v1`)
 ### Admin
 
 - `GET /admin/plans` → `Plan[]` (JWT required, admin only — returns all plans regardless of visibility)
+- `GET /admin/ai-usage` → `{ logs, total, summary }` (JWT required, admin only — paginated AI usage logs with filters and aggregated summary. Query params: `planId`, `userId`, `featureType`, `status`, `from`, `to`, `limit`, `offset`)
 
 ### Participants
 

@@ -68,7 +68,13 @@ Strict, minimal instructions for `chillist-be`. Read these before executing any 
 
 - For any WhatsApp-related task, read [specs/whatsapp.md](../specs/whatsapp.md) first — it is the single source of truth for current state, planned features, architecture, and FE/BE alignment.
 
-## 8. Workflow & Safe Deployments
+## 8. AI
+
+- **AI Usage Tracking:** Every AI model invocation must be recorded via `recordAiUsage()` from `src/services/ai/usage-tracking.ts`. This applies to all current and future AI features (item suggestions, chatbot, meal planning, etc.). Never call an AI model without recording the usage.
+- **Model Changes Require Pricing Update:** When adding, replacing, or upgrading an AI model in `model-provider.ts`, immediately update the `MODEL_PRICING` table in `src/services/ai/usage-tracking.ts` with the new model's per-token pricing. If the model is missing from the pricing table, `estimatedCost` will be stored as `null` — a silent data gap.
+- **Model-Pricing Sync Test:** The unit test `tests/unit/ai/usage-tracking.test.ts` asserts that every model ID returned by `resolveLanguageModel` (all provider/lang combinations) has a matching entry in `MODEL_PRICING`. This test breaks automatically when a model is added to the provider but not to the pricing table.
+
+## 9. Workflow & Safe Deployments
 
 - **Version Bumping:** Bump `package.json` version on every PR (Patch: fixes, Minor: features/DB, Major: breaking).
 - **Incremental Migration:** When adding auth or breaking changes, do additive changes first. Keep the old route/auth working, let FE migrate, then enforce/cleanup.
