@@ -119,7 +119,7 @@ English, Hebrew, and Spanish. Language toggle in the header switches instantly. 
 
 ### Landing Page
 
-A marketing home page with a hero section, a 3-step "How it works" guide (Create a plan → Add gear and food → Track together), app screenshots, scroll-reveal animations, and auth-aware call-to-action buttons.
+A marketing home page with a hero section, a 3-step "How it works" quick intro (Create a plan → Add gear and food → Track together), and a 7-feature deep-dive section showcasing the full user journey: Plans Dashboard, Manage Your Group, AI Packing Lists, Easy Item Management, Live Progress Tracking, Expenses & Settlement, and WhatsApp Integration. Each feature has a mobile screenshot (EN + HE), scroll-reveal animations, and auth-aware call-to-action buttons. Screenshot script: `npm run screenshots`.
 
 ### Admin
 
