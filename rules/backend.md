@@ -21,6 +21,7 @@ Strict, minimal instructions for `chillist-be`. Read these before executing any 
 - **AJV Strict Mode:** Avoid OpenAPI-only keywords (`discriminator`, `xml`, `externalDocs`) in schemas validated by AJV.
 - **OpenAPI Spec:** Do not hardcode `localhost` servers. Only type responses that clients parse. Run `npm run openapi:generate` after changes and commit `docs/openapi.json`.
 - **Schema & Route Descriptions:** Every new or updated route must have a clear `description` in the schema config. Every non-obvious property in request/response schemas must have a `description` explaining what to send and when — especially flags, enums, and assignment fields. The OpenAPI spec is the FE developer's primary reference; bare fields with no description force guesswork.
+- **OpenAPI response descriptions:** For each HTTP status you document under `response`, include an explicit `description` string alongside `$ref` (same pattern as `admin-ai-usage` and `ai-suggestions`). Otherwise Fastify may emit generic `"Default Response"` in `docs/openapi.json`, which is useless for API consumers.
 - **Error Response Declarations:** Every route schema must declare all status codes the handler can return — including `401` from auth hooks, `400` from validation, `404` from not-found checks, and `500`/`503` from catch blocks. Each error entry must include a `description` field (e.g. `401: { description: 'Authentication required — JWT token missing or invalid', $ref: 'ErrorResponse#' }`). Never leave error codes undeclared or use "Default Response".
 
 ## 3. Auth & Security
