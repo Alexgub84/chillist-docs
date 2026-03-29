@@ -13,6 +13,12 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 **Solution:** Added a Cloudflare Pages Function at `functions/_middleware.ts`. It reads `request.cf.country` (or `CF-IPCountry` header as fallback) and appends `Set-Cookie: chillist-geo-lang=<lang>; Path=/; Max-Age=86400; SameSite=Lax; Secure` to every response. The client reads this cookie in `getSavedLanguage()` (`src/i18n/index.ts`) as a fallback when no localStorage value is present. Logged-in users ignore the cookie — `ProfileLanguageSync` applies `preferredLang` from the backend, which always wins.
 **Prevention:** When the Pages Function is involved, test geo behaviour using DevTools → Application → Cookies. The cookie is overwritten on every page load, so it always reflects the visitor's current country. Do not rely on geo for logged-in users; the profile language is the source of truth for auth'd sessions.
 
+**Local testing (client logic):** Set `chillist-geo-lang=he` in DevTools → Application → Cookies, clear `localStorage['chillist-lang']`, hard-reload. No Wrangler needed.
+
+**Local testing (Pages Function):** `npm run build && npx wrangler pages dev dist`. `cf.country` is undefined locally, so the function defaults to `en`. Simulate Israel with: `curl -H "CF-IPCountry: IL" http://localhost:8788/ -v 2>&1 | grep "Set-Cookie"`.
+
+**Production testing:** Use incognito + VPN to switch between IL and non-IL. Check `chillist-geo-lang` cookie value in DevTools → Application → Cookies after page load. Full table in `guides/frontend.md` → "Geo-based default language".
+
 ### [Arch] getSavedLanguage() must JSON.parse localStorage — useLocalStorage stores JSON-quoted strings
 
 **Date:** 2026-03-29

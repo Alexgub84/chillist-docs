@@ -117,6 +117,47 @@ The app gates UI elements based on authentication state and plan ownership. Thes
 - **Usage:** All user-facing strings use `t()`. Add keys to both `en.json` and `he.json`.
 - **RTL:** Use Tailwind logical properties (`ms-*`, `me-*`, `text-start`) instead of directional ones (`ml-*`, `text-left`).
 
+#### Geo-based default language
+
+A Cloudflare Pages Function (`functions/_middleware.ts`) sets a `chillist-geo-lang` cookie (`he` for Israel, `en` for all others) on every response. `getSavedLanguage()` in `src/i18n/index.ts` reads this cookie as the initial language when no explicit `localStorage['chillist-lang']` is present. Logged-in users always follow `preferences.preferredLang` from the backend; the cookie is never used for authenticated sessions.
+
+**Language precedence (low → high):**
+1. Geo cookie (`chillist-geo-lang`) — anonymous first visit only
+2. `localStorage['chillist-lang']` — user's explicit choice (JSON-quoted, via `useLocalStorage`)
+3. `preferences.preferredLang` from `GET /auth/profile` — logged-in users, applied by `ProfileLanguageSync`
+
+**Testing the geo feature locally:**
+
+_Client logic only (no Wrangler needed):_
+1. Open DevTools → Application → Cookies → add `chillist-geo-lang=he`
+2. Clear `localStorage` item `chillist-lang` (Application → Local Storage)
+3. Hard-reload (`Cmd+Shift+R`) → page should open in Hebrew
+4. Switch language via the toggle → reload → should stay on chosen language (localStorage wins)
+
+_Test the Pages Function with Wrangler:_
+```bash
+npm run build
+npx wrangler pages dev dist --compatibility-date=2024-01-01
+# open http://localhost:8788
+```
+`request.cf.country` is not injected locally, so the function always sets `en`. To simulate Israel, pass the header directly:
+```bash
+curl -v -H "CF-IPCountry: IL" http://localhost:8788/ 2>&1 | grep "Set-Cookie"
+# expect: Set-Cookie: chillist-geo-lang=he; ...
+```
+
+**Testing on production:**
+
+| Scenario | How |
+|---|---|
+| Israel → Hebrew | Visit in incognito from an IL IP (or Israeli mobile data) |
+| Non-Israel → English | Visit in incognito outside Israel |
+| Simulate IL from abroad | Connect VPN to Israel → incognito → should get Hebrew |
+| Simulate non-IL from Israel | Connect VPN to US/EU → incognito → should get English |
+| Verify cookie was set | DevTools → Application → Cookies → look for `chillist-geo-lang` |
+| Verify localStorage override | Switch language via toggle → reload → stays on chosen language |
+| Logged-in user ignores geo | Sign in, clear `chillist-lang` from localStorage, reload → follows `preferredLang`, not cookie |
+
 ### Plan Tag Wizard (`src/components/PlanTagWizard.tsx`)
 
 3-tier tag wizard integrated as **Step 1** in `CreatePlanWizard` (fun, low-effort start). Step 1 layout: **title input** (required, validated before advancing) → **PlanTagWizard** → **description textarea** (optional, supplements tags). Title and description are managed as parent-level state in `CreatePlanWizard` and passed to `DetailsForm` (step 2) via props + hidden inputs.
