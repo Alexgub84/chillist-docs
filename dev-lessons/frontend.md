@@ -6,6 +6,20 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Cloudflare geo default language via Pages Function + cookie
+
+**Date:** 2026-03-29
+**Problem:** Anonymous visitors needed a meaningful language default (Hebrew for IL, English otherwise) without client-side geolocation API calls or exposing response headers to JS.
+**Solution:** Added a Cloudflare Pages Function at `functions/_middleware.ts`. It reads `request.cf.country` (or `CF-IPCountry` header as fallback) and appends `Set-Cookie: chillist-geo-lang=<lang>; Path=/; Max-Age=86400; SameSite=Lax; Secure` to every response. The client reads this cookie in `getSavedLanguage()` (`src/i18n/index.ts`) as a fallback when no localStorage value is present. Logged-in users ignore the cookie — `ProfileLanguageSync` applies `preferredLang` from the backend, which always wins.
+**Prevention:** When the Pages Function is involved, test geo behaviour using DevTools → Application → Cookies. The cookie is overwritten on every page load, so it always reflects the visitor's current country. Do not rely on geo for logged-in users; the profile language is the source of truth for auth'd sessions.
+
+### [Arch] getSavedLanguage() must JSON.parse localStorage — useLocalStorage stores JSON-quoted strings
+
+**Date:** 2026-03-29
+**Problem:** `getSavedLanguage()` in `src/i18n/index.ts` read the raw `localStorage['chillist-lang']` value and called `isSupportedLanguage()` on it. But `useLocalStorage` (used by LanguageProvider) stores values with `JSON.stringify`, so the actual stored string is `'"he"'` not `'he'`. This caused `getSavedLanguage()` to always fall through to the default, meaning the geo cookie would silently win over a user's explicit localStorage language on first render.
+**Solution:** Updated `getSavedLanguage()` to first try `JSON.parse(raw)` and validate the parsed string, then fall back to the raw string for backwards compatibility.
+**Prevention:** Any function that reads a key written by `useLocalStorage` must JSON.parse it first. `useLocalStorage` always serialises with `JSON.stringify`.
+
 ### [Test] Partial vi.mock factories break when the mocked module gains new imports used in routes
 
 **Date:** 2026-03-29

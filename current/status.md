@@ -115,7 +115,9 @@ JWT-based sessions with automatic token refresh. Session expiry shows a modal pr
 
 ### Multilingual Support
 
-English, Hebrew, and Spanish. Language toggle in the header switches instantly. Hebrew uses right-to-left layout. Language preference is saved locally and also persisted to the backend (`users.preferredLang` via `PATCH /auth/profile`). On login or session restore, `GET /auth/profile` is called and a non-null `preferredLang` is applied as the active language — enabling cross-device sync. The backend returns `null` when unset so the FE falls back to geo-detection. Only backend-supported languages (`he`, `en`) are synced; `es` is stored locally only.
+English, Hebrew, and Spanish. Language toggle in the header switches instantly. Hebrew uses right-to-left layout. Language preference is saved locally and also persisted to the backend (`users.preferredLang` via `PATCH /auth/profile`). On login or session restore, `GET /auth/profile` is called and a non-null `preferredLang` is applied as the active language — enabling cross-device sync. Only backend-supported languages (`he`, `en`) are synced; `es` is stored locally only.
+
+**Geo-based default (anonymous visitors):** A Cloudflare Pages Function middleware (`functions/_middleware.ts`) reads the visitor's country from `request.cf.country` on every request. Visitors from Israel receive a `chillist-geo-lang=he` cookie; all others receive `chillist-geo-lang=en`. The client reads this cookie at startup (`src/i18n/index.ts`) and applies it as the initial language when no explicit language is saved in localStorage. Logged-in users always follow their `preferredLang` profile setting, which overrides geo. The language switcher permanently overrides geo (persisted to localStorage and profile).
 
 ### Landing Page
 
