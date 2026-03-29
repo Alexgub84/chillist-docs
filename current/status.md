@@ -115,7 +115,7 @@ JWT-based sessions with automatic token refresh. Session expiry shows a modal pr
 
 ### Multilingual Support
 
-English, Hebrew, and Spanish. Language toggle in the header switches instantly. Hebrew uses right-to-left layout. Language preference is saved locally.
+English, Hebrew, and Spanish. Language toggle in the header switches instantly. Hebrew uses right-to-left layout. Language preference is saved locally and also persisted to the backend (`users.preferredLang` via `PATCH /auth/profile`). The backend returns `null` when unset so the FE can decide whether to apply the stored local preference or reset to geo-detection.
 
 ### Landing Page
 
@@ -204,7 +204,7 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 - **participants** — per-plan members with roles, preferences, invite tokens, RSVP. Stores `contactPhone` (E.164) and optionally `userId` (set when invite is claimed) or `guestProfileId` (set when guest accesses without signing up). `dietaryMembers` JSONB column holds per-person structured dietary data (diet enum + allergies array per adult/kid)
 - **items** — equipment/food with per-participant status tracking
 - **item_changes** — audit log of item modifications
-- **user_details** — default user preferences (food, allergies, equipment)
+- **users** — per-user app-level data: phone (E.164, nullable), preferred language (`he`/`en`, nullable), default food preferences, allergies, and equipment. Indexed on `phone` for chatbot lookups. Renamed from `user_details`.
 - **guest_profiles** — anonymous guest users (accessed plan via invite link, no Supabase account). Stores name, phone, email, dietary preferences
 - **participant_join_requests** — pending/approved/rejected join requests. Also carries `dietaryMembers` JSONB, passed through to the `participants` record on approval
 - **participant_expenses** — per-participant expenses with item linking
@@ -229,7 +229,7 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 | Invite (guest) | `POST`, `PATCH`, `POST /bulk`, `PATCH /bulk` on items                      | Guest item CRUD (single + bulk)                                                                                                                                                                                              |
 | Join Requests  | `POST`, `PATCH /:id`                                                       | Submit a join request, approve or reject                                                                                                                                                                                     |
 | Claim          | `POST /claim/:token`                                                       | Link a registered user to a participant spot                                                                                                                                                                                 |
-| Internal       | `POST /api/internal/auth/identify`                                         | Resolve phone number to Chillist user — returns `userId` + `displayName` (from Supabase `user_metadata`, falling back to newest-plan participant record). Chatbot use only.                                                  |
+| Internal       | `POST /api/internal/auth/identify`                                         | Resolve phone number to Chillist user — queries `users.phone` directly (E.164 index lookup), returns `userId` + `displayName` (from Supabase, falling back to participant record). Chatbot use only.                                                  |
 | Internal       | `GET /api/internal/plans`                                                  | List plans for a resolved chatbot user — returns `InternalPlanSummary[]` with `id`, `name`, `date`, `role`, `participantCount`, `itemCount`, `completedItemCount`. Requires `x-service-key` + `x-user-id`. Chatbot use only. |
 | Auth           | `GET /me`, `GET /profile`, `PATCH /profile`, `POST /sync-profile`          | Current user, read/update preferences, sync from Supabase                                                                                                                                                                    |
 | Expenses       | `POST`, `GET`, `PATCH /:id`, `DELETE /:id`                                 | Create, list, update, delete expenses                                                                                                                                                                                        |

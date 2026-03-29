@@ -8,6 +8,20 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [Schema] drizzle-kit `generate` is interactive — write migrations manually when renaming tables
+
+**Date:** 2026-03-29
+**Problem:** `npm run db:generate` opens an interactive prompt when it detects a possible table rename (new table name matches old table columns). Piped stdin (`printf '\x1b[B\n'`) moved the cursor but did not confirm the selection, leaving the process hanging indefinitely in a sandboxed environment.
+**Solution:** Delete the pending journal entry and SQL file, then write the migration SQL and snapshot JSON manually: `ALTER TABLE old RENAME TO new`, `ADD COLUMN ...`, `CREATE INDEX ...`, and a `0025_snapshot.json` derived from the previous snapshot with the table renamed + new columns/indexes + `_meta.tables` rename mapping.
+**Prevention:** For table renames, always write the migration file manually. Use `db:generate` only for additive changes (new tables, new columns on unchanged tables) where no rename prompt appears.
+
+### [Auth] `resolveUserByPhone` should query `users.phone` directly — not join participants + plans
+
+**Date:** 2026-03-29
+**Problem:** The chatbot `resolveUserByPhone` did an `innerJoin(plans, ...)` + `orderBy(desc(plans.createdAt))` just to find a phone→userId mapping, querying the noisiest table in the DB. It was also fragile: if a user had never been a participant, it returned nothing.
+**Solution:** Introduce a `users` table with a `phone` column (indexed). `resolveUserByPhone` now does a single index lookup on `users.phone`, then calls Supabase for display name, falling back to a simple `participants WHERE userId = ?` query (no plans join).
+**Prevention:** Phone → userId resolution belongs on the `users` table, not scattered across `participants`. Chatbot lookups must be O(1) index scans, not multi-table joins.
+
 ### [AI] Claude Haiku and non-English output — add prompt guards and script checks
 
 **Date:** 2026-03-28
