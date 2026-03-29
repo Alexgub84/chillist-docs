@@ -50,7 +50,7 @@ Ensure `chillist-be` is running on localhost:3333, then `npm run dev`.
 - `npm run mock:server`: Start Fastify mock server
 - `npm run api:sync`: Fetch OpenAPI spec from backend and regenerate types
 - `npm run e2e`: Run Playwright tests
-- `npm run screenshots`: Capture home page screenshots for EN/HE
+- `npm run screenshots`: Capture home page screenshots for EN/HE in one shot — starts the mock API and Vite with mock auth, patches `.env.local` for the run, restores it after, and writes images to `public/`. Ensure ports **3333** and **5173** are free. Flags: `--verbose` (server logs), `--skip-servers` (use when mock + Vite are already running with mock auth). See `scripts/take-screenshots.ts` for scroll targets; pitfalls in `dev-lessons/frontend.md`.
 
 ## API Layer & OpenAPI
 
@@ -147,13 +147,13 @@ Static JSON for autocomplete suggestions.
 
 - **Unit/Integration:** Vitest + React Testing Library. Global mocks in `tests/setup.ts`.
 - **E2E:** Playwright. Pre-push hook runs all 4 browsers. CI runs Chrome only. Use `npm run e2e:docker` for Linux-WebKit parity.
-- **WebKit Quirks:** Use `click({ force: true })` on submit buttons in Headless UI modals and increase `toBeHidden` timeouts for WebKit. If a `click()` silently fails on Mobile Safari (e.g. after async re-renders), use `locator.evaluate((el: HTMLElement) => el.click())` as a reliable fallback. For SPA navigation assertions, use `expect(page).toHaveURL(...)` — never `page.waitForURL`. See [rules/frontend.md §6](../rules/frontend.md) and dev-lesson: *Mobile Safari click + SPA navigation*.
+- **WebKit Quirks:** Use `click({ force: true })` on submit buttons in Headless UI modals and increase `toBeHidden` timeouts for WebKit. If a `click()` silently fails on Mobile Safari (e.g. after async re-renders), use `locator.evaluate((el: HTMLElement) => el.click())` as a reliable fallback. For SPA navigation assertions, use `expect(page).toHaveURL(...)` — never `page.waitForURL`. See [rules/frontend.md §6](../rules/frontend.md) and dev-lesson: _Mobile Safari click + SPA navigation_.
 
 ### Selector strategy (RTL + Playwright)
 
 Full rules: [rules/frontend.md §6](../rules/frontend.md) — Testing Rules.
 
-**Short version:** Use `data-testid` + `getByTestId` for anything you **click** and for assertions that a **step, section, or modal** is visible. Do not assert wizard/section presence with `getByText(/English/i)` on strings that come from `t()` — those tests break on every copy or locale change. See dev-lessons: *Unit tests asserting on i18n headings* (search `dev-lessons/frontend.md`).
+**Short version:** Use `data-testid` + `getByTestId` for anything you **click** and for assertions that a **step, section, or modal** is visible. Do not assert wizard/section presence with `getByText(/English/i)` on strings that come from `t()` — those tests break on every copy or locale change. See dev-lessons: _Unit tests asserting on i18n headings_ (search `dev-lessons/frontend.md`).
 
 ### Mock Server (`api/server.ts`)
 
