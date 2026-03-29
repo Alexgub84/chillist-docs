@@ -6,6 +6,27 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Test] Partial vi.mock factories break when the mocked module gains new imports used in routes
+
+**Date:** 2026-03-29
+**Problem:** Tests that mock `src/core/api` with a factory (no `importOriginal`) only define specific named exports. When `__root.tsx` was updated to import `fetchProfile`, any test that renders the router root (e.g. integration tests for route components) threw `[vitest] No "fetchProfile" export is defined on the mock`.
+**Solution:** Either add `fetchProfile: vi.fn()` to every partial mock that doesn't use `importOriginal`, or switch to `vi.mock('…', async (importOriginal) => { const actual = await importOriginal(); return { ...actual, myMock: vi.fn() }; })` so new exports are automatically included.
+**Prevention:** Prefer `importOriginal` spread for any api module mock unless the test is explicitly asserting that the function is never called. Partial factory mocks are fragile when the module under test grows.
+
+### [Test] vi.mock factory with top-level variable reference causes hoisting ReferenceError
+
+**Date:** 2026-03-29
+**Problem:** `vi.mock` calls are hoisted to the top of the file before `const` declarations. A mock factory that references a `const mockFn = vi.fn()` declared later throws `ReferenceError: Cannot access 'mockFn' before initialization` at test startup.
+**Solution:** Use `vi.hoisted(() => vi.fn())` to declare mock functions that need to be referenced inside `vi.mock` factory bodies. `vi.hoisted` runs before module hoisting, making the value available in time.
+**Prevention:** Any variable used inside a `vi.mock` factory (not the lazy `() => import(...)` form) must be declared with `vi.hoisted`. The pattern is: `const myMock = vi.hoisted(() => vi.fn()); vi.mock('…', () => ({ fn: myMock }));`
+
+### [Arch] AppLanguage vs backend-supported preferredLang — only sync he/en
+
+**Date:** 2026-03-29
+**Problem:** `AppLanguage` includes `'es'` (Spanish) but the backend `UpdateProfileBody.preferredLang` only accepts `'he' | 'en' | null`. Passing `'es'` to `patchProfile` would fail Zod validation before the request is sent.
+**Solution:** Guard the `patchProfile` call in `LanguageProvider` with a `BACKEND_LANGS = ['he', 'en']` allowlist check. Spanish is persisted to `localStorage` only. The `BackendLang` type is derived from `NonNullable<UpdateProfileBody['preferredLang']>` to stay in sync with the schema automatically.
+**Prevention:** When the backend expands language support, only the Zod schema in `src/core/schemas/profile.ts` needs updating — the allowlist check in `LanguageProvider` derives from that type.
+
 ### [Tooling] `npm run screenshots` is self-contained (servers + env)
 
 **Date:** 2026-03-29

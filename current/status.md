@@ -1,7 +1,7 @@
 # Chillist — Current Status
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
-> **Last updated:** 2026-03-28
+> **Last updated:** 2026-03-29
 > **BE version:** (update on deploy — AI usage tracking: `ai_usage_logs` table, `recordAiUsage()` service, `GET /admin/ai-usage` route, cost estimation)
 > **FE version:** —
 
@@ -109,13 +109,13 @@ When a plan has a location and dates, a 7-day weather forecast is shown on the p
 
 ### Authentication & Profiles
 
-Sign up with email/password or Google OAuth. Email confirmation required. After signing up, users complete their profile (name, phone, email). Default food preferences, allergies, and equipment can be set in the profile and are pre-filled into new plans. Phone numbers are normalized to E.164 format before submission — the `PhoneInput` component accepts flexible input (spaces, dashes, parentheses, leading zeros, pasted international numbers) and the frontend validates the normalized result before sending to the backend.
+Sign up with email/password or Google OAuth. Email confirmation required. After signing up, users complete their profile (name, phone, email). The Edit Profile form pre-fills the phone field from `GET /auth/profile` (`preferences.phone`) — the canonical backend source — with a fallback to Supabase `user_metadata.phone`. Default food preferences, allergies, and equipment can be set in the profile and are pre-filled into new plans. Phone numbers are normalized to E.164 format before submission — the `PhoneInput` component accepts flexible input (spaces, dashes, parentheses, leading zeros, pasted international numbers) and the frontend validates the normalized result before sending to the backend.
 
 JWT-based sessions with automatic token refresh. Session expiry shows a modal prompting re-authentication. All plan creation and management requires sign-in.
 
 ### Multilingual Support
 
-English, Hebrew, and Spanish. Language toggle in the header switches instantly. Hebrew uses right-to-left layout. Language preference is saved locally and also persisted to the backend (`users.preferredLang` via `PATCH /auth/profile`). The backend returns `null` when unset so the FE can decide whether to apply the stored local preference or reset to geo-detection.
+English, Hebrew, and Spanish. Language toggle in the header switches instantly. Hebrew uses right-to-left layout. Language preference is saved locally and also persisted to the backend (`users.preferredLang` via `PATCH /auth/profile`). On login or session restore, `GET /auth/profile` is called and a non-null `preferredLang` is applied as the active language — enabling cross-device sync. The backend returns `null` when unset so the FE falls back to geo-detection. Only backend-supported languages (`he`, `en`) are synced; `es` is stored locally only.
 
 ### Landing Page
 
