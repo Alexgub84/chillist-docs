@@ -1,7 +1,7 @@
 # Chillist — Current Status
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
-> **Last updated:** 2026-03-29
+> **Last updated:** 2026-03-30
 > **BE version:** (update on deploy — AI usage tracking: `ai_usage_logs` table, `recordAiUsage()` service, `GET /admin/ai-usage` route, cost estimation)
 > **FE version:** —
 
@@ -65,7 +65,7 @@ Every plan has participants with roles:
 
 Plans can have multiple owners. The current owner can promote another participant via "Make owner."
 
-Each participant has group details: number of adults and kids, food preferences, allergies, and free-text notes. The owner can edit anyone's preferences; participants can only edit their own. RSVP status (Pending / Confirmed / Not sure) is shown as a badge next to each participant, visible to the owner.
+Each participant has group details: number of adults and kids, food preferences, allergies, and free-text notes. The owner can edit anyone's preferences; participants can only edit their own. A linked participant can remove themselves from the plan (same API as owner removing someone); item assignments for that participant are cleared. RSVP status (Pending / Confirmed / Not sure) is shown as a badge next to each participant, visible to the owner.
 
 Per-person dietary data is supported via `dietaryMembers` — a structured JSONB field on each participant where each adult/kid in the group gets their own `diet` (single-select enum) and `allergies` (multi-select enum array). The legacy `foodPreferences`/`allergies` text fields are retained for backward compatibility.
 

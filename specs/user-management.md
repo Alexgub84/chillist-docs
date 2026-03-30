@@ -531,7 +531,7 @@ Registered user opens a plan they're linked to
 | `POST /plans/:planId/items` | Check JWT → owner and linked participants can add |
 | `POST /plans/:planId/participants` | Check JWT → owner only |
 | `PATCH /participants/:participantId` | Check JWT → owner/admin can update any participant; linked participant (`userId` match) can update own record only; others get 403. Request body now accepts `rsvpStatus`. |
-| `DELETE /participants/:participantId` | Check JWT → owner only |
+| `DELETE /participants/:participantId` | Check JWT → plan owner or linked participant (`userId` match) deleting their own record; others get 403. Cannot delete owner role. |
 | `GET /plans` | Check JWT → return only plans where user is owner or linked participant |
 
 ### 7.3 Unchanged Endpoints
