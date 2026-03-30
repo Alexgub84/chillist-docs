@@ -6,6 +6,13 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Test] E2E testids must be updated when renaming data-testid in shared components
+
+**Date:** 2026-03-30
+**Problem:** Refactored `AiSuggestionsModal` into generic `ItemSuggestionsModal` with renamed `data-testid`s (`ai-suggest-*` → `suggest-*`). Updated unit tests but missed `tests/e2e/main-flow.spec.ts`, which still referenced the old testids. The E2E test "adds AI-suggested items from plan page" failed on Chrome and Firefox at push time.
+**Solution:** Updated `tests/e2e/main-flow.spec.ts` to use the new `suggest-modal`, `suggest-loading`, `suggest-confirm` testids.
+**Prevention:** When renaming any `data-testid`, always grep `tests/e2e/` for the old testid string before committing. The pre-push hook catches it, but it's expensive to discover at push time. Add it to the pre-change checklist: `rg 'old-testid' tests/e2e/`.
+
 ### [Arch] Cloudflare geo default language via Pages Function + cookie
 
 **Date:** 2026-03-29

@@ -1,0 +1,67 @@
+---
+description: Plan mode mandatory pre-plan checklist — must follow before every plan
+alwaysApply: true
+---
+
+# Plan Mode — Mandatory Pre-Plan Gate
+
+**Every time you enter Plan mode or are asked to plan a feature, fix, or refactor, you MUST complete ALL steps below in order. Do NOT skip any step. Do NOT write any implementation code or call CreatePlan until Step 6 is approved by the user.**
+
+---
+
+## Step 0 — Read Project Docs First (MANDATORY)
+
+Read ALL of these files before doing anything else. If any file is missing, STOP and tell the user.
+
+1. `/Users/alexguberman/Projects/chillist/chillist-docs/rules/common.md`
+2. `/Users/alexguberman/Projects/chillist/chillist-docs/rules/frontend.md`
+3. `/Users/alexguberman/Projects/chillist/chillist-docs/guides/frontend.md`
+4. `/Users/alexguberman/Projects/chillist/chillist-docs/specs/mvp-v1.md`
+5. `/Users/alexguberman/Projects/chillist/chillist-docs/dev-lessons/frontend.md`
+
+---
+
+## Step 1 — Lessons from Similar Tasks
+
+Write a short section: "Lessons Relevant to This Task"
+- Check git history, `// TODO`, `// FIXME`, `// HACK` comments near the area
+- Call out common AI mistakes for this task type (async edge cases, missing null guards, happy-path-only tests, etc.)
+
+---
+
+## Step 2 — Scenario Analysis
+
+List ALL scenarios before writing a single test:
+- **Happy path** — primary flow when everything works
+- **Error path** — what can fail and what the system does for each
+- **Edge cases** — empty/null/zero inputs, double-submit, race conditions, missing permissions, empty list vs thousands, etc.
+
+---
+
+## Step 3 — Test Strategy
+
+Assign every scenario to the correct layer:
+- **Unit** — pure functions, isolated components, hooks with all deps mocked
+- **Integration** — component + hook + context together, only network boundary mocked (MSW)
+- **E2E** — critical full-user journeys only
+
+---
+
+## Step 4 — Module & File Breakdown
+
+For each file: purpose, exports, dependencies, side effects. Flag files touching >3 concerns.
+
+---
+
+## Step 5 — Execution Flow
+
+Short prose description of the full flow from user action to system response.
+
+---
+
+## Step 6 — Approval Gate
+
+**STOP. Present the full plan (Steps 1–5). Ask:**
+> "Does this plan look right? Should I adjust anything before I start writing tests?"
+
+Only proceed after the user explicitly approves.
