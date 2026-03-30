@@ -6,6 +6,13 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [UI] Admin delete must yield to leave button when user is a participant
+
+**Date:** 2026-03-30
+**Problem:** An admin who was also an invited participant on a plan saw both the leave button and the admin delete button on the same plan card — two conflicting destructive actions.
+**Solution:** Changed the admin delete condition from `isAdmin &&` to `isAdmin && !(user && shouldShowLeave(plan, user.id)) &&`. When `shouldShowLeave` is true the leave affordance takes priority and the admin delete is hidden.
+**Prevention:** Whenever a UI element has multiple conditional affordances that conflict (leave vs delete), define a clear precedence rule: participant role wins over admin role at the UI layer. The backend still enforces ownership/admin checks — the FE just avoids showing both.
+
 ### [Logic] Plans list "All" sections — partition by leave affordance, not only `isPlanOwnedBy`
 
 **Date:** 2026-03-30

@@ -32,7 +32,7 @@ The plans list shows all plans you own or are invited to. Filter by ownership (A
 
 The **edit plan** modal follows the same 2-step layout: Step 1 for plan details (title, description, location, dates, status, language, currency, tags) and Step 2 for owner preferences + participant estimation. Location in edit mode also shows only the place name with Google Maps autocomplete.
 
-Only the plan owner can edit or delete a plan. Platform admins can also delete any plan.
+Only the plan owner can edit or delete a plan. Platform admins can also delete any plan they are not a participant of — if an admin is an invited participant on a plan, they see the leave button instead of the admin delete button on that card.
 
 The plan detail page shows a **Headcount** section with two cards: **Reported** (aggregated adults and kids from all participants) and **Estimated** (the owner's estimation of other participants, stored as `estimatedAdults`/`estimatedKids` on the plan). Values show a dash when not set.
 
