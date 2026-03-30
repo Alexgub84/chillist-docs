@@ -2,7 +2,7 @@
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
 > **Last updated:** 2026-03-30
-> **BE version:** (update on deploy — AI usage tracking: `ai_usage_logs` table, `recordAiUsage()` service, `GET /admin/ai-usage` route, cost estimation)
+> **BE version:** 283da16 — AI usage logs now capture full prompt text, raw model response, error type, and finish reason on every AI call; `generateItemSuggestions` refactored to never throw (discriminated union result)
 > **FE version:** —
 
 ---
@@ -212,7 +212,7 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 - **participant_expenses** — per-participant expenses with item linking
 - **plan_invites** — invite send history and acceptance tracking per participant
 - **whatsapp_notifications** — audit log of WhatsApp messages sent (invitation_sent, join_request_pending/approved/rejected)
-- **ai_usage_logs** — tracks every AI model invocation (tokens, cost, duration, model, feature type, status). Admin-queryable via `GET /admin/ai-usage`
+- **ai_usage_logs** — tracks every AI model invocation (tokens, cost, duration, model, feature type, status, full prompt text, raw model response, error type, finish reason). Admin-queryable via `GET /admin/ai-usage`
 
 ### Backend API Routes
 

@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [AI] Log full prompt + raw response; use discriminated union instead of throwing
+
+**Date:** 2026-03-30
+**Problem:** `ai_usage_logs` only saved `errorMessage` (a string) on failure and nothing on partial/error. When debugging a failed or salvaged AI call it was impossible to know what prompt was sent, what the model actually returned, what SDK error class was thrown, or whether the model stopped due to token limit vs. content filter.
+**Solution:** Added four columns (`prompt_text`, `raw_response_text`, `error_type`, `finish_reason`) to `ai_usage_logs`. Refactored `generateItemSuggestions` to return a discriminated union (`success | partial | error`) instead of re-throwing so the prompt string is always available even when the model fails. Route handler checks `result.status === 'error'` instead of wrapping in `try/catch`. `rawResponseText` is `JSON.stringify(suggestions)` on success, `error.text` on partial/error.
+**Lesson:** AI generation functions should return structured results (never throw) so callers always have access to the prompt and raw output for observability. Capture `error.name` (errorType) and SDK `finishReason` alongside `errorMessage` — they allow error categorisation without parsing message strings.
+
 ### [Arch] Never edit `chillist-fe` when working in the backend repo
 
 **Date:** 2026-03-30
