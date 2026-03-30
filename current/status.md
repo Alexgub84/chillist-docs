@@ -125,7 +125,7 @@ A marketing home page with a hero section, a 3-step "How it works" quick intro (
 
 ### Admin
 
-Platform-level admin users can view all plans regardless of visibility, delete any plan, and see pending join requests across all plans.
+Platform-level admin users open **`/admin/plans`** (from the header when signed in as admin). The page has **tabs**: **All Plans** lists every plan (no “create plan” button on this screen), supports the same delete and list behavior as the main plans list, and shows **pending join requests** across plans when present. The **AI Usage** tab loads **`GET /admin/ai-usage`**: filters (plan/user UUID, feature, status, date range), paginated log table, and summary totals including breakdowns by feature and model.
 
 ---
 
@@ -231,7 +231,7 @@ Platform-level admin users can view all plans regardless of visibility, delete a
 | Invite (guest) | `POST`, `PATCH`, `POST /bulk`, `PATCH /bulk` on items                      | Guest item CRUD (single + bulk)                                                                                                                                                                                              |
 | Join Requests  | `POST`, `PATCH /:id`                                                       | Submit a join request, approve or reject                                                                                                                                                                                     |
 | Claim          | `POST /claim/:token`                                                       | Link a registered user to a participant spot                                                                                                                                                                                 |
-| Internal       | `POST /api/internal/auth/identify`                                         | Resolve phone number to Chillist user — queries `users.phone` directly (E.164 index lookup), returns `userId` + `displayName` (from Supabase, falling back to participant record). Chatbot use only.                                                  |
+| Internal       | `POST /api/internal/auth/identify`                                         | Resolve phone number to Chillist user — queries `users.phone` directly (E.164 index lookup), returns `userId` + `displayName` (from Supabase, falling back to participant record). Chatbot use only.                         |
 | Internal       | `GET /api/internal/plans`                                                  | List plans for a resolved chatbot user — returns `InternalPlanSummary[]` with `id`, `name`, `date`, `role`, `participantCount`, `itemCount`, `completedItemCount`. Requires `x-service-key` + `x-user-id`. Chatbot use only. |
 | Auth           | `GET /me`, `GET /profile`, `PATCH /profile`, `POST /sync-profile`          | Current user, read/update preferences, sync from Supabase                                                                                                                                                                    |
 | Expenses       | `POST`, `GET`, `PATCH /:id`, `DELETE /:id`                                 | Create, list, update, delete expenses                                                                                                                                                                                        |
