@@ -165,13 +165,14 @@ curl -v -H "CF-IPCountry: IL" http://localhost:8788/ 2>&1 | grep "Set-Cookie"
 Tag options are driven by `src/data/plan-creation-tags.json`. The `onBack` prop is optional — omitted when the wizard is the first step.
 
 - **Tier 1:** Single-select (plan type: camping, beach, hotel trip, etc.)
-- **Tier 2:** Multi-select (logistics: cooking, tent setup, day trip, etc.) — conditional on tier 1 selection
+- **Tier 2:** Multi-select (logistics: stay, food, vibe) — conditional on tier 1 selection. Uses **mutex groups** for mutually exclusive options within a concern (e.g., hotel vs apartment) and **cross-group rules** for dependent disable/deselect across concerns (e.g., apartment disables hotel meals). Duration/day-count questions are omitted — the date picker handles that.
 - **Tier 3:** Multi-select (specifics: shared meals, BYO food, etc.) — conditional on tier 2 selections, capped at 5 options
 - **Summary:** Shows all selected tags as chips before confirming (SelectedChips hidden on summary to avoid duplication)
 - **Chip navigation:** Clicking a chip navigates back to that tier for editing
 - **Skip:** Each tier and the whole step can be skipped (title still validated)
+- **Legacy tag preservation:** Tags from older plans that no longer exist in the current wizard are silently passed through in the output so they are not lost on edit/save.
 - Tags are passed as `string[]` in the plan creation payload (`tags` field on `PlanCreateWithOwner`)
-- i18n keys under `tagWizard.*` namespace in all locale files
+- i18n keys under `tagWizard.*` namespace in all locale files. Legacy tag ids are kept in translations for backward compatibility.
 
 ### Bulk Add Wizard (`src/components/BulkItemAddWizard.tsx`)
 

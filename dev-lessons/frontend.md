@@ -4,6 +4,15 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [UX] Tag taxonomy v1.2 — remove duration duplication, fix contradictions, preserve legacy tags
+
+**Date:** 2026-03-30
+**Problem:** The tag wizard asked duration questions (beach day/overnight, hiking day/multi-day) that duplicated the date picker in step 2. Hotel options mixed stay and food concerns in one flat list. Dinner/party and other had missing or incorrect mutex groups allowing contradictory selections. Editing a plan with old tag ids that were removed from the wizard would silently drop those tags.
+**Solution:** (1) Removed duration-based options from beach and hiking. (2) Redesigned hotel into two clear concerns: stay (hotel vs apartment) and meals (hotel meals, restaurants, cooking, mixed) with cross-group disable rules. (3) Added venue mutex to dinner/party, format mutex for potluck/catered, and cross-rules (restaurant disables potluck, drinks-only disables potluck+catered). (4) Fixed other to include `other_mixed` in the indoor/outdoor mutex. (5) Removed overly aggressive city_break cross-rule. (6) Promoted beach vibe options (relaxing, active, kids) to tier 2. (7) Added `legacyTags` state in `PlanTagWizard.tsx` to preserve unrecognized tag ids from `initialTags` through the round-trip. (8) Kept all removed tag ids in translation files for backward compatibility.
+**Prevention:** (a) Don't duplicate in tags what is already captured by other wizard steps (dates, group size, dietary prefs). (b) When removing options from a taxonomy, keep translation keys for legacy data. (c) Add `legacyTags` pass-through for any wizard that edits stored tag arrays. (d) Validate every plan type's tier 2 for contradictory stackable options by auditing mutex groups.
+
+---
+
 <!-- Add new entries at the top -->
 
 ### [UI] Admin delete must yield to leave button when user is a participant

@@ -141,7 +141,7 @@ Admin users (platform-level role, not per-plan) can:
 - View all plans regardless of visibility; the admin **All Plans** tab does not show the “create plan” CTA (creation stays on the main `/plans` flow).
 - Delete any plan.
 - See pending join requests across all plans.
-- On **AI Usage**, view paginated AI usage logs and aggregated summary (tokens, cost, by feature/model) from `GET /admin/ai-usage` with filters.
+- On **AI Usage**, view paginated AI usage logs and aggregated summary (tokens, cost, by feature/model) from `GET /admin/ai-usage` with filters; each row can be expanded for provider, language, timing/detail fields, metadata, and errors.
 
 ---
 
@@ -236,7 +236,7 @@ Admin users (platform-level role, not per-plan) can:
   - Scoped to a plan via `planId`
   - Timestamps: `createdAt`, `updatedAt`
 - **Plan**
-  - `planId`, `title`, optional: `description`, `location` (name/country/region/city/lat/lon/timezone), `startDate`, `endDate`, `tags[]`
+  - `planId`, `title`, optional: `description`, `location` (name/country/region/city/lat/lon/timezone), `startDate`, `endDate`, `tags[]` (3-tier taxonomy v1.2: tier 1 single-select plan type, tier 2 multi-select with mutex groups + cross-group rules, tier 3 multi-select specifics; legacy tag ids preserved on edit)
   - `ownerParticipantId`, `createdByUserId` (Supabase UUID of the plan creator)
   - `status` ("draft" | "active" | "archived"), `visibility` ("public" | "invite_only" | "private")
   - `defaultLang` (varchar(10), nullable) — ISO 639-1 language code for the plan UI (e.g. en, he)
