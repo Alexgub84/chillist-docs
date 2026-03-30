@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Never edit `chillist-fe` when working in the backend repo
+
+**Date:** 2026-03-30
+**Problem:** While wiring `GET /plans` (`myParticipantId`, `myRole`) for leave-plan, files in `chillist-fe` were modified from a `chillist-be` session. That breaks the agreed repo boundary (BE + shared docs only), mixes two codebases in one mental context, and skips FE CI/review conventions.
+**Solution:** Ship API + OpenAPI + `chillist-docs` contract updates from `chillist-be`. Implement FE in `chillist-fe` on its own branch (or a dedicated Cursor workspace/chat). Revert any accidental FE edits or re-apply them properly in the FE repo.
+**Prevention:** The backend workspace is `chillist-be` and `chillist-docs` only — never `chillist-fe`. After API changes, regenerate OpenAPI, update specs, and file or hand off an FE issue with request/response shapes.
+
 ### [Schema] drizzle-kit `generate` is interactive — write migrations manually when renaming tables
 
 **Date:** 2026-03-29

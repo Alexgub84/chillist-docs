@@ -77,6 +77,7 @@ Strict, minimal instructions for `chillist-be`. Read these before executing any 
 
 ## 9. Workflow & Safe Deployments
 
+- **Repo boundary:** Do not modify `chillist-fe` (or any non-docs sibling app repo) when executing tasks in `chillist-be`. Deliver API changes, `docs/openapi.json`, and updates under `chillist-docs/` (specs, guides, dev-lessons). Frontend consumers are implemented in `chillist-fe` separately — describe the contract in OpenAPI and [user-management spec](../specs/user-management.md); open or link an FE issue when the UI must change.
 - **Version Bumping:** Bump `package.json` version on every PR (Patch: fixes, Minor: features/DB, Major: breaking).
 - **Incremental Migration:** When adding auth or breaking changes, do additive changes first. Keep the old route/auth working, let FE migrate, then enforce/cleanup.
 - **Breaking Change Check:** Before committing, check if request/response shapes changed. If breaking, keep the old code path working, deprecate it, and create a cleanup issue.

@@ -6,6 +6,20 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 <!-- Add new entries at the top -->
 
+### [Logic] Plans list "All" sections — partition by leave affordance, not only `isPlanOwnedBy`
+
+**Date:** 2026-03-30
+**Problem:** With membership filter "All", the same plan could appear under both **My plans** and **Invited** because `isPlanOwnedBy` can be true when `createdByUserId` matches the user even if `myRole` is `participant` (or other API quirks), while `isPlanInvitedTo` is also true.
+**Solution:** Derive section membership with `isPlanInOwnedSection` = `isPlanOwnedBy && !shouldShowLeave` and `isPlanInInvitedSection` = `shouldShowLeave || (isPlanInvitedTo && !isPlanOwnedBy)` so non-owners who see the leave control never land in the owned bucket.
+**Prevention:** When splitting UI by "owner vs invited", align with `shouldShowLeave` / role, not `createdByUserId` alone.
+
+### [API] Leave plan — resolve participant id when `GET /plans` omits `participants`
+
+**Date:** 2026-03-30
+**Problem:** `DELETE /participants/:participantId` returned 404 with message `"Plan not found"` in two situations: (1) mock store had a participant row whose `planId` did not match any plan (orphan participant). (2) Production `GET /plans` may not embed participant summaries, so the UI had no `participantId` before calling delete.
+**Solution:** (1) Mock server: for **self** removal, do not require a matching plan row; only non-self removals require an existing plan and owner. (2) `PlansList`: treat plans with no `participants` array as “invited” when `createdByUserId` is set and differs from the current user; before delete, call `fetchParticipants(planId)` and pick the non-owner row for the current user. Added i18n `plans.leavePlanCannotResolve` when the list is empty or has no matching row.
+**Prevention:** Any flow that needs a participant id must not rely solely on optional embeddings from list endpoints; fetch `GET /plans/:planId/participants` when summaries are missing.
+
 ### [Test] E2E testids must be updated when renaming data-testid in shared components
 
 **Date:** 2026-03-30

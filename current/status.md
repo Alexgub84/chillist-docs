@@ -28,7 +28,7 @@ Owner details (name, phone, email) are auto-filled from the user's profile and n
 
 Each plan has a title, optional description, date or date range, and a location with Google Maps search. Plans have a status (draft / active / archived) and a visibility setting (public / invite-only / private) that controls who can find and access them. The owner can set a currency and default language per plan.
 
-The plans list shows all plans you own or are invited to. Filter by ownership (All / My plans / Invited) and by time (All / Upcoming / Past). Each card shows the plan title, status, dates, location, and participant count.
+The plans list shows all plans you own or are invited to. Filter by ownership (All / My plans / Invited) and by time (All / Upcoming / Past). With the **All** ownership filter selected, plans are grouped under two section headings — **My plans** (owned) and **Invited** — so owned and invited trips are easy to tell apart. With **My plans** or **Invited** selected, the list stays a single flat list (no section headings). Each card shows the plan title, status, dates, location, and participant count. **Invited** (non-owner) participants see a **leave plan** control on the card; confirming in the dialog resolves their participant id (from the list embedding or `GET /plans/:planId/participants` if needed), then calls `DELETE /participants/:participantId`, removes them from the plan, and clears their item assignments.
 
 The **edit plan** modal follows the same 2-step layout: Step 1 for plan details (title, description, location, dates, status, language, currency, tags) and Step 2 for owner preferences + participant estimation. Location in edit mode also shows only the place name with Google Maps autocomplete.
 
@@ -65,7 +65,7 @@ Every plan has participants with roles:
 
 Plans can have multiple owners. The current owner can promote another participant via "Make owner."
 
-Each participant has group details: number of adults and kids, food preferences, allergies, and free-text notes. The owner can edit anyone's preferences; participants can only edit their own. A linked participant can remove themselves from the plan (same API as owner removing someone); item assignments for that participant are cleared. RSVP status (Pending / Confirmed / Not sure) is shown as a badge next to each participant, visible to the owner.
+Each participant has group details: number of adults and kids, food preferences, allergies, and free-text notes. The owner can edit anyone's preferences; participants can only edit their own. A linked non-owner participant can **leave the plan** from the plans list (confirmation dialog); the same `DELETE /participants/:participantId` endpoint is used when an owner removes someone. Item assignments for that participant are cleared. RSVP status (Pending / Confirmed / Not sure) is shown as a badge next to each participant, visible to the owner.
 
 Per-person dietary data is supported via `dietaryMembers` — a structured JSONB field on each participant where each adult/kid in the group gets their own `diet` (single-select enum) and `allergies` (multi-select enum array). The legacy `foodPreferences`/`allergies` text fields are retained for backward compatibility.
 
