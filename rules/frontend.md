@@ -19,6 +19,7 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 
 ## 3) API and Schema Rules
 
+- **Browser session header:** Every API request must include `X-Session-ID` (UUID v4 from `src/core/session.ts`). Add it only in the centralized fetch layer — `doFetch` in `src/core/api.ts` and `authFetch` in `src/core/api-client.ts` — not in individual `fetchX` functions. If you introduce a new HTTP entry point, wire it through one of those wrappers.
 - Mutation functions must validate request input with `.parse()` before sending.
 - Response schemas should be strict on structure, lenient on backend date string formatting (`z.string()` for dates in responses, `.datetime()` for inputs).
 - Keep schema/mock/fixtures aligned with OpenAPI:

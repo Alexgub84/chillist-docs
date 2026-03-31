@@ -1,9 +1,9 @@
 # Chillist — Current Status
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
-> **Last updated:** 2026-03-30
+> **Last updated:** 2026-03-31
 > **BE version:** 283da16 — AI usage logs now capture full prompt text, raw model response, error type, and finish reason on every AI call; `generateItemSuggestions` refactored to never throw (discriminated union result)
-> **FE version:** —
+> **FE version:** 1.31.0 — PostHog analytics integrated (identify on login, reset on logout, autocapture enabled)
 
 ---
 
@@ -198,7 +198,9 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 - Rate limiting (100 req/min global, 10 req/min on auth endpoints, 30 req/min on internal identify).
 - Security headers (Helmet), CORS restricted to frontend URL in production.
 - All input validated with Zod. SQL injection prevented via Drizzle ORM parameterized queries.
-- **Session ID tracking:** Every request carries a `sessionId` for log correlation. For authenticated users this is the Supabase `session_id` JWT claim; for guests it is a `guest_<sha256-prefix>` derived from the invite token. Returned from `GET /auth/me` for FE use. No DB storage — analytics integration planned for a later phase.
+- **Browser session (FE):** The SPA generates a UUID v4 per browser profile, stores it in `localStorage` (`chillist-session-id` + `chillist-session-last-active`), refreshes activity on user interaction (debounced), expires after 15 minutes of inactivity, and clears on explicit sign-out. Every outbound API request sends `X-Session-ID` via `doFetch` / `authFetch`. Independent of PostHog analytics IDs.
+- **Backend session tracking (pending):** Upsert `sessions` rows from `X-Session-ID`, log alongside `userId`, set `ended_at` on logout — [chillist-be#170](https://github.com/Alexgub84/chillist-be/issues/170).
+- **PostHog analytics (FE):** `posthog-js` + `@posthog/react` initialized in `main.tsx`. Autocapture active. `posthog.identify(userId, { email })` called on `SIGNED_IN`; `posthog.reset()` called on `SIGNED_OUT`. Disabled locally when `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN` is the placeholder value `"token"`. Config via `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN` + `VITE_PUBLIC_POSTHOG_HOST`.
 
 ### Database Tables
 

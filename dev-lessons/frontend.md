@@ -4,6 +4,20 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [Arch] TanStack Router root `component` must not call hooks inline
+
+**Date:** 2026-03-31
+**Problem:** `createRootRoute({ component: () => { useSession(); return ... } })` triggers `react-hooks/rules-of-hooks` — the anonymous function is not treated as a component.
+**Solution:** Extract a named component (e.g. `function SessionActivity() { useSession(); return null; }`) and render it inside the tree.
+**Prevention:** For any hook in a file route `component`, use a `PascalCase` child component or the route's dedicated layout component.
+
+### [Arch] Browser session id — UUID v4 validation in tests
+
+**Date:** 2026-03-31
+**Problem:** Unit tests used arbitrary hex strings as "UUIDs"; `session.ts` validates RFC 4122 variant (fourth group must start with `8`, `9`, `a`, or `b`). Invalid fixtures caused spurious regeneration assertions to fail.
+**Solution:** Use real v4-shaped ids in tests (or `crypto.randomUUID()`), or relax test data to match the same regex as production.
+**Prevention:** When testing UUID validation logic, generate ids with `crypto.randomUUID()` or copy known-valid v4 examples.
+
 ### [UX] Tag taxonomy v1.2 — remove duration duplication, fix contradictions, preserve legacy tags
 
 **Date:** 2026-03-30
