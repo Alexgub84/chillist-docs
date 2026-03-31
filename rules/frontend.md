@@ -17,7 +17,43 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 - Use lazy routes by default (`*.lazy.tsx` + `createLazyFileRoute`). Non-lazy only for route config (`loader`, search validation).
 - Treat client auth/role checks as UX only. Backend is the security authority.
 
-## 3) API and Schema Rules
+## 3) Third-Party Client Pattern (MANDATORY for every new SDK)
+
+**Before integrating any third-party service (analytics, payments, logging, feature flags, etc.), follow this pattern without exception:**
+
+1. Create `src/lib/<service>.ts` — init/config lives here, nowhere else.
+2. Export a single instance from that file.
+3. All app code (including `src/core/analytics.ts`) imports from `src/lib/<service>`, **never** from the third-party package directly.
+4. `main.tsx` imports the instance from `src/lib/<service>` — no init logic in `main.tsx`.
+5. Tests mock `src/lib/<service>` with `vi.mock` — never mock the third-party package itself.
+
+**Why:** init logic in `main.tsx` cannot be swapped in tests. Mocking a third-party package couples tests to implementation details. The lib boundary gives a single injectable seam.
+
+**Existing examples:**
+- `src/lib/supabase.ts` — Supabase client (real vs. mock auth controlled by `VITE_AUTH_MOCK`)
+- `src/lib/posthog.ts` — PostHog analytics (initialized only when real token is present)
+
+**Template for a new client:**
+```typescript
+// src/lib/<service>.ts
+import { createClient } from '<package>';
+
+const token = import.meta.env.VITE_<SERVICE>_TOKEN;
+
+// conditional init or always-safe no-op when token missing
+export const serviceClient = token ? createClient(token) : noOpClient;
+```
+
+**Template for test mock:**
+```typescript
+vi.mock('../../../src/lib/<service>', () => ({
+  default: { method: vi.fn(), ... },
+  // or named exports:
+  serviceClient: { method: vi.fn(), ... },
+}));
+```
+
+## 4) API and Schema Rules
 
 - **Browser session header:** Every API request must include `X-Session-ID` (UUID v4 from `src/core/session.ts`). Add it only in the centralized fetch layer — `doFetch` in `src/core/api.ts` and `authFetch` in `src/core/api-client.ts` — not in individual `fetchX` functions. If you introduce a new HTTP entry point, wire it through one of those wrappers.
 - Mutation functions must validate request input with `.parse()` before sending.
@@ -30,14 +66,14 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 - **Phone numbers must be E.164 before leaving the frontend.** Use `combinePhone` (which delegates to `normalizePhone`) on form submit, then validate with `isValidE164`. If invalid, `setError` on the phone field. If the BE returns 400 with "phone" in the message, surface it as a field-level error, not a toast.
 - **Model all response variants.** An endpoint can legitimately return different shapes for the same 2xx status (e.g. `PlanWithDetails` vs `{ status: 'not_participant', preview, joinRequest }`). When implementing or changing any `fetchX` function: (1) check the OpenAPI spec for `oneOf`, `anyOf`, or multiple 2xx response schemas; (2) define a Zod schema for every variant; (3) branch on a discriminant field before parsing. Never assume every successful response is the happy-path shape.
 
-## 4) Auth and Invite Rules
+## 5) Auth and Invite Rules
 
 - Read JWT from `supabase.auth.getSession()` right before API calls. Do not cache tokens.
 - On backend 401, refresh session and retry once; surface final auth failure with `AuthErrorModal`, not only a toast.
 - For invite-auth linking flows, if ordering matters, await side effects before navigation.
 - Never use silent `catch {}` in auth/invite paths.
 
-## 5) UI, i18n, and Component Rules
+## 6) UI, i18n, and Component Rules
 
 - Extract repeated patterns into shared components when used in 3+ places.
 - **Always use `data-testid` for testable elements.** It is the best way to target elements in E2E and unit tests. Add `data-testid` (or a `testId` prop on shared components like Modal) on: buttons, links, dialogs, forms, and any element tests need to interact with or assert on. Prefer `getByTestId` over `getByRole`, `getByText`, or `getByLabel` — test IDs are stable across i18n changes, layout shifts, and Headless UI transitions.
@@ -47,7 +83,7 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 - **Form validation messages must use `t()`.** Never hardcode English strings in Zod schemas used by forms. Convert static schemas to factory functions: `function buildXxxSchema(t: (key: string) => string)` and call `buildXxxSchema(t)` inside the component. Use `validation.*` i18n keys. Type inference: `z.infer<ReturnType<typeof buildXxxSchema>>`.
 - API enum values must be translated at display time (`t('namespace.${value}')`), not stored translated.
 
-## 6) Testing Rules
+## 7) Testing Rules
 
 - Every behavioral change requires matching test updates.
 - **MANDATORY: Use `getByTestId` / `data-testid` for ALL interactive elements** in E2E and unit tests. NEVER use `getByText`, `getByRole({ name })`, or `getByPlaceholderText` to click or interact with buttons, links, inputs, or toggles — these break when text changes (i18n, added descriptions, rewording). `getByText` is ONLY acceptable for asserting that data content appears (e.g., checking a plan name is visible). When adding a new interactive element to a component, always add `data-testid` immediately.
@@ -65,24 +101,24 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 - **E2E mock responses must match the Zod schema the app parses.** Never mock an endpoint with `{ ok: true }` when the real handler returns a structured response. Check `src/core/api.ts` to see what `bulkItemResponseSchema`, `itemSchema`, etc. require, and make mock responses satisfy those schemas exactly.
 - **Every E2E test failure must be recorded in `dev-lessons/frontend.md`.** When an E2E test fails during a push: (1) identify the root cause before patching; (2) fix the underlying issue; (3) add a dev-lesson entry at the top with: date, failing test names, root cause, solution, and lesson. This prevents the same category of breakage from recurring silently.
 
-## 7) Logging and Error Handling
+## 8) Logging and Error Handling
 
 - Every catch block must log context (module + key ids + error message).
 - When showing `toast.error`, also log full error details.
 - Never log full tokens/secrets. Truncate sensitive values.
 
-## 8) WhatsApp
+## 9) WhatsApp
 
 - For any WhatsApp-related task, read [specs/whatsapp.md](../specs/whatsapp.md) first — it is the single source of truth for current state, planned features, architecture, and BE gaps.
 
-## 9) Pre-Change Checklist
+## 10) Pre-Change Checklist
 
 - Confirm backend already provides required contract fields/endpoints.
 - Identify route, component, hook, API, and tests that the change touches.
 - Confirm whether auth gating, i18n, and owner/admin conditions are affected.
 - Does the API endpoint return more than one response shape? If yes: are all shapes defined in `src/core/schemas/`? Is each shape tested in `tests/unit/core/api.test.ts`? Is the mock server handler in `api/server.ts` updated to return the alternative shape when appropriate?
 
-## 10) Pre-Push Checklist
+## 11) Pre-Push Checklist
 
 - **NEVER** use `--no-verify` on push or commit. Husky pre-push hooks run typecheck, unit, integration, and E2E tests — they exist to prevent broken code from being pushed. If hooks fail, fix the issue.
 - Before running E2E tests locally, kill any stale Vite process on port 5174 (`lsof -i :5174 -P -n -t | xargs kill`). Playwright reuses existing servers locally and a stale server without `VITE_AUTH_MOCK=true` causes mass auth failures.
@@ -97,11 +133,11 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 - If a new endpoint or response variant was added: confirm **both** `api/server.ts` AND `tests/e2e/fixtures.ts` were updated, and a unit test covers the new variant in `tests/unit/core/api.test.ts`.
 - If any E2E tests failed during this push cycle: add a dev-lesson entry in `dev-lessons/frontend.md` before considering the task done.
 
-## 11) Docs Updates
+## 12) Docs Updates
 
 - Only update existing files. Do not create new docs files.
 
-## 12) Escalate Instead of Guessing
+## 13) Escalate Instead of Guessing
 
 Stop and raise to user when:
 

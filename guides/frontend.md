@@ -52,6 +52,44 @@ Ensure `chillist-be` is running on localhost:3333, then `npm run dev`.
 - `npm run e2e`: Run Playwright tests
 - `npm run screenshots`: Capture home page screenshots for EN/HE in one shot — starts the mock API and Vite with mock auth, patches `.env.local` for the run, restores it after, and writes images to `public/`. Ensure ports **3333** and **5173** are free. Flags: `--verbose` (server logs), `--skip-servers` (use when mock + Vite are already running with mock auth). See `scripts/take-screenshots.ts` for scroll targets; pitfalls in `dev-lessons/frontend.md`.
 
+## Third-Party Client Pattern
+
+Every external service (analytics, auth, payments, logging, etc.) follows the same pattern. **Check this section before integrating any new SDK.**
+
+### Pattern
+
+| Layer | File | Rule |
+|-------|------|------|
+| Init + export | `src/lib/<service>.ts` | All config and init lives here. One exported instance. |
+| App code | `src/core/<service>.ts` or `src/hooks/` | Imports from `src/lib/<service>`, never from the package directly. |
+| Tests | `vi.mock('../../../src/lib/<service>')` | Mock the lib boundary, not the third-party package. |
+| Entry point | `src/main.tsx` | Imports from `src/lib/<service>`. No init logic in `main.tsx`. |
+
+### Existing clients
+
+| File | Package | Notes |
+|------|---------|-------|
+| `src/lib/supabase.ts` | `@supabase/supabase-js` | Real vs. mock controlled by `VITE_AUTH_MOCK=true` |
+| `src/lib/posthog.ts` | `posthog-js` | Initialized only when `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN` is not the placeholder `"token"` |
+
+### Adding a new client
+
+1. Create `src/lib/<service>.ts`:
+   ```typescript
+   import { createClient } from '<package>';
+   const token = import.meta.env.VITE_<SERVICE>_TOKEN;
+   // init conditionally, or export a no-op when token is absent
+   export default token ? createClient(token) : noOpClient;
+   ```
+2. Import from `src/lib/<service>` everywhere — never from the package directly.
+3. In tests, mock at the lib boundary:
+   ```typescript
+   vi.mock('../../../src/lib/<service>', () => ({
+     default: { method: vi.fn() },
+   }));
+   ```
+4. Add `VITE_<SERVICE>_TOKEN` to `.env.example`, `.env`, and the GitHub Secrets/Vars table below.
+
 ## API Layer & OpenAPI
 
 The backend owns the OpenAPI spec. The frontend fetches and generates types from it.
@@ -189,11 +227,11 @@ Static JSON for autocomplete suggestions.
 
 - **Unit/Integration:** Vitest + React Testing Library. Global mocks in `tests/setup.ts`.
 - **E2E:** Playwright. Pre-push hook runs all 4 browsers. CI runs Chrome only. Use `npm run e2e:docker` for Linux-WebKit parity.
-- **WebKit Quirks:** Use `click({ force: true })` on submit buttons in Headless UI modals and increase `toBeHidden` timeouts for WebKit. If a `click()` silently fails on Mobile Safari (e.g. after async re-renders), use `locator.evaluate((el: HTMLElement) => el.click())` as a reliable fallback. For SPA navigation assertions, use `expect(page).toHaveURL(...)` — never `page.waitForURL`. See [rules/frontend.md §6](../rules/frontend.md) and dev-lesson: _Mobile Safari click + SPA navigation_.
+- **WebKit Quirks:** Use `click({ force: true })` on submit buttons in Headless UI modals and increase `toBeHidden` timeouts for WebKit. If a `click()` silently fails on Mobile Safari (e.g. after async re-renders), use `locator.evaluate((el: HTMLElement) => el.click())` as a reliable fallback. For SPA navigation assertions, use `expect(page).toHaveURL(...)` — never `page.waitForURL`. See [rules/frontend.md §7](../rules/frontend.md) and dev-lesson: _Mobile Safari click + SPA navigation_.
 
 ### Selector strategy (RTL + Playwright)
 
-Full rules: [rules/frontend.md §6](../rules/frontend.md) — Testing Rules.
+Full rules: [rules/frontend.md §7](../rules/frontend.md) — Testing Rules.
 
 **Short version:** Use `data-testid` + `getByTestId` for anything you **click** and for assertions that a **step, section, or modal** is visible. Do not assert wizard/section presence with `getByText(/English/i)` on strings that come from `t()` — those tests break on every copy or locale change. See dev-lessons: _Unit tests asserting on i18n headings_ (search `dev-lessons/frontend.md`).
 
@@ -216,4 +254,16 @@ The mock server is a Fastify instance that mirrors the real backend API. It is u
 - **Deploy (`deploy.yml`):** Runs on push to `main`. Validates env vars, builds, and deploys to Cloudflare Pages. Does not run tests (trusts CI).
 
 **Required GitHub Secrets/Vars:**
-`API_SPEC_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `VITE_API_KEY`, `VITE_API_URL`, `CLOUDFLARE_PROJECT_NAME`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_GOOGLE_MAPS_API_KEY`.
+
+| Name | Type | Purpose |
+|------|------|---------|
+| `CLOUDFLARE_API_TOKEN` | Secret | Cloudflare Pages deploy token |
+| `CLOUDFLARE_ACCOUNT_ID` | Variable | Cloudflare account ID |
+| `CLOUDFLARE_PROJECT_NAME` | Variable | Cloudflare Pages project name |
+| `API_SPEC_TOKEN` | Secret | GitHub PAT to fetch OpenAPI spec from private BE repo |
+| `VITE_API_URL` | Variable | Backend API base URL |
+| `VITE_SUPABASE_URL` | Variable | Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | Variable | Supabase anon key |
+| `VITE_GOOGLE_MAPS_API_KEY` | Variable | Google Maps API key |
+| `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN` | Variable | PostHog project token (public, goes into browser bundle) |
+| `VITE_PUBLIC_POSTHOG_HOST` | Variable | PostHog ingest host (e.g. `https://us.i.posthog.com`) |
