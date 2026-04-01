@@ -4,6 +4,13 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [E2E] `page.goto` timeout on Vite SPA — prefer `domcontentloaded` and stabilize webServer env
+
+**Date:** 2026-04-01  
+**Problem:** `Edit Plan › unauthenticated user is redirected to signin` failed: `page.goto` exceeded 60s waiting for `load`. Parallel workers + Vite dev server can make full `load` flaky; PostHog real init in E2E is unnecessary noise.  
+**Solution:** (1) `page.goto(url, { waitUntil: 'domcontentloaded' })` for the redirect-only navigation. (2) `playwright.config.ts` `webServer.env`: add `VITE_POSTHOG_MOCK: 'true'`. (3) Set `retries: 1` for local runs (not only CI) so transient failures do not block `git push`.  
+**Prevention:** For SPA redirect tests, avoid waiting for full `load` unless the assertion needs it. Keep E2E webServer env aligned with offline mocks (`VITE_AUTH_MOCK`, `VITE_POSTHOG_MOCK`).
+
 ### [E2E] Session id after sign-out — CSR home does not recreate storage until reload or getSessionId
 
 **Date:** 2026-04-01  
