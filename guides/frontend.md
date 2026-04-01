@@ -78,6 +78,40 @@ Every external service (analytics, auth, payments, logging, etc.) follows the sa
 - **Console debug:** Set `VITE_PUBLIC_POSTHOG_DEBUG=true` in `.env` to enable verbose SDK logging. Alternatively append `?__posthog_debug=true` to the app URL (PostHog built-in). Do **not** set debug to `true` in production CI or deploy env.
 - **Toolbar on localhost:** In PostHog → **Project settings** → **Toolbar** (or authorized domains / toolbar access, depending on UI version), allow your dev origins, e.g. `http://localhost:5173` (default Vite) and `http://localhost:5174` (Playwright / `npm run e2e` webServer). Then use **Toolbar** → launch / heatmaps from the PostHog UI for that URL. Official reference: [PostHog toolbar](https://posthog.com/docs/toolbar).
 
+### Analytics — events and properties (`src/core/analytics.ts`)
+
+Implementation lives in `src/core/analytics.ts` (calls `src/lib/posthog`). **Super properties** (attached to every event, including autocaptured pageviews, while registered): `session_id` (boot via `initAnalytics()` in `main.tsx`), `user_id` (after sign-in via `registerUserContext`), `plan_id` (while a plan route is mounted — `PlanProvider`). **Identity:** `identifyUser` on `SIGNED_IN`, `resetAnalytics` on `SIGNED_OUT`.
+
+**PostHog autocapture** (SDK defaults): e.g. `$pageview` on navigation, `$autocapture` for clicks — exact set depends on [project settings](https://us.posthog.com/settings/project) in PostHog.
+
+#### Custom events — currently emitted in the app
+
+| Event name | Properties | Wired from |
+|------------|------------|------------|
+| `user_signed_in` | `method`: `email` \| `google` | `AuthProvider` (Supabase `SIGNED_IN`) |
+| `user_signed_out` | — | `AuthProvider` (`SIGNED_OUT`) |
+
+#### Custom events — defined in code, not yet called from UI/hooks
+
+These `track*` helpers exist for the taxonomy; wire them when the corresponding feature work lands. Until then they only appear in unit tests.
+
+| Event name | Properties (summary) |
+|------------|----------------------|
+| `profile_completed` | — |
+| `plan_created` | `plan_id`, `has_location`, `has_dates`, `tags_count`, `visibility` |
+| `plan_updated` | `plan_id` |
+| `plan_deleted` | `plan_id` |
+| `items_added` | `plan_id`, `count`, `source` (`single` \| `bulk` \| `ai` \| `guest`) |
+| `item_status_changed` | `plan_id`, `from`, `to` |
+| `ai_suggestions_requested` | `plan_id` |
+| `ai_suggestions_confirmed` | `plan_id`, `count` |
+| `invite_link_copied` | `plan_id` |
+| `invite_claimed` | `plan_id` |
+| `join_request_submitted` | `plan_id` |
+| `expense_created` | `plan_id`, `has_linked_items` |
+
+When you add a new custom event or wire an existing `track*` call, update this table in the same PR.
+
 ### Adding a new client
 
 1. Create `src/lib/<service>.ts`:

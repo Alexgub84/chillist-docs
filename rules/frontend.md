@@ -132,6 +132,7 @@ vi.mock('../../../src/lib/<service>', () => ({
 - If you change **i18n** or user-visible labels: grep the test tree for `getByText` / `getByRole` matchers that might target that copy — switch to `data-testid` + `getByTestId` instead of updating English strings in assertions.
 - If a new endpoint or response variant was added: confirm **both** `api/server.ts` AND `tests/e2e/fixtures.ts` were updated, and a unit test covers the new variant in `tests/unit/core/api.test.ts`.
 - If any E2E tests failed during this push cycle: add a dev-lesson entry in `dev-lessons/frontend.md` before considering the task done.
+- **Analytics:** Does this change introduce or complete a user action worth measuring? If yes: add or call the appropriate `track*` in `src/core/analytics.ts` and update the **Custom events** tables in [guides/frontend.md](../guides/frontend.md) § Analytics — events and properties (currently emitted vs defined-but-unwired).
 
 ## 12) Docs Updates
 
