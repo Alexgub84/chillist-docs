@@ -90,10 +90,11 @@ Implementation lives in `src/core/analytics.ts` (calls `src/lib/posthog`). **Sup
 |------------|------------|------------|
 | `user_signed_in` | `method`: `email` \| `google` | `AuthProvider` (Supabase `SIGNED_IN`) |
 | `user_signed_out` | — | `AuthProvider` (`SIGNED_OUT`) |
+| `item_updated` | `plan_id`, `fields` (sorted keys from the `ItemPatch` the client sent, e.g. `quantity`, `assignmentStatusList`) | `useUpdateItem` (`onSuccess` after a successful `updateItem`) |
 
 #### Custom events — defined in code, not yet called from UI/hooks
 
-These `track*` helpers exist for the taxonomy; wire them when the corresponding feature work lands. Until then they only appear in unit tests.
+These `track*` helpers exist for the taxonomy; wire them when the corresponding feature work lands. Until then they only appear in unit tests. **Tracking issue:** [chillist-fe#207](https://github.com/Alexgub84/chillist-fe/issues/207).
 
 | Event name | Properties (summary) |
 |------------|----------------------|
@@ -102,7 +103,7 @@ These `track*` helpers exist for the taxonomy; wire them when the corresponding 
 | `plan_updated` | `plan_id` |
 | `plan_deleted` | `plan_id` |
 | `items_added` | `plan_id`, `count`, `source` (`single` \| `bulk` \| `ai` \| `guest`) |
-| `item_status_changed` | `plan_id`, `from`, `to` |
+| `item_status_changed` | `plan_id`, `from`, `to` — not wired; status changes are reflected in `item_updated.fields` (e.g. `assignmentStatusList`) |
 | `ai_suggestions_requested` | `plan_id` |
 | `ai_suggestions_confirmed` | `plan_id`, `count` |
 | `invite_link_copied` | `plan_id` |
