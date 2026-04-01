@@ -4,6 +4,13 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [E2E] Session id after sign-out — CSR home does not recreate storage until reload or getSessionId
+
+**Date:** 2026-04-01  
+**Problem:** `after sign out, home load gets a new session id distinct from the previous one` failed: `chillist-session-id` was `null` after navigating to `/`. `clearSession()` runs on sign-out; `main.tsx` only calls `initSession()` once at first load, and `SessionActivity` does not remount on client navigation, so nothing wrote a new id until a fetch or debounced activity.  
+**Solution:** After asserting the post-sign-out URL, `page.reload()` so `initSession()` runs again and localStorage gets a new UUID; then assert it differs from the pre-sign-out id.  
+**Prevention:** When E2E asserts “new session after logout”, either reload, wait for a network request that attaches `X-Session-ID`, or trigger the debounced activity path — not only CSR navigation.
+
 ### [Arch] TanStack Router root `component` must not call hooks inline
 
 **Date:** 2026-03-31
