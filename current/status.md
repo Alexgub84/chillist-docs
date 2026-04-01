@@ -1,8 +1,8 @@
 # Chillist — Current Status
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
-> **Last updated:** 2026-03-31
-> **BE version:** pending — Passive session receiver: X-Session-ID header read globally, `sessions` table for analytics, `POST /auth/logout` to end sessions, structured logs use browser session ID
+> **Last updated:** 2026-04-01
+> **BE version:** 3596384 — Passive browser sessions: `X-Session-ID` (UUID v4), `sessions` table, `POST /auth/logout`, `session_id` on analytics rows (AI usage, item changes, join requests, WhatsApp notifications, plan_invites)
 > **FE version:** 1.31.0 — PostHog analytics integrated (identify on login, reset on logout, autocapture enabled)
 
 ---
@@ -113,7 +113,7 @@ Sign up with email/password or Google OAuth. Email confirmation required. After 
 
 JWT-based sessions with automatic token refresh. Session expiry shows a modal prompting re-authentication. All plan creation and management requires sign-in.
 
-**Browser session tracking** — the frontend sends an `X-Session-ID` header (UUID v4, managed in localStorage with 15 min inactivity expiry) on every request. The backend reads the header, validates its format, persists/updates a `sessions` row (id, user_id, device_type, user_agent, last_activity_at), and includes `sessionId` in structured logs. Anonymous, guest, and authenticated requests all share the same browser session ID. A `POST /auth/logout` endpoint marks the session as ended (`ended_at` set).
+**Browser session tracking** — the frontend sends an `X-Session-ID` header (UUID v4, managed in localStorage with 15 min inactivity expiry) on every request. The backend reads the header, validates its format, upserts a `sessions` row after each non-health response (`last_activity_at`, optional `user_id` when JWT present), and includes `sessionId` in structured request/response logs. Anonymous, guest, and authenticated traffic share the same browser session id. `POST /auth/logout` sets `ended_at` on that session row (no JWT required). `GET /auth/me` returns `sessionId` from the header (not the Supabase JWT `session_id` claim). Selected tables store optional `session_id` for analytics joins (see Technical Overview).
 
 ### Multilingual Support
 
@@ -200,23 +200,23 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 - Rate limiting (100 req/min global, 10 req/min on auth endpoints, 30 req/min on internal identify).
 - Security headers (Helmet), CORS restricted to frontend URL in production.
 - All input validated with Zod. SQL injection prevented via Drizzle ORM parameterized queries.
-- **Browser session (FE):** The SPA generates a UUID v4 per browser profile, stores it in `localStorage` (`chillist-session-id` + `chillist-session-last-active`), refreshes activity on user interaction (debounced), expires after 15 minutes of inactivity, and clears on explicit sign-out. Every outbound API request sends `X-Session-ID` via `doFetch` / `authFetch`. Independent of PostHog analytics IDs.
-- **Backend session tracking (pending):** Upsert `sessions` rows from `X-Session-ID`, log alongside `userId`, set `ended_at` on logout — [chillist-be#170](https://github.com/Alexgub84/chillist-be/issues/170).
-- **PostHog analytics (FE):** `posthog-js` + `@posthog/react`; client in `src/lib/posthog.ts`. Super props + identify/reset on auth; `item_updated` from `useUpdateItem`. Further `track*` wiring: [chillist-fe#207](https://github.com/Alexgub84/chillist-fe/issues/207). Disabled when token is placeholder `"token"`. `VITE_POSTHOG_MOCK=true` uses `src/lib/mock-posthog.ts`. Config: `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN` + `VITE_PUBLIC_POSTHOG_HOST`.
+- **Browser session (FE + BE):** The SPA generates a UUID v4 per browser profile, stores it in `localStorage` (`chillist-session-id` + `chillist-session-last-active`), refreshes activity on user interaction (debounced), expires after 15 minutes of inactivity, and clears on explicit sign-out. Every outbound API request sends `X-Session-ID` via `doFetch` / `authFetch`. The BE upserts `sessions` from that header (see Database Tables), correlates logs with `sessionId` + `userId`, and records `session_id` on analytics rows where relevant. Independent of PostHog analytics IDs.
+- **PostHog analytics (FE):** `posthog-js` + `@posthog/react`; client initialized in `src/lib/posthog.ts` (no init in `main.tsx`). `initAnalytics()` registers `session_id` on boot. `identifyUser` / `registerUserContext` / `trackUserSignedIn` on `SIGNED_IN`; `trackUserSignedOut` / `unregisterUserContext` / `resetAnalytics` on `SIGNED_OUT`. `PlanProvider` registers `plan_id` while a plan route is mounted. Disabled when token is placeholder `"token"`. `VITE_POSTHOG_MOCK=true` uses `src/lib/mock-posthog.ts` (no network). Config via `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN` + `VITE_PUBLIC_POSTHOG_HOST`.
 
 ### Database Tables
 
 - **plans** — event details, location, dates, status, visibility, currency
 - **participants** — per-plan members with roles, preferences, invite tokens, RSVP. Stores `contactPhone` (E.164) and optionally `userId` (set when invite is claimed) or `guestProfileId` (set when guest accesses without signing up). `dietaryMembers` JSONB column holds per-person structured dietary data (diet enum + allergies array per adult/kid)
 - **items** — equipment/food with per-participant status tracking
-- **item_changes** — audit log of item modifications
+- **sessions** — browser session id (`id` = UUID from `X-Session-ID`), optional `user_id`, `device_type`, `user_agent`, `last_activity_at`, `ended_at`
+- **item_changes** — audit log of item modifications; optional `session_id` for correlation
 - **users** — per-user app-level data: phone (E.164, nullable), preferred language (`he`/`en`, nullable), default food preferences, allergies, and equipment. Indexed on `phone` for chatbot lookups. Renamed from `user_details`.
 - **guest_profiles** — anonymous guest users (accessed plan via invite link, no Supabase account). Stores name, phone, email, dietary preferences
-- **participant_join_requests** — pending/approved/rejected join requests. Also carries `dietaryMembers` JSONB, passed through to the `participants` record on approval
+- **participant_join_requests** — pending/approved/rejected join requests; optional `session_id`. Also carries `dietaryMembers` JSONB, passed through to the `participants` record on approval
 - **participant_expenses** — per-participant expenses with item linking
-- **plan_invites** — invite send history and acceptance tracking per participant
-- **whatsapp_notifications** — audit log of WhatsApp messages sent (invitation_sent, join_request_pending/approved/rejected)
-- **ai_usage_logs** — tracks every AI model invocation (tokens, cost, duration, model, feature type, status, full prompt text, raw model response, error type, finish reason). Admin-queryable via `GET /admin/ai-usage`
+- **plan_invites** — invite send history and acceptance tracking per participant; optional `session_id` (for future flows)
+- **whatsapp_notifications** — audit log of WhatsApp messages sent (invitation_sent, join_request_pending/approved/rejected); optional `session_id`
+- **ai_usage_logs** — tracks every AI model invocation (tokens, cost, duration, model, feature type, status, full prompt text, raw model response, error type, finish reason); optional `session_id`. Admin-queryable via `GET /admin/ai-usage`
 
 ### Backend API Routes
 
@@ -250,6 +250,7 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 
 - **Backend:** Vitest integration tests with Testcontainers (PostgreSQL). 300+ tests covering auth, permissions, CRUD, AI suggestion generation, and edge cases.
 - **Frontend:** Vitest + React Testing Library (unit + integration), Playwright E2E, mock API server for development.
+- **Playwright E2E:** The Vite process started by Playwright must receive `VITE_AUTH_MOCK`, `VITE_E2E`, and `VITE_POSTHOG_MOCK` via `webServer.env` (see [guides/frontend.md](../guides/frontend.md) § Playwright E2E). Local pre-push runs all browsers with `retries: 1`.
 
 ---
 

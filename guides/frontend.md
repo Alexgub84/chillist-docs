@@ -268,7 +268,21 @@ Static JSON for autocomplete suggestions.
 
 - **Unit/Integration:** Vitest + React Testing Library. Global mocks in `tests/setup.ts`.
 - **E2E:** Playwright. Pre-push hook runs all 4 browsers. CI runs Chrome only. Use `npm run e2e:docker` for Linux-WebKit parity.
-- **E2E browser session:** `tests/e2e/session.spec.ts` covers `localStorage` keys (`chillist-session-id`, `chillist-session-last-active`), that every mock API request’s `X-Session-ID` matches the stored session id, reload and 15-minute expiry on reload, sign-out clearing storage and a fresh session id after returning home, and two tabs sharing one session id.
+
+### Playwright E2E — stable defaults (`playwright.config.ts`)
+
+These are **project conventions**, not one-off hacks. Keep them when touching Playwright config or adding navigations.
+
+| Topic | Rule |
+|-------|------|
+| **webServer `env`** | Always set `VITE_AUTH_MOCK=true`, `VITE_E2E=true`, and **`VITE_POSTHOG_MOCK=true`** so the Vite process spawned for E2E does not call real Supabase/PostHog. Do not rely only on a developer’s local `.env`. |
+| **`page.goto`** | Default `waitUntil: 'load'` can **time out** on Vite SPAs under parallel workers or slow chunk loading. For tests that only need the document to start (e.g. auth redirect), use **`waitUntil: 'domcontentloaded'`**. Reserve full `load` when you truly need every subresource. |
+| **Retries** | `retries: 1` is enabled so transient flakes do not block pushes; fix root causes when a test fails twice. |
+| **Stale Vite** | Before local E2E, kill anything on port **5174** if Playwright reuses a server (`lsof -i :5174 -P -n -t \| xargs kill`). A stale server without `VITE_AUTH_MOCK` causes mass auth failures. |
+
+**Browser session in E2E:** `initSession()` in `main.tsx` runs **once per full page load**. After sign-out, **client-side** navigation to `/` does not run `initSession()` again. To assert a **new** `chillist-session-id` in `localStorage`, use **`page.reload()`** after the post-sign-out URL, or wait for behavior that calls `getSessionId()` (API request with `X-Session-ID`, or debounced activity). See `tests/e2e/session.spec.ts`.
+
+- **E2E browser session:** `tests/e2e/session.spec.ts` covers `localStorage` keys (`chillist-session-id`, `chillist-session-last-active`), that mock API requests’ `X-Session-ID` matches storage, reload and 15-minute expiry, sign-out clearing keys, **reload** to observe a new session id after home, and two tabs sharing one session id.
 - **WebKit Quirks:** Use `click({ force: true })` on submit buttons in Headless UI modals and increase `toBeHidden` timeouts for WebKit. If a `click()` silently fails on Mobile Safari (e.g. after async re-renders), use `locator.evaluate((el: HTMLElement) => el.click())` as a reliable fallback. For SPA navigation assertions, use `expect(page).toHaveURL(...)` — never `page.waitForURL`. See [rules/frontend.md §7](../rules/frontend.md) and dev-lesson: _Mobile Safari click + SPA navigation_.
 
 ### Selector strategy (RTL + Playwright)
