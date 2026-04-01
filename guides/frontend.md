@@ -72,6 +72,12 @@ Every external service (analytics, auth, payments, logging, etc.) follows the sa
 | `src/lib/supabase.ts` | `@supabase/supabase-js` | Real vs. mock controlled by `VITE_AUTH_MOCK=true` |
 | `src/lib/posthog.ts` | `posthog-js` | Real init when token is set and not `"token"`. `VITE_POSTHOG_MOCK=true` exports `src/lib/mock-posthog.ts` (no network). |
 
+### PostHog — local dev, staging, and toolbar
+
+- **Separate project for local noise:** In PostHog, create a dedicated project (e.g. “Chillist Dev”) and put its `phc_…` API key in local `.env` as `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN`. Production keeps using the production project key in GitHub Variables / deploy env. That way Live events and funnels stay meaningful in prod.
+- **Console debug:** Set `VITE_PUBLIC_POSTHOG_DEBUG=true` in `.env` to enable verbose SDK logging. Alternatively append `?__posthog_debug=true` to the app URL (PostHog built-in). Do **not** set debug to `true` in production CI or deploy env.
+- **Toolbar on localhost:** In PostHog → **Project settings** → **Toolbar** (or authorized domains / toolbar access, depending on UI version), allow your dev origins, e.g. `http://localhost:5173` (default Vite) and `http://localhost:5174` (Playwright / `npm run e2e` webServer). Then use **Toolbar** → launch / heatmaps from the PostHog UI for that URL. Official reference: [PostHog toolbar](https://posthog.com/docs/toolbar).
+
 ### Adding a new client
 
 1. Create `src/lib/<service>.ts`:
@@ -269,3 +275,4 @@ The mock server is a Fastify instance that mirrors the real backend API. It is u
 | `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN` | Variable | PostHog project token (public, goes into browser bundle) |
 | `VITE_PUBLIC_POSTHOG_HOST` | Variable | PostHog ingest host (e.g. `https://us.i.posthog.com`) |
 | `VITE_POSTHOG_MOCK` | Variable | Set `true` to use in-memory fake PostHog (tests / local E2E server — no events sent) |
+| `VITE_PUBLIC_POSTHOG_DEBUG` | Variable | Optional. Set `true` only for local debugging (verbose console logs). Omit or `false` in production |

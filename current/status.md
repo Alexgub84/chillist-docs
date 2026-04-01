@@ -2,7 +2,7 @@
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
 > **Last updated:** 2026-03-31
-> **BE version:** 283da16 — AI usage logs now capture full prompt text, raw model response, error type, and finish reason on every AI call; `generateItemSuggestions` refactored to never throw (discriminated union result)
+> **BE version:** pending — Passive session receiver: X-Session-ID header read globally, `sessions` table for analytics, `POST /auth/logout` to end sessions, structured logs use browser session ID
 > **FE version:** 1.31.0 — PostHog analytics integrated (identify on login, reset on logout, autocapture enabled)
 
 ---
@@ -113,6 +113,8 @@ Sign up with email/password or Google OAuth. Email confirmation required. After 
 
 JWT-based sessions with automatic token refresh. Session expiry shows a modal prompting re-authentication. All plan creation and management requires sign-in.
 
+**Browser session tracking** — the frontend sends an `X-Session-ID` header (UUID v4, managed in localStorage with 15 min inactivity expiry) on every request. The backend reads the header, validates its format, persists/updates a `sessions` row (id, user_id, device_type, user_agent, last_activity_at), and includes `sessionId` in structured logs. Anonymous, guest, and authenticated requests all share the same browser session ID. A `POST /auth/logout` endpoint marks the session as ended (`ended_at` set).
+
 ### Multilingual Support
 
 English, Hebrew, and Spanish. Language toggle in the header switches instantly. Hebrew uses right-to-left layout. Language preference is saved locally and also persisted to the backend (`users.preferredLang` via `PATCH /auth/profile`). On login or session restore, `GET /auth/profile` is called and a non-null `preferredLang` is applied as the active language — enabling cross-device sync. Only backend-supported languages (`he`, `en`) are synced; `es` is stored locally only.
@@ -200,7 +202,7 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 - All input validated with Zod. SQL injection prevented via Drizzle ORM parameterized queries.
 - **Browser session (FE):** The SPA generates a UUID v4 per browser profile, stores it in `localStorage` (`chillist-session-id` + `chillist-session-last-active`), refreshes activity on user interaction (debounced), expires after 15 minutes of inactivity, and clears on explicit sign-out. Every outbound API request sends `X-Session-ID` via `doFetch` / `authFetch`. Independent of PostHog analytics IDs.
 - **Backend session tracking (pending):** Upsert `sessions` rows from `X-Session-ID`, log alongside `userId`, set `ended_at` on logout — [chillist-be#170](https://github.com/Alexgub84/chillist-be/issues/170).
-- **PostHog analytics (FE):** `posthog-js` + `@posthog/react` initialized in `main.tsx`. Autocapture active. `posthog.identify(userId, { email })` called on `SIGNED_IN`; `posthog.reset()` called on `SIGNED_OUT`. Disabled locally when `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN` is the placeholder value `"token"`. Config via `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN` + `VITE_PUBLIC_POSTHOG_HOST`.
+- **PostHog analytics (FE):** `posthog-js` + `@posthog/react`; client initialized in `src/lib/posthog.ts` (no init in `main.tsx`). `initAnalytics()` registers `session_id` on boot. `identifyUser` / `registerUserContext` / `trackUserSignedIn` on `SIGNED_IN`; `trackUserSignedOut` / `unregisterUserContext` / `resetAnalytics` on `SIGNED_OUT`. `PlanProvider` registers `plan_id` while a plan route is mounted. Disabled when token is placeholder `"token"`. `VITE_POSTHOG_MOCK=true` uses `src/lib/mock-posthog.ts` (no network). `VITE_PUBLIC_POSTHOG_DEBUG=true` enables verbose SDK logs (local only). Use a separate PostHog *development* project locally so prod analytics stay clean — see `guides/frontend.md` § PostHog. Config via `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN` + `VITE_PUBLIC_POSTHOG_HOST`.
 
 ### Database Tables
 

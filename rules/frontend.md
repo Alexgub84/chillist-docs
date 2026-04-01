@@ -31,7 +31,7 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 
 **Existing examples:**
 - `src/lib/supabase.ts` — Supabase client (real vs. mock auth controlled by `VITE_AUTH_MOCK`)
-- `src/lib/posthog.ts` — PostHog analytics (initialized only when real token is present)
+- `src/lib/posthog.ts` — PostHog analytics (real init when token is set; `VITE_POSTHOG_MOCK` → fake client; optional `VITE_PUBLIC_POSTHOG_DEBUG` for console logs)
 
 **Template for a new client:**
 ```typescript
