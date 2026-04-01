@@ -70,7 +70,7 @@ Every external service (analytics, auth, payments, logging, etc.) follows the sa
 | File | Package | Notes |
 |------|---------|-------|
 | `src/lib/supabase.ts` | `@supabase/supabase-js` | Real vs. mock controlled by `VITE_AUTH_MOCK=true` |
-| `src/lib/posthog.ts` | `posthog-js` | Initialized only when `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN` is not the placeholder `"token"` |
+| `src/lib/posthog.ts` | `posthog-js` | Real init when token is set and not `"token"`. `VITE_POSTHOG_MOCK=true` exports `src/lib/mock-posthog.ts` (no network). |
 
 ### Adding a new client
 
@@ -227,6 +227,7 @@ Static JSON for autocomplete suggestions.
 
 - **Unit/Integration:** Vitest + React Testing Library. Global mocks in `tests/setup.ts`.
 - **E2E:** Playwright. Pre-push hook runs all 4 browsers. CI runs Chrome only. Use `npm run e2e:docker` for Linux-WebKit parity.
+- **E2E browser session:** `tests/e2e/session.spec.ts` covers `localStorage` keys (`chillist-session-id`, `chillist-session-last-active`), that every mock API request’s `X-Session-ID` matches the stored session id, reload and 15-minute expiry on reload, sign-out clearing storage and a fresh session id after returning home, and two tabs sharing one session id.
 - **WebKit Quirks:** Use `click({ force: true })` on submit buttons in Headless UI modals and increase `toBeHidden` timeouts for WebKit. If a `click()` silently fails on Mobile Safari (e.g. after async re-renders), use `locator.evaluate((el: HTMLElement) => el.click())` as a reliable fallback. For SPA navigation assertions, use `expect(page).toHaveURL(...)` — never `page.waitForURL`. See [rules/frontend.md §7](../rules/frontend.md) and dev-lesson: _Mobile Safari click + SPA navigation_.
 
 ### Selector strategy (RTL + Playwright)
@@ -267,3 +268,4 @@ The mock server is a Fastify instance that mirrors the real backend API. It is u
 | `VITE_GOOGLE_MAPS_API_KEY` | Variable | Google Maps API key |
 | `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN` | Variable | PostHog project token (public, goes into browser bundle) |
 | `VITE_PUBLIC_POSTHOG_HOST` | Variable | PostHog ingest host (e.g. `https://us.i.posthog.com`) |
+| `VITE_POSTHOG_MOCK` | Variable | Set `true` to use in-memory fake PostHog (tests / local E2E server — no events sent) |
