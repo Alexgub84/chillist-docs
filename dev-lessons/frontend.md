@@ -4,6 +4,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [API] Non-owner item PATCH sends full assignmentStatusList — backend rejects with 400
+
+**Date:** 2026-04-03
+**Problem:** Non-owner participants changing their own item status got `400 Bad Request: "Non-owners can only update their own assignment"`. The error appeared on the plan page for status changes, self-assign, and unassign actions.
+**Root Cause:** The backend uses different PATCH semantics by role: owners use replace semantics (full list), non-owners use merge semantics (own entry only). `enrichUpdates` in `useUpdateItem.ts` always filled in the full `assignmentStatusList` from the cached item, and `buildStatusUpdate` mapped over the full list. On the plan page, `GET /plans/:planId` returns unfiltered assignment lists, so non-owner updates included other participants' entries.
+**Solution:** Added `stripForNonOwner(updates, participantId)` in `useUpdateItem.ts` — applied only in `mutationFn` (not `onMutate`, to keep optimistic UI smooth). Filters `assignmentStatusList` to own entry, converts absent own entry to `{ unassign: true }`, removes `isAllParticipants`. Added `unassign: z.boolean().optional()` to `itemPatchSchema` (already in BE's OpenAPI spec). Threaded `currentParticipantId` through `useUpdateItem` and `usePlanActions`.
+**Prevention:** When the backend documents different semantics by role (replace vs merge), the frontend must respect that in the payload construction layer. Check OpenAPI operation descriptions for role-specific behavior whenever touching assignment or permission-sensitive PATCH endpoints.
+
 ### [E2E] Preferences auto-prompt modal blocked all clicks in existing E2E tests
 
 **Date:** 2026-04-03
