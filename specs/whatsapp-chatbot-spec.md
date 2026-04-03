@@ -1,9 +1,9 @@
 # Chillist WhatsApp AI Chatbot — Architecture Spec v1.0
 
-> **Status:** In Progress — Phase 3 complete, Phase 4 (AI Layer) in progress
+> **Status:** In Progress — Phase 3 complete, Phase 4 (AI Layer) structure implemented, conversation logic pending
 > **Scope:** This document defines the chatbot as a standalone service that communicates with the existing Chillist app backend via internal HTTP API. No implementation code is included.
 > **Prerequisite:** WhatsApp Integration Phase 1 & 2 (notifications + list sharing via Green API) must be complete before chatbot work begins.
-> **Last updated:** 2026-03-18 — Session scoping changed from per-phone to per-(phone, chatId). Each WhatsApp context (DM or group) now gets its own independent session. `chat_id` column added to `chatbot_sessions` (migration `002`). `ISessionStore.getActiveSession` signature updated to take `(phoneNumber, chatId)`.
+> **Last updated:** 2026-04-03 — Phase 4 AI layer structure implemented: `IAiClient` + `IMessageStore` + `IUsageLogger` services with real/fake/noop implementations, Fastify plugins, DI wiring via `buildApp()`, `chatbot_messages` + `chatbot_ai_usage` DB migrations. Conversation logic (system prompt, tool definitions) pending.
 
 ---
 
@@ -14,8 +14,8 @@
 | **1** | Project Scaffold              | ✅ Done | Fastify server + health endpoint, TypeScript, ESLint, Prettier, Husky, Vitest, Dockerfile, GitHub Actions CI/CD, Railway setup guide                                                                 |
 | **2** | Green API Webhook             | ✅ Done | Receive incoming WhatsApp messages, parse them, identify user, reply with welcome/signup (no AI)                                                                                                     |
 | **3** | User Identification           | ✅ Done | Phone → user identity lookup via internal API + session creation in PostgreSQL (`chatbot_sessions`); 15-min idle TTL; sessions scoped by `(phone_number, chat_id)` for independent DM/group contexts |
-| **4** | AI Layer + Tools              | Pending | Vercel AI SDK, system prompt, tool definitions (getMyPlans, getPlanDetails, updateItemStatus) calling internal API                                                                                   |
-| **5** | Session & Conversation Memory | Pending | Redis-backed message history, TTL, context carry-over between messages                                                                                                                               |
+| **4** | AI Layer + Tools              | In Progress | Structure done: `IAiClient` (Vercel AI SDK), `IMessageStore`, `IUsageLogger` with real/fake/noop + plugins + DI. Remaining: system prompt, tool definitions, conversation logic                     |
+| **5** | Session & Conversation Memory | In Progress | `chatbot_messages` table + `IMessageStore` done (postgres-backed, 20-message AI context window). Redis cache deferred — postgres is sufficient for v1                                                |
 | **6** | Polish & Hardening            | Pending | Rate limiting, error handling, logging analysis, security review, production env var validation                                                                                                      |
 | **7** | Group Chat (v1.5)             | Pending | Mention/prefix triggers, linkPlan, group sessions (per Section 13)                                                                                                                                   |
 
@@ -802,8 +802,9 @@ APP_BE_INTERNAL_URL=         # e.g., app-be.railway.internal:3333
 CHATBOT_SERVICE_KEY=         # shared secret for internal auth
 
 # AI
-AI_PROVIDER=                 # "anthropic" | "openai"
-AI_API_KEY=                  # provider API key
+AI_PROVIDER=                 # "anthropic" | "openai" | "fake" (fake blocked in production)
+ANTHROPIC_API_KEY=           # required when AI_PROVIDER=anthropic
+OPENAI_API_KEY=              # required when AI_PROVIDER=openai
 
 # Session cache (optional — sessions are persisted in the app BE DB)
 # Add only if using Redis as a read-cache for active sessions
