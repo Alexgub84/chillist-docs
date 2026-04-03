@@ -4,6 +4,24 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [E2E] Preferences auto-prompt modal blocked all clicks in existing E2E tests
+
+**Date:** 2026-04-03
+**Problem:** After adding the preferences auto-prompt modal, all E2E tests that authenticated as the owner and navigated to a plan page started timing out. The modal opened on every plan page visit (because `adultsCount: null` in E2E fixture data) and its overlay intercepted all click events on the underlying UI.
+**Root Cause:** `buildParticipant` in `tests/e2e/fixtures.ts` always set `adultsCount: null` regardless of role. Since the feature prompt fires whenever `adultsCount == null`, the modal appeared for every owner participant in every test. Similarly, `api/server.ts` created owner participants with `adultsCount: null` in the wizard creation path.
+**Solution:** In `buildParticipant`, default `adultsCount` to `1` for owner participants (`p.role === 'owner' ? 1 : null`). In `api/server.ts`, use `parsed.owner.adultsCount ?? 1` when creating the owner participant. This reflects reality: the wizard step 4 always collects the owner's headcount.
+**Prevention:** When introducing any auto-opening UI (modal, drawer, toast) triggered by data conditions, ensure E2E fixture data satisfies the "complete/dismissed" state unless the test is specifically testing the auto-open behavior.
+
+### [E2E] `page.on('request')` race condition — main visible before first API call fires
+
+**Date:** 2026-04-03
+**Problem:** Two session tests checking `X-Session-ID` presence consistently failed with `seen.length === 0`. One test was flaky (passes on retry).
+**Root Cause:** `await expect(page.locator('main')).toBeVisible()` resolves as soon as the React app renders its first frame (loading skeleton / empty state). API requests are fired asynchronously after the initial render. By the time the assertion ran, `page.on('request')` had not yet captured any requests.
+**Solution:** Replace `page.goto()` + `expect(main).toBeVisible()` with `Promise.all([page.waitForResponse(r => r.url().includes('localhost:3333')), page.goto('/plans')])`. This ensures at least one API response has been received before checking `seen.length`.
+**Prevention:** When asserting on request/response headers captured via `page.on('request')`, always synchronize with `page.waitForResponse()` or a similar wait rather than relying on element visibility alone.
+
+---
+
 ### [E2E] `page.goto` timeout on Vite SPA — prefer `domcontentloaded` and stabilize webServer env
 
 **Date:** 2026-04-01  
