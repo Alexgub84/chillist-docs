@@ -51,6 +51,7 @@ Ensure `chillist-be` is running on localhost:3333, then `npm run dev`.
 - `npm run api:sync`: Fetch OpenAPI spec from backend and regenerate types
 - `npm run e2e`: Run Playwright tests
 - `npm run screenshots`: Capture home page screenshots for EN/HE in one shot — starts the mock API and Vite with mock auth, patches `.env.local` for the run, restores it after, and writes images to `public/`. Ensure ports **3333** and **5173** are free. Flags: `--verbose` (server logs), `--skip-servers` (use when mock + Vite are already running with mock auth). See `scripts/take-screenshots.ts` for scroll targets; pitfalls in `dev-lessons/frontend.md`.
+- `npm run posthog` — Query PostHog events via API (`scripts/fetch-posthog-events.ts`); requires `POSTHOG_API_KEY` and `POSTHOG_PROJECT_ID` in `.env`. Example: `npm run posthog -- --list-events --days 7`.
 
 ## Third-Party Client Pattern
 
@@ -77,6 +78,8 @@ Every external service (analytics, auth, payments, logging, etc.) follows the sa
 - **Separate project for local noise:** In PostHog, create a dedicated project (e.g. “Chillist Dev”) and put its `phc_…` API key in local `.env` as `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN`. Production keeps using the production project key in GitHub Variables / deploy env. That way Live events and funnels stay meaningful in prod.
 - **Console debug:** Set `VITE_PUBLIC_POSTHOG_DEBUG=true` in `.env` to enable verbose SDK logging. Alternatively append `?__posthog_debug=true` to the app URL (PostHog built-in). Do **not** set debug to `true` in production CI or deploy env.
 - **Toolbar on localhost:** In PostHog → **Project settings** → **Toolbar** (or authorized domains / toolbar access, depending on UI version), allow your dev origins, e.g. `http://localhost:5173` (default Vite) and `http://localhost:5174` (Playwright / `npm run e2e` webServer). Then use **Toolbar** → launch / heatmaps from the PostHog UI for that URL. Official reference: [PostHog toolbar](https://posthog.com/docs/toolbar).
+
+**CLI — query events locally:** `npm run posthog -- --list-events` (and other flags; see script usage) runs `scripts/fetch-posthog-events.ts` against PostHog’s API. Requires `POSTHOG_API_KEY` (personal API key) and `POSTHOG_PROJECT_ID` in `.env` — see `.env.example`. Not used in CI or production deploy.
 
 ### Analytics — events and properties (`src/core/analytics.ts`)
 
