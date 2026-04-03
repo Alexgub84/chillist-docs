@@ -514,6 +514,10 @@ Railway resolves `${{chillist-be-prod.PORT}}` to `8080` at deploy time.
 - [x] AI service structure — `IAiClient`, `createVercelAiClient`, `createFakeAiClient`, `createNoopAiClient`, plugin + DI
 - [x] `chatbot_messages` table — conversation history for AI context window (`IMessageStore` + postgres + fake)
 - [x] `chatbot_ai_usage` table — per-message AI cost, token, and tool tracking (`IUsageLogger` + postgres + fake)
-- [ ] AI conversation logic — system prompt, tool definitions (getMyPlans, getPlanDetails, updateItemStatus), multi-turn flow
-- [ ] Internal API data routes (`GET /plans/:id`, `PATCH /items/:id/status`)
+- [x] AI conversation tools — `getMyPlans`, `getPlanDetails`, `updateItemStatus` in `src/conversation/tools.ts`; system prompt in `src/conversation/system-prompt.ts`; `IInternalApiClient` implements app BE internal routes
+- [x] Internal API data routes — `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status` (app BE)
 - [ ] Group sessions (linked plan, shared message history) — Phase 7
+
+### Ops: chatbot Postgres migrations
+
+For each Railway/staging/prod environment that uses the chatbot with `DATABASE_URL` (message store + usage logger), ensure migrations **`003_chatbot_messages.sql`** and **`004_chatbot_ai_usage.sql`** have been applied (`npx tsx scripts/migrate.ts` or equivalent). If migrations were already applied before this doc update, no action.

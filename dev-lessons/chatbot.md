@@ -12,6 +12,13 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 
 <!-- Add new Win entries at the top of this section -->
 
+### [Win] Internal plan detail + item status endpoints mirror list membership
+
+**Date:** 2026-04-03
+**Context:** New `GET /api/internal/plans/:planId` and `PATCH /api/internal/items/:itemId/status` must not use public-plan bypass; chatbot list only shows plans where the user is a participant.
+**Strategy:** Require a `participants` row for `(planId, x-user-id)` before returning detail or allowing status patch, same effective rule as `GET /api/internal/plans`.
+**Why it works:** Avoids exposing public plans to non-members via the chatbot path and keeps access consistent across internal data routes.
+
 ### [Win] Template — copy this for new entries
 
 **Date:** YYYY-MM-DD

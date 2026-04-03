@@ -1,9 +1,9 @@
 # Chillist WhatsApp AI Chatbot — Architecture Spec v1.0
 
-> **Status:** In Progress — Phase 3 complete, Phase 4 (AI Layer) structure implemented, conversation logic pending
+> **Status:** In Progress — Phase 4 core tools shipped (plan list, plan detail, item status); polish/hardening pending
 > **Scope:** This document defines the chatbot as a standalone service that communicates with the existing Chillist app backend via internal HTTP API. No implementation code is included.
 > **Prerequisite:** WhatsApp Integration Phase 1 & 2 (notifications + list sharing via Green API) must be complete before chatbot work begins.
-> **Last updated:** 2026-04-03 — Phase 4 AI layer structure implemented: `IAiClient` + `IMessageStore` + `IUsageLogger` services with real/fake/noop implementations, Fastify plugins, DI wiring via `buildApp()`, `chatbot_messages` + `chatbot_ai_usage` DB migrations. Conversation logic (system prompt, tool definitions) pending.
+> **Last updated:** 2026-04-03 — App BE: `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status`. Chatbot: `IInternalApiClient` methods, `getMyPlans` / `getPlanDetails` / `updateItemStatus` tools, system prompt updates.
 
 ---
 
@@ -14,14 +14,14 @@
 | **1** | Project Scaffold              | ✅ Done | Fastify server + health endpoint, TypeScript, ESLint, Prettier, Husky, Vitest, Dockerfile, GitHub Actions CI/CD, Railway setup guide                                                                 |
 | **2** | Green API Webhook             | ✅ Done | Receive incoming WhatsApp messages, parse them, identify user, reply with welcome/signup (no AI)                                                                                                     |
 | **3** | User Identification           | ✅ Done | Phone → user identity lookup via internal API + session creation in PostgreSQL (`chatbot_sessions`); 15-min idle TTL; sessions scoped by `(phone_number, chat_id)` for independent DM/group contexts |
-| **4** | AI Layer + Tools              | In Progress | Structure done: `IAiClient` (Vercel AI SDK), `IMessageStore`, `IUsageLogger` with real/fake/noop + plugins + DI. Remaining: system prompt, tool definitions, conversation logic                     |
+| **4** | AI Layer + Tools              | In Progress | `IAiClient`, `IMessageStore`, `IUsageLogger` + tools: `getMyPlans`, `getPlanDetails`, `updateItemStatus`; system prompt in `src/conversation/system-prompt.ts`. Further polish (rate limits, guest headers) pending                     |
 | **5** | Session & Conversation Memory | In Progress | `chatbot_messages` table + `IMessageStore` done (postgres-backed, 20-message AI context window). Redis cache deferred — postgres is sufficient for v1                                                |
 | **6** | Polish & Hardening            | Pending | Rate limiting, error handling, logging analysis, security review, production env var validation                                                                                                      |
 | **7** | Group Chat (v1.5)             | Pending | Mention/prefix triggers, linkPlan, group sessions (per Section 13)                                                                                                                                   |
 
 > Phases 2–5 each require corresponding **app BE** work (internal routes, internal-auth plugin). Those BE changes will be called out in each phase's plan.
 > Phase 3 app BE work is complete: `POST /api/internal/auth/identify` implemented with registered + guest user support.
-> Phase 4 app BE work in progress: `GET /api/internal/plans` implemented (schema: `InternalPlanSummary` + `InternalPlansResponse` registered in OpenAPI). Remaining: `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status`.
+> Phase 4 app BE: `GET /api/internal/plans`, `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status` implemented (schemas in `src/schemas/internal.schema.ts`). Chatbot client: `getPlans`, `getPlanDetails`, `updateItemStatus` on `IInternalApiClient`.
 
 ---
 
@@ -376,9 +376,9 @@ Response 401:
 - `completedItemCount`: items where `assignmentStatusList` is non-empty AND every entry has `status` of `packed` or `purchased`
 - OpenAPI schemas: `InternalPlanSummary`, `InternalPlansResponse` (registered in `src/schemas/internal.schema.ts`)
 
-#### GET /api/internal/plans/:planId
+#### GET /api/internal/plans/:planId ✅ Implemented
 
-Returns full plan details including items and participants.
+Returns full plan details including items and participants. User must be a **participant** on the plan (same rule as `GET /api/internal/plans`).
 
 ```
 Request:
@@ -390,7 +390,7 @@ Response 200:
     "plan": {
       "id": "plan-1",
       "name": "Camping in the Golan",
-      "date": "2026-04-15",
+      "date": "2026-04-15T00:00:00.000Z",
       "role": "owner",
       "participants": [
         { "id": "p-1", "name": "Alex", "role": "owner" },
@@ -422,9 +422,9 @@ Response 404:
   { "message": "Plan not found" }
 ```
 
-#### PATCH /api/internal/items/:itemId/status
+#### PATCH /api/internal/items/:itemId/status ✅ Implemented
 
-Updates an item's status.
+Updates the **calling user’s** row in `assignmentStatusList`. `done` maps to `purchased`; `pending` maps to `pending`. User must be a participant on the item’s plan.
 
 ```
 Request:
@@ -444,7 +444,7 @@ Response 404:
 
 ### Access control
 
-Internal routes reuse the **same access control logic** as public routes (e.g., `src/utils/plan-access.ts`). The userId from `x-user-id` is checked against plan participants. The chatbot cannot access plans the user isn't part of.
+Data routes require `x-user-id` to match a **participants** row for the target plan (`GET /plans`, `GET /plans/:planId`) or for the item’s plan (`PATCH /items/:itemId/status`). This matches who receives plan rows from `GET /api/internal/plans`. Public-plan visibility alone does not grant access without membership.
 
 ### Shared type definitions (chatbot API client reference)
 
