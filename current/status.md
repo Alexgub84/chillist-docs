@@ -150,7 +150,7 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 
 1. Receive an invite link via WhatsApp, SMS, or email.
 2. Open the link → sign in, sign up, or continue as guest.
-3. Set RSVP status and fill in preferences (group size, dietary info).
+3. On the plan page, a **preferences prompt modal** auto-opens asking for RSVP status and group size (adults/kids). This prompt appears on every visit until the participant submits their headcount and RSVP. It can be skipped, but returns next visit. Dietary preferences are optional but shown in the same form.
 4. View items, add your own, self-assign unassigned ones.
 5. Mark items as purchased or packed.
 6. Log your own expenses.
