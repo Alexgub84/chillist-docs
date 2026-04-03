@@ -1,12 +1,29 @@
 # Chatbot Dev Lessons
 
-A log of bugs fixed and problems solved in `chillist-whatsapp-bot`.
+A two-sided log for `chillist-whatsapp-bot`: **wins** (strategies that worked) and **bugs** (problems fixed). Read both sections before starting any chatbot task.
 
 _(Seeded with relevant lessons from `dev-lessons/backend.md`. Only add NEW lessons here.)_
 
 ---
 
-<!-- Add new entries at the top -->
+## Wins
+
+Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenever a design choice, prompt, or approach is confirmed to work in practice.
+
+<!-- Add new Win entries at the top of this section -->
+
+### [Win] Template — copy this for new entries
+
+**Date:** YYYY-MM-DD
+**Context:** What problem or decision this applies to
+**Strategy:** What worked well
+**Why it works:** The reasoning behind it
+
+---
+
+## Bugs
+
+<!-- Add new Bug entries at the top of this section -->
 
 ### [Bug] Sessions keyed only by phone caused cross-context bleed between groups and DMs
 

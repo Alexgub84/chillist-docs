@@ -13,11 +13,23 @@ alwaysApply: true
 
 Read ALL of these files before doing anything else. If any file is missing, STOP and tell the user.
 
+### Always read (every task)
+
 1. `/Users/alexguberman/Projects/chillist/chillist-docs/rules/common.md`
-2. `/Users/alexguberman/Projects/chillist/chillist-docs/rules/frontend.md`
-3. `/Users/alexguberman/Projects/chillist/chillist-docs/guides/frontend.md`
-4. `/Users/alexguberman/Projects/chillist/chillist-docs/specs/mvp-v1.md`
+2. `/Users/alexguberman/Projects/chillist/chillist-docs/specs/mvp-v1.md`
+
+### Frontend tasks — also read
+
+3. `/Users/alexguberman/Projects/chillist/chillist-docs/rules/frontend.md`
+4. `/Users/alexguberman/Projects/chillist/chillist-docs/guides/frontend.md`
 5. `/Users/alexguberman/Projects/chillist/chillist-docs/dev-lessons/frontend.md`
+
+### Chatbot tasks — also read
+
+3. `/Users/alexguberman/Projects/chillist/chillist-docs/rules/chatbot.md`
+4. `/Users/alexguberman/Projects/chillist/chillist-docs/guides/chatbot.md`
+5. `/Users/alexguberman/Projects/chillist/chillist-docs/dev-lessons/chatbot.md`
+6. `/Users/alexguberman/Projects/chillist/chillist-docs/specs/whatsapp-chatbot-spec.md`
 
 ---
 
