@@ -1,8 +1,8 @@
 # Chillist — Current Status
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
-> **Last updated:** 2026-04-01
-> **BE version:** 3596384 — Passive browser sessions: `X-Session-ID` (UUID v4), `sessions` table, `POST /auth/logout`, `session_id` on analytics rows (AI usage, item changes, join requests, WhatsApp notifications, plan_invites)
+> **Last updated:** 2026-04-04
+> **BE version:** Internal chatbot API: `GET /api/internal/plans/:planId` (full plan for participants + items), `PATCH /api/internal/items/:itemId/status` (upsert caller assignment; chatbot done/pending ↔ purchased/pending)
 > **FE version:** 1.31.0 — PostHog analytics integrated (identify on login, reset on logout, autocapture enabled)
 
 ---
@@ -150,7 +150,7 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 
 1. Receive an invite link via WhatsApp, SMS, or email.
 2. Open the link → sign in, sign up, or continue as guest.
-3. On the plan page, a **preferences prompt modal** auto-opens asking for RSVP status and group size (adults/kids). This prompt appears on every visit until the participant submits their headcount and RSVP. It can be skipped, but returns next visit. Dietary preferences are optional but shown in the same form.
+3. Set RSVP status and fill in preferences (group size, dietary info).
 4. View items, add your own, self-assign unassigned ones.
 5. Mark items as purchased or packed.
 6. Log your own expenses.
@@ -237,6 +237,8 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 | Claim          | `POST /claim/:token`                                                       | Link a registered user to a participant spot                                                                                                                                                                                 |
 | Internal       | `POST /api/internal/auth/identify`                                         | Resolve phone number to Chillist user — queries `users.phone` directly (E.164 index lookup), returns `userId` + `displayName` (from Supabase, falling back to participant record). Chatbot use only.                         |
 | Internal       | `GET /api/internal/plans`                                                  | List plans for a resolved chatbot user — returns `InternalPlanSummary[]` with `id`, `name`, `date`, `role`, `participantCount`, `itemCount`, `completedItemCount`. Requires `x-service-key` + `x-user-id`. Chatbot use only. |
+| Internal       | `GET /api/internal/plans/:planId`                                         | Full plan detail for chatbot — participants (`id`, `name`, `role`) and items with chatbot `status`/`assignee`/`category` (`gear`/`food`). Caller must be a plan participant. `401`/`403`/`404` as documented in OpenAPI. |
+| Internal       | `PATCH /api/internal/items/:itemId/status`                                | Body `{ status: done \| pending }` — upserts caller’s `assignmentStatusList` entry (`done`→`purchased`). Caller must be a participant on the item’s plan. |
 | Auth           | `GET /me`, `GET /profile`, `PATCH /profile`, `POST /sync-profile`, `POST /logout` | Current user, read/update preferences, sync from Supabase, end browser session                                                                                                                                         |
 | Expenses       | `POST`, `GET`, `PATCH /:id`, `DELETE /:id`                                 | Create, list, update, delete expenses                                                                                                                                                                                        |
 | Admin          | `GET /admin/plans`, `GET /admin/ai-usage`                                  | Admin-only: list all plans, view AI usage logs with filters and cost summary                                                                                                                                                 |
@@ -250,7 +252,6 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 
 - **Backend:** Vitest integration tests with Testcontainers (PostgreSQL). 300+ tests covering auth, permissions, CRUD, AI suggestion generation, and edge cases.
 - **Frontend:** Vitest + React Testing Library (unit + integration), Playwright E2E, mock API server for development.
-- **Playwright E2E:** The Vite process started by Playwright must receive `VITE_AUTH_MOCK`, `VITE_E2E`, and `VITE_POSTHOG_MOCK` via `webServer.env` (see [guides/frontend.md](../guides/frontend.md) § Playwright E2E). Local pre-push runs all browsers with `retries: 1`.
 
 ---
 
@@ -259,7 +260,7 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 See [MVP Target](mvp-target.md) for the full breakdown. Key gaps:
 
 - WhatsApp send list — FE UI done, BE `/api/send-list` endpoint implemented; actual Green API delivery integration in progress
-- WhatsApp chatbot — Phase 3 complete + Phase 4 BE partially done: `GET /api/internal/plans` implemented (returns chatbot-friendly plan summaries with counts); AI layer (Vercel AI SDK, tool definitions) pending
+- WhatsApp chatbot — Phase 3 complete + Phase 4 BE: `GET /api/internal/plans`, `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status` implemented; AI layer (Vercel AI SDK, tool definitions) pending
 - Error tracking and structured logging (BE + FE)
 - Analytics event collection (BE + FE)
 - Health monitoring and alerts

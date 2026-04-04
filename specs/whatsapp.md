@@ -1,7 +1,7 @@
 # Chillist — WhatsApp Integration
 
 > **Purpose:** Single source of truth for all WhatsApp-related features — current state, planned work, architecture, and BE/FE responsibilities.
-> **Last updated:** 2026-03-15
+> **Last updated:** 2026-04-04
 
 ---
 
@@ -200,6 +200,19 @@ Single-recipient calls (`"self"`, `"<participantId>"`) return `results` with one
 - `FakeGreenApiClient` replaces only the HTTP transport — all service logic (`phoneToChatId`, message formatting, notification recording) runs for real in tests.
 - Injected via `buildApp` options: `{ whatsapp: { greenApiClient: fakeGreenApi } }`.
 - Test assertions use `chatId` format (e.g., `972501234567@c.us`) since the fake sits below `phoneToChatId`.
+
+### 4.3 Internal API (chatbot service)
+
+All under `/api/internal/*`, `x-service-key` = `CHATBOT_SERVICE_KEY`, plus `x-user-id` for the acting user.
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| `POST` | `/api/internal/auth/identify` | Resolve E.164 phone → `userId` + display name |
+| `GET` | `/api/internal/plans` | List user’s plans with summary counts |
+| `GET` | `/api/internal/plans/:planId` | Full plan: participants and items (chatbot field names; membership required) |
+| `PATCH` | `/api/internal/items/:itemId/status` | Body `{ status: "done" \| "pending" }` — upserts caller’s assignment (`done` maps to `purchased` in DB) |
+
+Contract details: `docs/openapi.json` (tag `internal`).
 
 ---
 
