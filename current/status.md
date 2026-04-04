@@ -2,7 +2,7 @@
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
 > **Last updated:** 2026-04-04
-> **BE version:** Internal chatbot API: `GET /api/internal/plans/:planId` (full plan for participants + items), `PATCH /api/internal/items/:itemId/status` (upsert caller assignment; chatbot done/pending ↔ purchased/pending)
+> **BE version:** 3a2f375 — Internal chatbot API: `GET /api/internal/plans/:planId` (full plan for participants + items), `PATCH /api/internal/items/:itemId/status` (upsert caller assignment; chatbot done/pending ↔ purchased/pending)
 > **FE version:** 1.31.0 — PostHog analytics integrated (identify on login, reset on logout, autocapture enabled)
 
 ---
