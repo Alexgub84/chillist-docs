@@ -12,6 +12,13 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 
 <!-- Add new Win entries at the top of this section -->
 
+### [Win] Opt-in real-model conversation quality tests + Markdown report
+
+**Date:** 2026-04-04
+**Context:** Need to regression-test system prompt and tool behavior against a live model without slowing CI or spending tokens on every push.
+**Strategy:** `tests/unit/conversation/prompt-quality.test.ts` is `describe.skip` unless `RUN_CONVERSATION_QUALITY=true` and an API key exist; it runs `runConversationEngine` with `FakeInternalApiClient` + `FakeMessageStore` + real `createVercelAiClient`, detects language with `detectLanguage(text)` per turn, asserts heuristics on tool names and reply text, and writes `tests/conversation-quality-reports/report-*.md` (gitignored). Run via `npm run test:conversation-quality`.
+**Why it works:** Mirrors production conversation + tool wiring while keeping data deterministic; report file gives a reviewable transcript with tokens and timings.
+
 ### [Win] Internal plan detail + item status endpoints mirror list membership
 
 **Date:** 2026-04-03
