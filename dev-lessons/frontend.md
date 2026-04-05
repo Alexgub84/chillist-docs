@@ -4,6 +4,13 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [Config] PostHog vars missing from deploy workflow — analytics silently disabled in production
+
+**Date:** 2026-04-05
+**Problem:** PostHog was not initialized in production because `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN` and `VITE_PUBLIC_POSTHOG_HOST` were never passed to the Build step in `deploy.yml`, and the corresponding GitHub Variables were never created.
+**Root Cause:** The feature was declared complete after adding `src/lib/posthog.ts`, `.env.example`, and the guides table — without verifying all 6 env var sync locations from `common.md`. The graceful no-op in `posthog.ts` (token missing → skip init) masked the gap: no error was thrown, the app worked, but no events were tracked.
+**Prevention:** The `common.md` env var checklist has 6 required locations. "Complete" means all 6 are done. A graceful fallback is not a signal the var is optional in production — check the intent, not just whether the app boots.
+
 ### [API] Non-owner item PATCH sends full assignmentStatusList — backend rejects with 400
 
 **Date:** 2026-04-03
