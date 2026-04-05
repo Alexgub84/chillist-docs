@@ -152,6 +152,50 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 **Applies to chatbot:** The chatbot's webhook route handler should only handle HTTP concerns (parsing the Green API payload, responding 200). Business logic — session lookup, phone-to-user resolution, AI orchestration, response sending — belongs in dedicated services (e.g., `SessionService`, `AiOrchestrator`, `GreenApiClient`).
 **Prevention:** Route handlers handle HTTP concerns (parse request, validate, return status code). Services handle business logic (session management, AI calls, WhatsApp messaging). This keeps each layer testable in isolation and avoids duplication when adding group chat support (v1.5).
 
+### [Bug] resolveUserByPhone queried users.phone (always null) instead of participants.contact_phone
+
+**Date:** 2026-04-05
+**Problem:** `POST /api/internal/auth/identify` returned 404 for every registered user. The chatbot sent every real user a signup link instead of identifying them. Root cause: `resolveUserByPhone()` in `src/services/internal-auth.service.ts` queried `users.phone`, which is `null` for all users. The spec (`whatsapp-chatbot-spec.md` § 3) explicitly says to query `participants.contact_phone` — a different table entirely.
+**Solution:** Rewrite `resolveUserByPhone()` to query `participants WHERE contact_phone = $1 AND user_id IS NOT NULL ORDER BY created_at DESC LIMIT 1`. Resolve `displayName` from the same row (`display_name ?? name + last_name`). Remove the `fetchSupabaseUserMetadata()` call from this path — the spec states "No SUPABASE_SERVICE_ROLE_KEY needed." Tracked in [chillist-be#176](https://github.com/Alexgub84/chillist-be/issues/176).
+**Prevention:** See full retro below.
+
+#### Retro — how we built this end-to-end with tests and still shipped the wrong table
+
+**What happened during development:**
+
+1. The spec was written first and was correct. It named the table (`participants`), the column (`contact_phone`), and the exact SQL query. It also explicitly said "No SUPABASE_SERVICE_ROLE_KEY needed."
+
+2. During implementation, the developer noticed the `users` table has a `phone` column (used by `PATCH /auth/profile`). This created a plausible-looking alternative: "phone lookup → `users.phone`." The `participants.contact_phone` path — the one the spec prescribed — was bypassed.
+
+3. The implementation also added a Supabase Admin API call (`fetchSupabaseUserMetadata`) to resolve the display name. The spec says to get it from the `participants` row itself. This was a second deviation that slipped in alongside the first.
+
+4. Unit and integration tests were written against the wrong implementation. They seeded a `users` row with `phone` set. Since the code queried `users.phone` and the test seeded `users.phone`, all tests passed — green suite, wrong table.
+
+5. No test ever seeded a `participants` row and verified the lookup worked against `participants.contact_phone`. The critical path the spec described was never exercised.
+
+6. Manual testing likely used a local environment where `users.phone` was populated via `PATCH /auth/profile`. Production users had never called that endpoint, so `users.phone` was `null` in prod — but `participants.contact_phone` was correctly set.
+
+**Why this is a pattern to watch:**
+
+- Spec drift happens when there are two plausible implementations and the developer picks the wrong one. The safeguard is to **read the spec section that names the exact query before writing the function, not after**.
+- Tests that are seeded against the wrong table give false confidence. A test that passes is not evidence that the right table is being queried.
+- The `users.phone` column exists for a different purpose (`auth/profile` preferences). Having a phone column in a `users` table is intuitive for a phone lookup, so the wrong path feels correct at a glance.
+
+**Rules to add going forward:**
+
+1. Before implementing any service function that the spec describes with an exact SQL query, open the spec and find that query. If the code does not match — stop.
+2. Integration test fixtures for `resolveUserByPhone` must seed `participants` rows with `contact_phone` and assert the lookup uses them. A test that seeds `users.phone` is testing the wrong thing.
+3. Any deviations from spec during implementation must be called out in the PR description with a reason. "I used a different table because..." is a red flag that must be reviewed.
+
+---
+
+### [Bug] CreatePlanWizard stores '+10000000000' as contactPhone for phone-OTP users
+
+**Date:** 2026-04-05
+**Problem:** Users who registered via Supabase phone OTP have their phone in `auth.users.phone` (top-level Supabase field), not in `user.user_metadata.phone`. `CreatePlanWizard` reads only `user_metadata.phone`. When it is empty, the fallback is the hardcoded placeholder `'+10000000000'`, which is then written to `participants.contact_phone`. Since the chatbot identifies users by `participants.contact_phone`, these users are permanently invisible to the chatbot. Same gap exists in `complete-profile.lazy.tsx` (phone field pre-fills blank, so the user never sees their real number to confirm it). Tracked in [chillist-fe#213](https://github.com/Alexgub84/chillist-fe/issues/213).
+**Solution:** In `CreatePlanWizard`, read `user.phone` (top-level Supabase field) as a fallback: `const ownerPhoneRaw = (meta.phone as string) || (user.phone ?? '')`. In `complete-profile.lazy.tsx`, pre-fill from `user.phone` when `user_metadata.phone` is empty. In `AuthProvider`, call `syncProfile` on `SIGNED_IN` (not only `USER_UPDATED`) so phone sync happens on every login.
+**Prevention:** Supabase has two separate phone fields: `user.phone` (set by phone-OTP auth) and `user.user_metadata.phone` (set by `updateUser({ data: { phone } })`). Any code that reads the user's phone must check both. The `'+10000000000'` placeholder silently satisfies a `NOT NULL` constraint but creates a data integrity problem downstream — a silent wrong value is worse than a loud null. Test plan creation with a phone-OTP user in staging before shipping any feature that reads `contactPhone`.
+
 ### [Category] Short Title
 
 **Date:** YYYY-MM-DD
