@@ -49,13 +49,23 @@ Rules:
 
 When implementing Phase 4 (AI SDK):
 
-- **System prompt lives in one file** — `src/services/ai/system-prompt.ts`. Never inline it in the handler.
+- **System prompt lives in one file** — `src/conversation/system-prompt.ts`. Never inline it in the handler.
+- **`buildSystemPrompt` takes `(displayName, lang, feBaseUrl)`** — all three are required. `feBaseUrl` is used in error/empty-state messages so users always get a tappable link. If you add new user-facing references to the app, use `feBaseUrl`, never hardcode a URL.
+- **Brand name is localised** — use `lang === "he" ? "צ'יליסט" : "Chillist"` for any user-visible app name in the prompt. Never write "Chillist" as a hardcoded string in the Hebrew path.
 - **Tool definitions are typed with Zod** — use the Vercel AI SDK `tool()` helper with a Zod schema for every parameter. Never pass untyped objects.
 - **Tool implementations call internal API only** — AI tools must not call Green API or touch sessions. They return data; the handler decides what to send.
 - **Context window is bounded** — pass at most the last N messages from conversation history. Never dump the entire history. Start with N=10 and adjust based on token usage.
 - **Fake AI client must be deterministic** — `createFakeAiClient()` takes a pre-configured response map (tool name → result). Tests must not depend on real LLM responses.
 - **Never trust AI tool arguments blindly** — validate tool call arguments at the handler layer with Zod before passing to services.
 - **One `IAiClient` method per concern** — e.g. `chat(messages, tools)` → `AiResponse`. Do not add helper logic to the interface.
+
+### Prompt Rules (always keep in system-prompt.ts)
+
+- **Numbered list + digit reply** — whenever the prompt instructs the bot to present a numbered list, it must also say: "When the user replies with just a number, treat it as selecting that option from the most recent list." WhatsApp users never type full answers on mobile.
+- **Bulk item actions** — the prompt must explicitly say to call `updateItemStatus` once per item when the user names multiple items in one message. Without this rule the bot only acts on the first item.
+- **`getMyPlans` called at most once per turn** — the prompt and every relevant tool description must say "only call `getMyPlans` if the plan list is not already in context." Re-fetching wastes tokens and causes higher latency.
+- **`updateItemStatus` requires same-turn `getPlanDetails`** — item ids from prior turns are unreliable. The prompt and `updateItemStatus` tool description must both require calling `getPlanDetails` first in the same response, using the plan id already in context (not re-fetching `getMyPlans`).
+- **Never mention data discrepancies** — `getMyPlans` returns plan-wide item totals; `getPlanDetails` returns only the requesting user's items. The bot must never comment on this difference or suggest a sync issue.
 
 ---
 

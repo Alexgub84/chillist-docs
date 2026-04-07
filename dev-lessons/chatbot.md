@@ -12,6 +12,13 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 
 <!-- Add new Win entries at the top of this section -->
 
+### [Win] Hebrew conversation quality tests with number-selection and bulk-item scenarios
+
+**Date:** 2026-04-07
+**Context:** After adding Hebrew prompt support and fixing numbered-option / bulk-item handling, we needed regression coverage for those flows in Hebrew.
+**Strategy:** Created `tests/unit/conversation/prompt-quality-he.test.ts` — a separate `describe.skip` suite that mirrors all 5 English scenarios in Hebrew, plus two new scenarios: (1) **number selection** — bot presents a numbered disambiguation list, user replies `"1"`, expect bot resolves to the correct plan; (2) **bulk items** — user says "קניתי אוהל ושק שינה, סמן אותם כבוצע", expect `updateItemStatus` called once per item. Reports written to `tests/conversation-quality-reports/report-he-<timestamp>.md`.
+**Why it works:** Uses the same fake fixture data and `runConversationEngine` wiring as the English suite. The two new scenarios directly exercise the prompt rules added for number selection and bulk items, so any regression in those rules fails immediately.
+
 ### [Win] Opt-in real-model conversation quality tests + Markdown report
 
 **Date:** 2026-04-04
@@ -202,6 +209,34 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 **Problem:** In multi-turn conversations, the bot was calling `getMyPlans → getPlanDetails → getPlanDetails` (3 tool calls) for follow-up questions where it already had the plan list in context. In the `updateItemStatus` flow it was calling 4 tools when only 2 were needed. This caused higher latency (8–12s extra), wasted tokens, and in one run produced a wrong item ID because the unnecessary re-fetch returned a different item order.
 **Solution:** Updated `system-prompt.ts` with explicit rules: (1) only call `getMyPlans` when the plan list is not yet in context; (2) when calling `updateItemStatus`, use the plan id already in context — do not re-call `getMyPlans` first. Updated both the `getMyPlans` and `updateItemStatus` tool descriptions with the same constraint.
 **Prevention:** After every prompt change, run `npm run test:conversation-quality` and check the Tools column in the report. Any turn showing `getMyPlans` after Turn 1 (where plans were already fetched) is a red flag. The tool description and system prompt must both say "only call getMyPlans if the plan list is not already in context."
+
+### [Bug] Bot didn't understand numbered option selection ("1", "2" replies)
+
+**Date:** 2026-04-07
+**Problem:** When the bot presented a numbered disambiguation list ("1. Camping Trip 2025 / 2. Camping Trip 2026") and the user replied with just `"1"`, the bot failed to connect the reply to the list and asked a clarifying question again or errored.
+**Solution:** Added an explicit prompt rule: "When the user replies with just a number (e.g. '1' or '2'), treat it as selecting that option from the most recent numbered list you presented."
+**Prevention:** Numbered-list + digit-reply is the most common WhatsApp interaction pattern (users avoid typing on mobile). Whenever the prompt instructs the bot to present a numbered list, it must also have a rule explaining how to handle a bare-number reply. Add a quality test scenario that sends `"1"` as a Turn 2 reply.
+
+### [Bug] Bot only acted on the first item when user mentioned multiple items at once
+
+**Date:** 2026-04-07
+**Problem:** When a user said "I bought X and Y" or "ארזתי אוהל ושק שינה", the bot only called `updateItemStatus` once (for the first item) and ignored the rest.
+**Solution:** Added an explicit prompt rule: "When the user mentions multiple items at once, call `updateItemStatus` once for each item — do NOT skip any of them."
+**Prevention:** Bulk-action messages are natural in WhatsApp. Any time the prompt covers `updateItemStatus`, it must also cover the multi-item case. The Hebrew quality test scenario `מספר פריטים בבת אחת` asserts that `updateItemStatus` is called for every item in the message.
+
+### [Bug] System prompt referenced "the app" with no link — unhelpful on error/empty states
+
+**Date:** 2026-04-07
+**Problem:** When plans were empty or a tool failed, the bot said "create one in the app" or "try using the app" with no URL. On WhatsApp this is a dead end — the user has no link to tap.
+**Solution:** Threaded `feBaseUrl` (already in handler deps as `config.FE_BASE_URL`) through `ConversationEngineDeps` → `buildSystemPrompt`. Prompt rules now reference `${siteLink}` directly in the empty-plans and tool-error lines.
+**Prevention:** Any prompt message that asks the user to go somewhere must include the actual URL. `buildSystemPrompt` now has a required `feBaseUrl` parameter — if it is missing the TypeScript compiler will fail. Never write "use the app" without a link.
+
+### [Bug] Bot used "Chillist" as app name in Hebrew prompts instead of "צ'יליסט"
+
+**Date:** 2026-04-07
+**Problem:** Hebrew-language users saw the English app name "Chillist" in bot replies. The correct Hebrew brand name is "צ'יליסט".
+**Solution:** `buildSystemPrompt` now derives `appName` from `lang`: `lang === "he" ? "צ'יליסט" : "Chillist"`. The prompt intro and any explicit app references use this variable.
+**Prevention:** Any user-visible string in `system-prompt.ts` that contains a brand name must be localised per `lang`. Added assertion `expect(prompt).toContain("צ'יליסט")` to the Hebrew system-prompt unit test.
 
 ### [Bug] Bot mentioned "sync issue" when getMyPlans and getPlanDetails item counts differed
 
