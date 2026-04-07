@@ -196,9 +196,16 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 **Solution:** In `CreatePlanWizard`, read `user.phone` (top-level Supabase field) as a fallback: `const ownerPhoneRaw = (meta.phone as string) || (user.phone ?? '')`. In `complete-profile.lazy.tsx`, pre-fill from `user.phone` when `user_metadata.phone` is empty. In `AuthProvider`, call `syncProfile` on `SIGNED_IN` (not only `USER_UPDATED`) so phone sync happens on every login.
 **Prevention:** Supabase has two separate phone fields: `user.phone` (set by phone-OTP auth) and `user.user_metadata.phone` (set by `updateUser({ data: { phone } })`). Any code that reads the user's phone must check both. The `'+10000000000'` placeholder silently satisfies a `NOT NULL` constraint but creates a data integrity problem downstream — a silent wrong value is worse than a loud null. Test plan creation with a phone-OTP user in staging before shipping any feature that reads `contactPhone`.
 
-### [Category] Short Title
+### [Bug] Bot re-calls getMyPlans redundantly in follow-up turns
 
-**Date:** YYYY-MM-DD
-**Problem:** One sentence describing what went wrong
-**Solution:** One sentence describing the fix
-**Prevention:** How to avoid this in the future
+**Date:** 2026-04-07
+**Problem:** In multi-turn conversations, the bot was calling `getMyPlans → getPlanDetails → getPlanDetails` (3 tool calls) for follow-up questions where it already had the plan list in context. In the `updateItemStatus` flow it was calling 4 tools when only 2 were needed. This caused higher latency (8–12s extra), wasted tokens, and in one run produced a wrong item ID because the unnecessary re-fetch returned a different item order.
+**Solution:** Updated `system-prompt.ts` with explicit rules: (1) only call `getMyPlans` when the plan list is not yet in context; (2) when calling `updateItemStatus`, use the plan id already in context — do not re-call `getMyPlans` first. Updated both the `getMyPlans` and `updateItemStatus` tool descriptions with the same constraint.
+**Prevention:** After every prompt change, run `npm run test:conversation-quality` and check the Tools column in the report. Any turn showing `getMyPlans` after Turn 1 (where plans were already fetched) is a red flag. The tool description and system prompt must both say "only call getMyPlans if the plan list is not already in context."
+
+### [Bug] Bot mentioned "sync issue" when getMyPlans and getPlanDetails item counts differed
+
+**Date:** 2026-04-07
+**Problem:** `getMyPlans` returns plan-wide item totals (all participants' items), while `getPlanDetails` returns only items visible to the requesting user. When the bot saw "10 items" from `getMyPlans` but only 1 item in `getPlanDetails`, it told the user: *"there might be a sync issue."* This undermines trust in the app.
+**Solution:** Added an explicit rule to `system-prompt.ts`: "getMyPlans returns plan-wide item totals (all participants); getPlanDetails returns only items visible to the requesting user — this discrepancy is expected and normal, never comment on it or suggest a sync issue."
+**Prevention:** Any time `getMyPlans` and `getPlanDetails` return different item counts, the bot must stay silent on the discrepancy. Add a quality test scenario that verifies this.
