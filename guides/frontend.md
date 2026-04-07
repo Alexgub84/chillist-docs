@@ -325,6 +325,18 @@ The mock server is a Fastify instance that mirrors the real backend API. It is u
 | `VITE_SUPABASE_ANON_KEY` | Variable | Supabase anon key |
 | `VITE_GOOGLE_MAPS_API_KEY` | Variable | Google Maps API key |
 | `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN` | Variable | PostHog project token (public, goes into browser bundle) |
-| `VITE_PUBLIC_POSTHOG_HOST` | Variable | PostHog ingest host (e.g. `https://us.i.posthog.com`) |
+| `VITE_PUBLIC_POSTHOG_HOST` | Variable | PostHog ingest host. **Production value must be `https://<pages-domain>/ingest`** (proxy — see below). Local `.env` keeps `https://us.i.posthog.com` for direct access. |
+| `VITE_PUBLIC_POSTHOG_UI_HOST` | Variable | PostHog app UI host for toolbar links. Always `https://us.posthog.com` (US cloud). |
 | `VITE_POSTHOG_MOCK` | Variable | Set `true` to use in-memory fake PostHog (tests / local E2E server — no events sent) |
 | `VITE_PUBLIC_POSTHOG_DEBUG` | Variable | Optional. Set `true` only for local debugging (verbose console logs). Omit or `false` in production |
+
+#### PostHog reverse proxy (Cloudflare Pages Function)
+
+`functions/ingest/[[path]].js` proxies `/ingest/*` → `us.i.posthog.com` (events) and `us-assets.i.posthog.com` (SDK assets). This bypasses browser ad-blockers that block `posthog.com` directly.
+
+The proxy is deployed automatically as part of Cloudflare Pages — no separate wrangler config or workflow step needed.
+
+**DOMAIN DEPENDENCY:** `VITE_PUBLIC_POSTHOG_HOST` (GitHub Variable) must point to the current Pages domain:
+- Current value: `https://chillist-fe.pages.dev/ingest`
+- If a custom domain is added (e.g. `chillist.app`): update the GitHub Variable to `https://chillist.app/ingest`
+- The proxy function itself (`functions/ingest/[[path]].js`) does not need code changes — only the env var needs updating

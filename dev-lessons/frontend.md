@@ -4,6 +4,41 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [Layout] BulkItemAddWizard submit button hidden below scroll on desktop
+
+**Date:** 2026-04-05
+**Problem:** On desktop, the "Add items" submit button in the wizard's items step was only visible after scrolling the whole modal — it did not stay pinned at the bottom.
+**Root Cause:** `ItemsStep` used `flex flex-col` + `max-h-[calc(100dvh-Xrem)]` to constrain height, relying on `flex-1 min-h-0` for the internal scroll area. This pattern requires a **fixed-height** ancestor to work. The `Modal` panel used `max-h-[90vh] overflow-y-auto` — a `max-height` without a hard `height` — so flexbox never got a constrained parent dimension. The `max-h` values on `ItemsStep` were also larger than `90vh`, so they never fired; the modal scrolled as a whole and the button ended up below all the items.
+**Solution:** Added `noScroll` prop to `Modal`. When set, the panel uses `flex flex-col overflow-hidden` instead of `overflow-y-auto`. The title header gets `shrink-0`. `BulkItemAddWizard` passes `noScroll` and makes the content wrapper `flex-1 flex flex-col overflow-hidden`. `ItemsStep` outer div becomes `flex flex-col flex-1 min-h-0`. Submit button wrapper gets `shrink-0`.
+**Prevention:** The `flex-1 min-h-0` scroll containment pattern only works when every ancestor up the chain either has a hard `height` or is `overflow: hidden` + flex. A `max-height` + `overflow-y-auto` ancestor breaks containment — the container just grows and the whole thing scrolls. When a modal needs its content to own scrolling, use `overflow-hidden flex flex-col` on the panel and let children flex-fill the space.
+
+---
+
+### [Auth] Phone-OTP users got '+10000000000' as contactPhone — chatbot identification permanently broken
+
+**Date:** 2026-04-05
+**Problem:** Users who registered via Supabase phone OTP had `'+10000000000'` written to `participants.contact_phone` on every plan they created, making them invisible to the chatbot's phone-based lookup.
+**Root Cause:** Four compounding gaps:
+1. `CreatePlanWizard.doCreatePlan` read `user.user_metadata.phone` but never checked `user.phone` (the top-level Supabase field where phone-OTP auth stores the number). When `user_metadata.phone` was absent, it fell through to a hardcoded placeholder.
+2. `complete-profile.lazy.tsx` had the same blind spot: phone pre-fill read only `user_metadata.phone`, so phone-OTP users saw a blank field and had no reason to fill it in.
+3. `AuthProvider` called `syncProfile` only on `USER_UPDATED`, not on `SIGNED_IN`, so first-time phone-OTP logins (who never explicitly edit their profile) never synced.
+4. The shared `MockSession` type in `tests/helpers/supabase-mock.ts` had no `phone` field on the user object — making phone-OTP users structurally unrepresentable in tests. Every test was silently forced into the email/Google path. Additionally, `invite-flow.test.tsx` seeded plans with `contactPhone: '+10000000000'`, accidentally normalizing the broken placeholder as acceptable.
+**Solution:** (1) In `CreatePlanWizard`, extract `resolveOwnerPhoneRaw(meta, userPhone)` as a pure helper that checks `user_metadata.phone` first, then falls back to `user.phone`. (2) In `complete-profile.lazy.tsx`, widen the prop type to include `phone?: string | null` and apply the same fallback. (3) In `AuthProvider`, add a non-blocking `syncProfile` call in the `SIGNED_IN` handler (mirroring the existing `USER_UPDATED` pattern, with try/catch). (4) Add `phone?: string | null` to `MockSession.user` in the shared helper so phone-OTP users become a first-class test persona.
+**Prevention:**
+- Supabase has two distinct `phone` locations: `user.phone` (set by phone-OTP auth, top-level) and `user.user_metadata.phone` (set when the user saves their profile). Always check both when resolving a user's phone — `user_metadata.phone || user.phone`.
+- Any "I don't have this data yet" placeholder that satisfies a DB `not null` constraint (`'+10000000000'`, `'unknown@...'`, etc.) must be treated as a silent data corruption risk. Add a test asserting the fallback is never written with real user data.
+- When a mock helper lacks a field present on the real type, it is impossible to test that code path. After every auth-related bug, audit `MockSession` and test helpers against the real Supabase `User` shape.
+- `syncProfile` (or any sync side effect) tied only to `USER_UPDATED` will miss users who authenticate but never return to edit their profile. If sync must be complete at first login, call it on `SIGNED_IN` too.
+
+---
+
+### [Config] PostHog blocked by ad-blockers — fixed with Cloudflare Pages Function proxy
+
+**Date:** 2026-04-05
+**Problem:** PostHog events were blocked by content blockers (Brave shields, uBlock Origin) both in regular and incognito mode, because `us.i.posthog.com` is on ad-blocker filter lists.
+**Solution:** Added `functions/ingest/[[path]].js` — a Cloudflare Pages Function that proxies `/ingest/*` to PostHog servers. Set `VITE_PUBLIC_POSTHOG_HOST` GitHub Variable to `https://chillist-fe.pages.dev/ingest`. Added `ui_host` to `posthog.init` so the PostHog toolbar still resolves correctly. The proxy deploys automatically with Cloudflare Pages — no separate worker or wrangler config needed.
+**Prevention:** When the Cloudflare Pages domain changes (e.g. custom domain added), update the `VITE_PUBLIC_POSTHOG_HOST` GitHub Variable to `https://<new-domain>/ingest`. The proxy code itself is domain-agnostic.
+
 ### [Config] PostHog vars missing from deploy workflow — analytics silently disabled in production
 
 **Date:** 2026-04-05
