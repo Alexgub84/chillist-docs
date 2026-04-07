@@ -322,6 +322,7 @@ Done (continued):
 - ~~Item change tracking~~ (v1.18.0) — `item_changes` table + `src/utils/item-changes.ts` records all item creates/updates (status, quantity, assignment, etc.) with `changedByUserId` or `changedByParticipantId`. Fire-and-forget recording (non-blocking). No API changes.
 - ~~Participant expenses~~ (v1.21.0, PR #132) — `participant_expenses` table (`amount` numeric(10,2), optional `description`, FK to participants + plans). Full CRUD: `GET /plans/:planId/expenses` (list + per-participant totals), `POST`, `PATCH /expenses/:expenseId`, `DELETE`. Access control: owner/admin manage all, participants manage own (via `participant.userId`, not expense creator). `checkPlanAccess` enforced on PATCH/DELETE. 30 tests.
 - ~~Plan detail fields~~ (v1.21.0, PR #132) — `defaultLang` and `currency` nullable varchar columns on plans. Supported in create/update/read. Currency is the plan-level setting for expense display.
+- ~~Canonical phone pipeline~~ (v1.29.1) — `users.phone` is the chatbot identity column; migration `0030` backfills from `participants`; `bootstrapUsersPhoneIfNull` on plan create and join-request create; claim aligns `users.phone` and `participants.contact_phone`; `PATCH /auth/profile` updates all participant rows when phone changes. Spec: [phone-management.md](../specs/phone-management.md).
 
 Architecture notes:
 

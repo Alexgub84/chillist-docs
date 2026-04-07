@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [Data] `users.phone` must be written by every flow that knows the user’s number — tests must not mask null
+
+**Date:** 2026-04-07
+**Problem:** `POST /api/internal/auth/identify` correctly queried `users.phone`, but production almost always had `users.phone = null` because plan creation, join requests, and claim never bootstrapped it. Integration tests passed because fixtures set `users.phone`, hiding the bug.
+**Solution:** Single source of truth documented in [phone-management.md](../specs/phone-management.md): migration `0030` backfills from `participants`; `bootstrapUsersPhoneIfNull` on `POST /plans` and `POST .../join-requests`; claim overwrites or bootstraps; `PATCH /auth/profile` syncs to all `participants.contact_phone`. Added a regression test that clears `users.phone` while a participant still has a matching `contact_phone` — identify returns 404.
+**Lesson:** Identity columns need the same discipline as auth: assert null-canonical cases in integration tests, not only happy paths with fully seeded rows.
+
 ### [AI] Log full prompt + raw response; use discriminated union instead of throwing
 
 **Date:** 2026-03-30
@@ -31,10 +38,10 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 ### [Auth] `resolveUserByPhone` should query `users.phone` directly — not join participants + plans
 
-**Date:** 2026-03-29
-**Problem:** The chatbot `resolveUserByPhone` did an `innerJoin(plans, ...)` + `orderBy(desc(plans.createdAt))` just to find a phone→userId mapping, querying the noisiest table in the DB. It was also fragile: if a user had never been a participant, it returned nothing.
-**Solution:** Introduce a `users` table with a `phone` column (indexed). `resolveUserByPhone` now does a single index lookup on `users.phone`, then calls Supabase for display name, falling back to a simple `participants WHERE userId = ?` query (no plans join).
-**Prevention:** Phone → userId resolution belongs on the `users` table, not scattered across `participants`. Chatbot lookups must be O(1) index scans, not multi-table joins.
+**Date:** 2026-03-29 (lookup); 2026-04-07 (writes)
+**Problem:** The chatbot `resolveUserByPhone` did an `innerJoin(plans, ...)` + `orderBy(desc(plans.createdAt))` just to find a phone→userId mapping, querying the noisiest table in the DB. It was also fragile: if a user had never been a participant, it returned nothing. Later, the lookup was fixed to use `users.phone`, but **writes** still left `users.phone` null in real usage — so identify kept returning 404 despite correct SQL.
+**Solution:** Introduce a `users` table with a `phone` column (indexed). `resolveUserByPhone` does a single index lookup on `users.phone`, then Supabase for display name, falling back to `participants WHERE userId = ?`. **Additionally:** bootstrap/sync `users.phone` from plan creation, join requests, claim, and profile; backfill migration for existing rows — see [phone-management.md](../specs/phone-management.md).
+**Prevention:** Phone → userId resolution belongs on the `users` table. Chatbot lookups must be O(1) index scans. **Every** API path that learns the user’s phone must persist it to `users.phone` (or tests will lie).
 
 ### [AI] Claude Haiku and non-English output — add prompt guards and script checks
 

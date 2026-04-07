@@ -1,28 +1,29 @@
 # Phone Number Management — Architecture Spec
 
 > **Status:** Authoritative — all new code must follow this spec
-> **Last updated:** 2026-04-05
+> **Last updated:** 2026-04-07
 > **Affects:** BE (`users` table, `participants` table), chatbot (`POST /api/internal/auth/identify`), FE (profile page)
 
 ---
 
 ## 1. Canonical Rule
 
-> **`users.phone` is the single source of truth for a user's phone number.**
-> **`participants.contact_phone` for registered users always mirrors `users.phone`.**
+> **`users.phone` is the single source of truth for a user's phone number. It always wins.**
 
-There is one canonical phone per user: the `phone` column on the `users` table. Every registered participant slot (`user_id IS NOT NULL`) must have a `contact_phone` that matches the user's `users.phone`.
+A registered user has exactly one phone. Whatever the owner entered in a participant row is a best-effort entry — it gets replaced with the user's registered phone the moment they claim the invite or update their profile.
 
-`participants.contact_phone` for **unregistered** slots (`user_id IS NULL`) is whatever the owner entered. Once a user claims that slot, the phone is overwritten with their canonical `users.phone` (if set). This ensures WhatsApp notifications always go to the user's registered number — regardless of what the owner typed when creating the invite.
+`participants.contact_phone` still exists and is required — for unregistered participants (no `user_id`) it is the only phone source for WhatsApp delivery. But for **registered users**, it must always equal `users.phone`.
 
 ---
 
 ## 2. The Two Phone Columns — What They Mean
 
-| Column | Table | What it means | Who sets it | Used for |
-|--------|-------|---------------|-------------|----------|
-| `users.phone` | `users` | The user's own phone — their identity | The user themselves (explicitly), or bootstrapped from flows where they provided their own number | Chatbot identity resolution (`POST /api/internal/auth/identify`) |
-| `participants.contact_phone` | `participants` | Per-plan contact phone for this participant slot | The plan owner (when inviting), or the user (when creating a plan or submitting a join request) | WhatsApp notifications (send-list, invitations), invite flow |
+| Column | Table | What it means | Registered users | Unregistered participants |
+|--------|-------|---------------|-----------------|--------------------------|
+| `users.phone` | `users` | The user's canonical phone — their identity | Always set after first interaction | N/A |
+| `participants.contact_phone` | `participants` | Per-plan delivery phone for WhatsApp | Must mirror `users.phone` — synced automatically | Only source of phone for this person |
+
+For registered users, these two columns will always have the same value after a sync. The system enforces this — it is not left to chance.
 
 ---
 
@@ -33,12 +34,12 @@ There are exactly **5 places** phone numbers are stored in the system. Two are l
 | Location | Type | Registered users | Guests | Stays in sync? |
 |----------|------|-----------------|--------|----------------|
 | `users.phone` | **Live / canonical** | Yes — identity | No | N/A — source of truth |
-| `participants.contact_phone` | **Live / derived** | Yes — per-plan WhatsApp delivery | Yes | Synced when user updates their profile phone |
+| `participants.contact_phone` | **Live / derived** | Yes — always mirrors `users.phone` | Yes | Auto-synced via claim, profile update |
 | `participant_join_requests.contact_phone` | Historical snapshot | Yes — phone at time of request submission | No | No — immutable once created |
 | `whatsapp_notifications.recipient_phone` | Audit log | Yes — phone used at time of send | Yes | No — immutable, records what was actually sent |
-| `guest_profiles.phone` | Live (guests only) | No | Yes | Guest-managed separately, unrelated to registered user identity |
+| `guest_profiles.phone` | Live (guests only) | No | Yes | Guest-managed separately |
 
-**Key point:** For a registered user there are only **two live places** — `users.phone` (canonical) and `participants.contact_phone` (derived). The other three are historical records and must never be updated after creation.
+**Key point:** For a registered user there are only **two live places** — `users.phone` (canonical) and `participants.contact_phone` (derived, always equal after sync). The other three are historical records and must never be updated after creation.
 
 ---
 
@@ -58,19 +59,19 @@ This is an O(1) indexed lookup (`users_phone_idx`).
 
 ### This query is architecturally correct
 
-The query targets `users.phone` — not `participants.contact_phone`. This is by design:
+`users.phone` is the canonical phone. The chatbot trusts it completely. If the chatbot receives a message from a number that is NOT in `users.phone`, the user is not identified.
 
-- A user can have many participant rows across many plans. There is no reliable way to pick the "right" one.
-- `participants.contact_phone` is often entered by the plan owner, who may have an outdated or incorrect number.
-- `users.phone` is the number the user themselves confirmed — via their profile page, plan creation, or join request.
+### What if the user messages from a different phone?
+
+If a user has multiple SIM cards and sends from phone B while their registered phone is A — they will not be identified (404). This is intentional and acceptable:
+
+- The system supports one canonical phone per registered user
+- The user can update their canonical phone at any time via `PATCH /auth/profile`
+- The chatbot responds with a link to the profile page to set or update their phone
 
 ### The bug — wrong side
 
-The bug is **not** in the query. The query is correct. The bug is on the **write side**: the flows that capture a user's own phone (plan creation, join requests) never write to `users.phone`. Result: `users.phone = null` for almost every user → the query returns nothing → chatbot sends a sign-up link to every registered user.
-
-### What happens when `users.phone` is null
-
-The user is not identified (404). The chatbot responds with a sign-up or profile-setup link. This is an acceptable long-term state only for users who have never gone through any bootstrapping flow. Once they set their phone (via profile page, or after the bootstrapping fix is deployed), they become identifiable.
+The bug reported in issue #176 is **not** in the query. The query is correct. The bug is on the **write side**: the flows that capture a user's own phone (plan creation, join requests, claim) never wrote to `users.phone`. Result: `users.phone = null` for almost every user → 404 for everyone.
 
 ---
 
@@ -80,125 +81,118 @@ The user is not identified (404). The chatbot responds with a sign-up or profile
 
 #### `PATCH /auth/profile` — primary canonical setter
 
-The explicit, user-initiated way to set or update their phone. **Always overwrites** regardless of current value.
+The explicit, user-initiated way to set or update their phone. **Always overwrites** and always syncs all participant rows.
 
 ```
 FE profile page → PATCH /auth/profile { phone: "+972501234567" }
   → BE normalizes to E.164
-  → BE upserts users.phone (always overwrites — this is the authoritative action)
+  → BE upserts users.phone (always overwrites)
   → BE syncs new phone to ALL participants.contact_phone WHERE user_id = this user
-     (so WhatsApp notifications continue going to the right number)
   → Returns updated preferences including phone
 ```
-
-**Rule:** Always write here. Always sync to participant rows so notification delivery stays correct.
 
 ---
 
 #### `POST /auth/sync-profile` — Supabase metadata sync
 
-When the user's phone is stored in Supabase `user_metadata.phone`, this sync propagates it to `users.phone`.
+When the user's phone is stored in Supabase `user_metadata.phone`, this sync propagates it to `users.phone` and all participant rows.
 
 ```
 FE calls POST /auth/sync-profile (e.g. after sign-up / OAuth)
   → BE fetches user_metadata from Supabase Admin API
   → If user_metadata.phone exists:
-      → BE upserts users.phone from Supabase phone (overwrites)
-  → BE syncs all identity fields (including phone) to participants via syncAllParticipantsForUser
+      → BE upserts users.phone
+      → BE syncs to all participants via syncAllParticipantsForUser
 ```
 
 ---
 
-#### `POST /plans` — plan creation bootstrap *(to be added)*
+#### `POST /plans` — plan creation bootstrap
 
-When a user creates a plan, they provide their own phone as `owner.contactPhone`. This is the most common first interaction for new users.
+When a user creates their first plan, they provide their own phone as `owner.contactPhone`. Bootstrap into `users.phone` if not already set (`bootstrapUsersPhoneIfNull` in `src/services/phone-sync.ts`).
 
 ```
 User creates plan → POST /plans { owner: { contactPhone: "+972..." }, ... }
   → BE creates plan + owner participant with contactPhone
   → BE upserts users.phone = owner.contactPhone
-     ONLY IF users.phone IS NULL — never overwrite an explicit profile phone
+     ONLY IF users.phone IS NULL
 ```
 
-**Rule:** Only write if null. Respect any value the user explicitly set via `PATCH /auth/profile`.
+**Rule:** Only if null — never overwrite an explicit profile phone.
 
 ---
 
-#### `POST /plans/:planId/join-requests` — join request bootstrap *(to be added)*
+#### `POST /plans/:planId/join-requests` — join request bootstrap
 
-When a user submits a join request, they provide their own phone. This is often the first time their number reaches the system.
+When a user submits a join request they provide their own phone. Bootstrap into `users.phone` if not set (same helper as plan creation).
 
 ```
-User submits join request → POST /plans/:planId/join-requests { contactPhone: "+972...", ... }
+User submits join request → POST .../join-requests { contactPhone: "+972...", ... }
   → BE creates join request record
   → BE upserts users.phone = contactPhone
      ONLY IF users.phone IS NULL
 ```
 
-**Rule:** Same as plan creation — only if null.
-
 ---
 
-### 5.2 Flows that write to `participants.contact_phone` only — intentionally do NOT touch `users.phone` ❌
+#### `POST /plans/:planId/claim/:inviteToken` — claim syncs registered phone to participant
 
-#### `POST /plans/:planId/participants` — owner inviting someone
-
-The owner enters the invitee's phone. Writing to the invitee's `users.phone` from here would corrupt their canonical number — the owner may have an outdated or wrong number.
-
-```
-Owner invites → POST /plans/:planId/participants { contactPhone: "+972...", ... }
-  → Writes to participants.contact_phone ONLY
-  → Does NOT touch that person's users.phone
-```
-
----
-
-#### `POST /plans/:planId/claim/:inviteToken` — user claims an invite
-
-The `participants.contact_phone` on this row was entered by the owner, not the user. Must not be trusted as the user's canonical phone.
+When a user claims an invite, the participant row may have a phone entered by the owner (potentially wrong, potentially a different number). After linking the user, we sync `users.phone` → `participants.contact_phone` so the participant row reflects the user's actual registered phone (implemented in `src/routes/claim.route.ts`).
 
 ```
 User claims invite → POST /plans/:planId/claim/:inviteToken (JWT)
   → Links participants.user_id = JWT sub
   → Syncs JWT identity fields (name, email, avatar) → participants
-  → Does NOT write to users.phone from participants.contact_phone
-  → Does NOT overwrite participants.contact_phone with users.phone
+  → IF users.phone IS NOT NULL:
+      → Update participants.contact_phone = users.phone
+        (overrides whatever the owner entered)
+  → IF users.phone IS NULL AND participant.contact_phone IS NOT NULL:
+      → Bootstrap users.phone = participants.contact_phone
+        (rare fallback: user has no phone yet but the participant row has one)
 ```
 
-**Two-phone scenario:** A user may have multiple phones. The owner may have invited them using a second or work number (`+972B`), while the user's canonical phone is `+972A`. After claim:
-- `users.phone = "+972A"` — chatbot identifies user by this number ✅
-- `participants.contact_phone = "+972B"` — WhatsApp notifications for this plan go here (intentional — owner chose this number for this plan)
+**Why override:** The owner may have typed the wrong number, an old number, or a secondary number. Once the user is linked, their registered phone is authoritative. WhatsApp notifications must go to the number the user owns and monitors.
 
-These two numbers deliberately can differ. The per-plan contact phone is not forced to match the canonical phone. If the user wants notifications on their canonical number, they or the owner must update the participant record via `PATCH /participants/:participantId { contactPhone: "+972A" }`.
+**Result:** After claim, `users.phone` and `participants.contact_phone` always match for this user.
 
-**Important for chatbot:** A user who only ever claims an invite (never creates a plan or submits a join request, never visits the profile page) will have `users.phone = null`. They can set it at any time via `PATCH /auth/profile`.
+---
+
+### 5.2 Flows that write to `participants.contact_phone` only — intentionally do NOT update `users.phone`
+
+#### `POST /plans/:planId/participants` — owner inviting an unregistered person
+
+The owner enters a phone for someone who may or may not have a Chillist account. This is the best-effort number the owner knows for this person. It stays in the participant row until the person claims their spot (at which point it gets replaced with their registered phone).
+
+```
+Owner invites → POST /plans/:planId/participants { contactPhone: "+972...", ... }
+  → Writes to participants.contact_phone ONLY (user_id = null at this point)
+  → Does NOT touch anyone's users.phone
+```
 
 ---
 
 #### `PATCH /plans/:planId/join-requests/:requestId` (approval)
 
-The phone was already written to `users.phone` when the join request was submitted. No additional write needed here.
+The phone was already bootstrapped into `users.phone` when the join request was submitted. The participant row is created with the same phone from the join request. No additional sync needed.
 
 ```
-Owner approves → PATCH .../join-requests/:requestId { status: "approved" }
-  → Creates participant with userId + contactPhone from join request data
-  → users.phone was already bootstrapped at request submission time
-  → No additional write to users.phone
+Owner approves → { status: "approved" }
+  → Creates participant row with userId + contactPhone from join request
+  → users.phone was already set at request submission time
+  → participants.contact_phone = users.phone (they are the same at this point)
 ```
 
 ---
 
 #### `PATCH /participants/:participantId` — participant update
 
-Both owner and self can update `participants.contact_phone`. Neither should auto-sync to `users.phone`:
-
-- **Owner updating:** May be correcting a different person's per-plan contact info.
-- **User updating their own participant:** This is per-plan contact data only. To change their canonical phone → `PATCH /auth/profile`.
+Owner or self may update `participants.contact_phone` for a specific plan. This is a manual override for per-plan delivery — it does not change the canonical phone.
 
 ```
 PATCH /participants/:participantId { contactPhone: "+972..." }
   → Writes to participants.contact_phone ONLY
   → Never writes to users.phone
+  → Note: on the next profile update or sync, this will be overwritten back to users.phone
 ```
 
 ---
@@ -208,105 +202,95 @@ PATCH /participants/:participantId { contactPhone: "+972..." }
 ```
 User action                           users.phone              participants.contact_phone
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-PATCH /auth/profile (phone)         → SET always (canonical) → SYNC new phone to ALL user's participant rows
+PATCH /auth/profile (phone)         → SET always (canonical) → SYNC to ALL user's participant rows
 POST /auth/sync-profile             → SET if Supabase has   → SYNC via syncAllParticipantsForUser
-POST /plans (owner.contactPhone)    → SET if null           → SET owner participant row only
-POST /plans/:id/join-requests       → SET if null           → SET join request record only
-POST /plans/:id/participants        → NEVER                 → SET invitee's participant row only
-POST /plans/:id/claim/:token        → NEVER                 → SYNC JWT fields (name/email/avatar, not phone)
-PATCH /participants/:id (by owner)  → NEVER                 → SET that participant row only
-PATCH /participants/:id (by self)   → NEVER                 → SET that participant row only
-PATCH /.../join-requests (approve)  → (already set at submit)→ SET new participant row from join request
+POST /plans (owner.contactPhone)    → SET if null           → SET owner participant row
+POST /plans/:id/join-requests       → SET if null           → SET join request record
+POST /plans/:id/participants        → NEVER                 → SET invitee's participant row (owner's entry)
+POST /plans/:id/claim/:token        → BOOTSTRAP if null     → OVERRIDE with users.phone if set
+PATCH /participants/:id (by owner)  → NEVER                 → SET that participant row
+PATCH /participants/:id (by self)   → NEVER                 → SET that participant row (manual override)
+PATCH /.../join-requests (approve)  → (already set)         → SET from join request (same value)
 ```
 
 ---
 
 ## 7. Scenario Walkthrough
 
-### User creates a plan, gets invited to another plan, then changes their phone
+### Scenario A: User creates a plan, gets invited to another plan with a different number, then changes phone
 
-**Step 1 — User creates a plan**
+**Step 1 — User creates a plan with phone A**
 
 ```
-POST /plans { owner: { contactPhone: "+972501234567" } }
+POST /plans { owner: { contactPhone: "+972A" } }
 
 Writes:
-  participants.contact_phone = "+972501234567"  (owner participant row)
-  users.phone = "+972501234567"                 (bootstrapped — was null)
-
-participant_join_requests  → not touched
-whatsapp_notifications     → not touched (yet)
+  participants.contact_phone = "+972A"  (owner participant row)
+  users.phone = "+972A"                 (bootstrapped)
 ```
 
-**Step 2 — Another owner invites the user to their plan**
+**Step 2 — Another owner invites the user using phone B (a different number)**
 
 ```
-POST /plans/:id/participants { contactPhone: "+972501234567" }
+POST /plans/:id/participants { contactPhone: "+972B" }
 
 Writes:
-  participants.contact_phone = "+972501234567"  (new row, user_id = null)
+  participants.contact_phone = "+972B"  (new row, user_id = null)
 
-users.phone                → NOT touched (owner entering someone else's phone)
-participant_join_requests  → not touched
+users.phone  → NOT touched
 ```
 
-**Step 3 — User claims the invite**
+**Step 3 — User claims the invite (they are registered, users.phone = "+972A")**
 
 ```
-POST /plans/:id/claim/:inviteToken  (JWT)
+POST /plans/:id/claim/:inviteToken
 
 Writes:
   participants.user_id = userId
-  participants.inviteStatus = accepted
-  participants.name / email / avatar  (synced from JWT)
+  participants.contact_phone = "+972A"   ← OVERRIDES "+972B" with users.phone
+  participants.name / email / avatar     (synced from JWT)
 
-users.phone                → NOT touched (phone was entered by owner — cannot trust)
-participants.contact_phone → NOT touched by claim
+Result: participants.contact_phone now matches users.phone ✅
 ```
 
-**Step 4 — User changes their phone number**
+**After Step 3:**
+- Chatbot: user messages from "+972A" → found ✅
+- WhatsApp for both plans goes to "+972A" ✅
+- If user messages from "+972B" → not found (they only have one registered phone) → profile link sent
+
+**Step 4 — User changes phone via profile**
 
 ```
-PATCH /auth/profile { phone: "+972999999999" }
+PATCH /auth/profile { phone: "+972C" }
 
 Writes:
-  users.phone = "+972999999999"              (always overwrites — canonical)
-  participants.contact_phone = "+972999999999"
-    WHERE user_id = this user               (ALL plans: owner plan + invited plan)
+  users.phone = "+972C"
+  participants.contact_phone = "+972C"  (ALL plans — both participant rows)
 
-participant_join_requests  → NOT touched (historical snapshot — immutable)
-whatsapp_notifications     → NOT touched (audit log — immutable)
-guest_profiles             → NOT touched (registered user, not a guest)
+participant_join_requests  → NOT touched (historical)
+whatsapp_notifications     → NOT touched (audit log)
 ```
 
-After Step 4:
-- Chatbot `POST /api/internal/auth/identify` finds user by "+972999999999" via `users.phone` ✅
-- WhatsApp send-list and invite notifications go to "+972999999999" ✅
-- Old join request records show "+972501234567" — correct, they are historical snapshots ✅
-- Old WhatsApp notification audit logs show "+972501234567" — correct, they record what was sent ✅
+---
 
-### Two-phone edge case: invited with a different number
-
-If the owner invited the user using a **different** phone from their canonical one:
+### Scenario B: User with no prior plan claims an invite first
 
 ```
-users.phone                   = "+972A"  (canonical — set from plan creation)
-participants.contact_phone    = "+972B"  (owner entered a different number for this plan)
+POST /plans/:id/claim/:inviteToken
+  users.phone IS NULL (first interaction)
+  participants.contact_phone = "+972A"  (owner entered)
+
+  → users.phone IS NULL: bootstrap users.phone = "+972A"
+  → participants.contact_phone stays "+972A"
+
+Result: users.phone = "+972A" ✅
 ```
-
-After the user claims the invite, both rows remain as-is. This is intentional:
-- Chatbot identifies user by "+972A" ✅
-- WhatsApp notifications for this plan go to "+972B" (owner's choice — may be a work/secondary phone)
-- The numbers are allowed to differ — participants.contact_phone is per-plan delivery data, not identity
-
-To align notification delivery with the canonical phone, the owner or user must explicitly call:
-`PATCH /participants/:participantId { contactPhone: "+972A" }`
 
 ---
 
 ## 8. Data Migration (existing users)
 
-Existing users who created plans before this fix have `users.phone = null` but their phone exists in `participants.contact_phone` on their owner-participant row. A one-time migration backfills `users.phone` from their oldest owner participant row:
+Existing users who created plans before this fix have `users.phone = null` but their phone exists in `participants.contact_phone` on their owner-participant row. A one-time migration backfills `users.phone`:
 
 ```sql
 INSERT INTO users (user_id, phone, created_at, updated_at)
@@ -317,34 +301,35 @@ SELECT DISTINCT ON (p.user_id)
   NOW()
 FROM participants p
 JOIN plans pl ON pl.plan_id = p.plan_id
-  AND pl.created_by_user_id = p.user_id  -- owner rows only
+  AND pl.created_by_user_id = p.user_id  -- owner rows only (user entered their own phone)
 WHERE p.user_id IS NOT NULL
   AND p.contact_phone IS NOT NULL
   AND p.contact_phone != ''
-ORDER BY p.user_id, p.created_at ASC     -- oldest plan first = first phone they gave us
+ORDER BY p.user_id, p.created_at ASC     -- oldest plan = first phone they gave us
 ON CONFLICT (user_id)
   DO UPDATE SET phone = EXCLUDED.phone
-  WHERE users.phone IS NULL;             -- never overwrite an explicit user preference
+  WHERE users.phone IS NULL;             -- never overwrite an explicit preference
 ```
 
 ---
 
 ## 9. FE Responsibilities
 
-- The **Profile page** is the primary and only place where users set or update their canonical phone.
+- The **Profile page** is the primary place where users set or update their canonical phone.
 - `PATCH /auth/profile { phone }` is the only endpoint the FE should call to explicitly set a user's phone.
-- The FE must call `POST /auth/sync-profile` after sign-up and after any Supabase profile update that includes a phone number.
-- The FE must NOT read `participants.contact_phone` as the user's own phone number — use `GET /auth/profile` → `preferences.phone` for that.
+- The FE must call `POST /auth/sync-profile` after sign-up and after any Supabase profile update that includes a phone.
+- The FE must NOT read `participants.contact_phone` as the user's own phone — use `GET /auth/profile` → `preferences.phone` for that.
 
 ---
 
 ## 10. BE Rules (enforce in code review)
 
 1. **`resolveUserByPhone` queries `users.phone` only** — never change it to query `participants.contact_phone`.
-2. **Never overwrite `users.phone` from a participant row** unless `users.phone IS NULL` (bootstrapping flows only).
+2. **At claim time, if `users.phone` is set, override `participants.contact_phone`** — the registered phone always wins.
 3. **`PATCH /auth/profile` is the only endpoint that always overwrites `users.phone`** and always syncs to all participant rows.
-4. **When adding any new flow that captures a user's phone**, decide explicitly: is this the user's own phone (→ upsert `users.phone` if null + write to participant) or someone else's phone (→ participant row only)?
-5. **`participants.contact_phone` must never be read for identity resolution** — it is per-plan delivery data only.
+4. **Bootstrap writes (`POST /plans`, `POST /join-requests`, claim fallback) only write to `users.phone` if it IS NULL** — never overwrite.
+5. **When adding any new flow that captures a phone**, ask: is this the user's own phone? If yes → bootstrap `users.phone` if null + write to participant. If someone else's phone → participant row only.
+6. **`participants.contact_phone` for registered users is a derived field** — it will be overwritten on the next profile update or claim. Do not rely on it being independent.
 
 ---
 

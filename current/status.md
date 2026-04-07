@@ -1,8 +1,8 @@
 # Chillist — Current Status
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
-> **Last updated:** 2026-04-04
-> **BE version:** 3a2f375 — Internal chatbot API: `GET /api/internal/plans/:planId` (full plan for participants + items), `PATCH /api/internal/items/:itemId/status` (upsert caller assignment; chatbot done/pending ↔ purchased/pending)
+> **Last updated:** 2026-04-07
+> **BE version:** 1.29.1 — Canonical phone: `users.phone` is the identity source for `POST /api/internal/auth/identify`. Migration `0030_users_phone_backfill` backfills from `participants`; `PATCH /auth/profile` syncs phone to all participant rows; `POST /plans`, `POST .../join-requests`, and `POST .../claim/:inviteToken` bootstrap or align `users.phone` / `participants.contact_phone` per [phone-management.md](../specs/phone-management.md).
 > **FE version:** 1.31.0 — PostHog analytics integrated (identify on login, reset on logout, autocapture enabled)
 
 ---

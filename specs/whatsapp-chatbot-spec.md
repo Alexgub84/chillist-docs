@@ -3,7 +3,7 @@
 > **Status:** In Progress — Phase 4 core tools shipped (plan list, plan detail, item status); polish/hardening pending
 > **Scope:** This document defines the chatbot as a standalone service that communicates with the existing Chillist app backend via internal HTTP API. No implementation code is included.
 > **Prerequisite:** WhatsApp Integration Phase 1 & 2 (notifications + list sharing via Green API) must be complete before chatbot work begins.
-> **Last updated:** 2026-04-03 — App BE: `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status`. Chatbot: `IInternalApiClient` methods, `getMyPlans` / `getPlanDetails` / `updateItemStatus` tools, system prompt updates.
+> **Last updated:** 2026-04-07 — Clarified registered-user identification: `POST /api/internal/auth/identify` resolves phone via `users.phone` (see [phone-management.md](./phone-management.md)), not `participants.contact_phone` alone.
 
 ---
 
@@ -121,7 +121,7 @@ Both user types are resolved through the same single endpoint: `POST /api/intern
 2. Chatbot calls App BE: POST /api/internal/auth/identify
    Header: x-service-key: <CHATBOT_SERVICE_KEY>
    Body: { "phoneNumber": "+972501234567" }
-3. App BE normalizes the phone number and queries the app database (two-step lookup)
+3. App BE normalizes the phone number and looks up `users.phone` (then display name / guest branch as implemented)
 4. App BE returns a union response — see below
 5. Chatbot stores user identity in session for subsequent requests
 ```
@@ -146,30 +146,24 @@ Examples of inputs that all resolve to the same normalized phone:
 
 Normalization logic: strip all spaces, dashes, and parentheses, then ensure the result starts with `+`. Implemented in `src/utils/phone.ts`.
 
-**Important:** Phone numbers in the `participants` table are already stored in E.164 format (enforced by schema validation), so the normalized input matches the stored value directly.
+**Important:** Canonical numbers live on `users.phone` (and mirror in `participants.contact_phone` for registered users). Stored values are E.164; the normalized WhatsApp input matches them directly.
 
 ### DB-based phone lookup (why no Supabase Admin API)
 
-The app's `participants` table stores `contactPhone` (E.164) for every plan participant. When a participant accepts their invite (`POST /plans/:planId/claim/:inviteToken`), their Supabase `userId` is written to the same row.
-
-This means the app database already contains a **`contactPhone → userId` mapping** for every user who has joined at least one plan. A single indexed query resolves any registered user:
+Registered users are resolved by **canonical phone** on the `users` table (`users.phone`, E.164, indexed). `participants.contact_phone` is kept in sync with `users.phone` for delivery and legacy data, but **identity for `POST /api/internal/auth/identify` is always `users.phone`** — see [phone-management.md](./phone-management.md).
 
 ```sql
-SELECT user_id, name, last_name, display_name
-FROM participants
-WHERE contact_phone = $1
-  AND user_id IS NOT NULL
-ORDER BY created_at DESC
+SELECT user_id
+FROM users
+WHERE phone = $1   -- normalized E.164
 LIMIT 1
 ```
 
-This is O(1) with an index, not O(N) like a Supabase Admin user scan.
+After that, the BE may load display name from Supabase user metadata (if configured) or fall back to a `participants` row for the same `user_id`. That metadata step is separate from the phone key.
 
-**Why `ORDER BY created_at DESC`:** The same phone number can appear in multiple participant rows across different plans. Without ordering, the result is non-deterministic across DB replicas and vacuums. Taking the most recently created row is stable and predictable.
+**Coverage:** If `users.phone` is unset for a registered user, they are not identified (404) — even if a participant row still shows a phone. Writes (profile, plan creation, join requests, claim) bootstrap or sync `users.phone` so this stays rare.
 
-**Coverage:** A user who registered in Supabase but has never accepted any plan invite will not be found by this query. For the chatbot, this is acceptable — if they have no plan membership, there is nothing for the chatbot to show them.
-
-**No `SUPABASE_SERVICE_ROLE_KEY` needed.** The app BE does not use the Supabase Admin API for identification. No extra dependency, no elevated credentials.
+**No `SUPABASE_SERVICE_ROLE_KEY` needed** for the phone → userId lookup. Optional Admin API use for display-name enrichment only — not for resolving which user owns the number.
 
 ### Guest user lookup
 
