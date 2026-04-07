@@ -1,8 +1,18 @@
 # Chatbot Dev Lessons
 
-A two-sided log for `chillist-whatsapp-bot`: **wins** (strategies that worked) and **bugs** (problems fixed). Read both sections before starting any chatbot task.
+A three-section log for `chillist-whatsapp-bot`: **wins** (strategies that worked), **bugs** (problems fixed), and **decisions** (architecture, config, and integration choices). Read all sections before starting any chatbot task.
+
+> **Goal:** This file is the primary knowledge asset for building the *next* WhatsApp bot. Every non-obvious choice made during development should be recorded here so the next project starts with the full context of this one.
 
 _(Seeded with relevant lessons from `dev-lessons/backend.md`. Only add NEW lessons here.)_
+
+---
+
+## Decisions
+
+Architecture, config, and integration choices made during development — the "why we built it this way" record. Add a `[Decision]` entry whenever you make a non-obvious design choice, pick one approach over another, or discover an important integration constraint.
+
+<!-- Add new Decision entries at the top of this section -->
 
 ---
 

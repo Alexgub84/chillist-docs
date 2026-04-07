@@ -100,10 +100,25 @@ When implementing Phase 4 (AI SDK):
 
 ## 8) Dev Lessons Protocol
 
-After every bug fix or confirmed working strategy, update the docs before closing the task:
+Before closing **any** task — fix, feature, refactor, or config change — answer all four questions and update the docs:
 
-- **Bug fixed** → add `[Bug]` entry to `chillist-docs/dev-lessons/chatbot.md`
-- **Strategy confirmed working** → add `[Win]` entry to `chillist-docs/dev-lessons/chatbot.md`
-- **Rule that should always apply** → add it to this file (`rules/chatbot.md`) under the relevant section
+- **Bug fixed?** → add `[Bug]` entry to `chillist-docs/dev-lessons/chatbot.md`
+- **Strategy or pattern confirmed working?** → add `[Win]` entry to `chillist-docs/dev-lessons/chatbot.md`
+- **Design, config, or integration decision made?** → add `[Decision]` entry to `chillist-docs/dev-lessons/chatbot.md`
+- **Rule that should always apply going forward?** → add it to this file under the relevant section
 
-Never close a task without asking: "Is there a lesson or win worth recording?"
+> The goal of `dev-lessons/chatbot.md` is to capture everything learned during this bot's development so the *next* WhatsApp bot can be built faster and with fewer mistakes. When in doubt, write it down.
+
+### Decision entry format
+
+```markdown
+### [Decision] Short Title
+
+**Date:** YYYY-MM-DD
+**Context:** What problem or trade-off prompted this decision
+**Decision:** What was chosen and what alternatives were rejected
+**Reason:** Why this choice was made
+**Reuse tip:** How to apply this in the next bot project
+```
+
+Never close a task without answering all four questions.
