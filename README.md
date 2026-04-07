@@ -83,6 +83,7 @@ chillist-docs/
 - [Backend](guides/backend.md) — setup, deployment, Railway, database
 - [Frontend](guides/frontend.md) — setup, development, mock server, testing, CI/CD
 - [Chatbot](guides/chatbot.md) — setup, deployment, environment variables
+- [Planning](guides/planning.md) — unified planning workflow (how to create a plan in Cursor)
 - [Issue Management](guides/issue-management.md) — how to create and manage GitHub issues
 - [Monday](guides/monday.md) — Monday.com integration
 

@@ -6,11 +6,23 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ### [Layout] BulkItemAddWizard submit button hidden below scroll on desktop
 
-**Date:** 2026-04-05
-**Problem:** On desktop, the "Add items" submit button in the wizard's items step was only visible after scrolling the whole modal — it did not stay pinned at the bottom.
-**Root Cause:** `ItemsStep` used `flex flex-col` + `max-h-[calc(100dvh-Xrem)]` to constrain height, relying on `flex-1 min-h-0` for the internal scroll area. This pattern requires a **fixed-height** ancestor to work. The `Modal` panel used `max-h-[90vh] overflow-y-auto` — a `max-height` without a hard `height` — so flexbox never got a constrained parent dimension. The `max-h` values on `ItemsStep` were also larger than `90vh`, so they never fired; the modal scrolled as a whole and the button ended up below all the items.
-**Solution:** Added `noScroll` prop to `Modal`. When set, the panel uses `flex flex-col overflow-hidden` instead of `overflow-y-auto`. The title header gets `shrink-0`. `BulkItemAddWizard` passes `noScroll` and makes the content wrapper `flex-1 flex flex-col overflow-hidden`. `ItemsStep` outer div becomes `flex flex-col flex-1 min-h-0`. Submit button wrapper gets `shrink-0`.
-**Prevention:** The `flex-1 min-h-0` scroll containment pattern only works when every ancestor up the chain either has a hard `height` or is `overflow: hidden` + flex. A `max-height` + `overflow-y-auto` ancestor breaks containment — the container just grows and the whole thing scrolls. When a modal needs its content to own scrolling, use `overflow-hidden flex flex-col` on the panel and let children flex-fill the space.
+**Date:** 2026-04-07
+**Problem:** On desktop, the "Add items" submit button in the wizard's items step was only visible after scrolling — in both the modal context (Manage Items) and the inline context (Create Plan wizard). It did not stay pinned at the bottom.
+
+**Root Cause — modal:** `ItemsStep` used `flex flex-col` + `max-h-[calc(100dvh-Xrem)]` relying on `flex-1 min-h-0` for the internal scroll area. The `Modal` panel used `max-h-[90vh] overflow-y-auto` — a `max-height` without a hard `height`. The `flex-1 min-h-0` containment pattern requires a **fixed-height** (or `overflow-hidden` flex) ancestor; `max-h` + `overflow-y-auto` is not enough. The `max-h` values on `ItemsStep` were also larger than `90vh`, so they never fired; the modal scrolled as a whole and pushed the button far below.
+
+**Root Cause — inline:** The initial modal fix changed `ItemsStep`'s outer div from `max-h-[calc(...)]` to `flex-1 min-h-0`. In the inline (create-plan) context there is no constrained flex parent, so `flex-1` has nothing to anchor against — the component grew to its full content height and the button ended up at the very bottom of a very tall layout. The submit button also lacked `shrink-0`, making it potentially squeezable under heavy flex pressure.
+
+**Solution:**
+- Added `noScroll?: boolean` prop to `Modal`. When set: panel uses `flex flex-col overflow-hidden`; title header gets `shrink-0`. This gives `ItemsStep` a proper fixed-height flex ancestor in modal mode.
+- `BulkItemAddWizard` passes `noScroll` to `Modal` and makes the content wrapper `flex-1 flex flex-col overflow-hidden` (fills the modal panel).
+- `ItemsStep` receives an `inline` prop and branches: `flex-1 min-h-0` in modal mode (parent provides height), `max-h-[calc(100dvh-Xrem)]` in inline mode (self-constraining via viewport cap).
+- Submit button wrapper gets `shrink-0` in both cases.
+
+**Prevention:**
+- `flex-1 min-h-0` only works when every ancestor up the chain has a hard `height` or is `overflow: hidden` + flex. A `max-height` + `overflow-y-auto` ancestor does **not** count — it lets the container grow and breaks containment.
+- When a component renders in two contexts (modal vs. inline), the height-constraint strategy must account for both. Removing a `max-h` that worked in one context to fix the other will silently break the first.
+- A flex footer (submit button) always needs `shrink-0`. Without it, `flex-1` siblings can starve the button to zero height when the container is tight.
 
 ---
 

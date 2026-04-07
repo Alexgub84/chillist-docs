@@ -25,24 +25,7 @@ Shared workflow rules for all Chillist service repos (backend, frontend, chatbot
 
 ## Planning Mode (Mandatory First Step)
 
-- Output a concise plan before writing code
-- Identify modules/components affected and design patterns to use
-- Flag potential security risks (OWASP)
-- If less than 90% sure about intent, ask clarifying questions
-- **Documentation step required:** Every plan must include a documentation update step. If the change introduces new architecture patterns, structure decisions, or conventions, update all relevant docs:
-  - `README.md` — file map, "where to find" sections, workflow guidance
-  - `../chillist-docs/rules/<service>.md` — new conventions or patterns to follow in future work
-  - `../chillist-docs/guides/<service>.md` — "What's next" progress, setup changes
-  - `../chillist-docs/dev-lessons/<service>.md` — lessons learned, architecture decisions
-  - `../chillist-docs/specs/mvp-v1.md` — feature status updates
-  - `../chillist-docs/current/status.md` — update when features are added, changed, or removed
-  - Even if no docs need updating, the plan must explicitly state "No docs changes needed" with reasoning
-
-## Implementation Flow
-
-1. **Structure First:** Break tasks into small functions/components. Show signatures/interfaces only
-2. **Wait for Approval:** Do not implement until reviewed
-3. **One by One:** Implement each function individually — never generate large code blocks unless explicitly asked
+See [guides/planning.md](../guides/planning.md) for the full planning and implementation workflow.
 
 ## Change → Test → Run → Confirm (Mandatory)
 
