@@ -1,9 +1,9 @@
 # Chillist — Current Status
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
-> **Last updated:** 2026-04-07
-> **BE version:** 1.29.1 — Canonical phone: `users.phone` is the identity source for `POST /api/internal/auth/identify`. Migration `0030_users_phone_backfill` backfills from `participants`; `PATCH /auth/profile` syncs phone to all participant rows; `POST /plans`, `POST .../join-requests`, and `POST .../claim/:inviteToken` bootstrap or align `users.phone` / `participants.contact_phone` per [phone-management.md](../specs/phone-management.md).
-> **FE version:** 1.31.0 — PostHog analytics integrated (identify on login, reset on logout, autocapture enabled)
+> **Last updated:** 2026-04-08
+> **BE version:** 1.30.0 — Admin read-only API `GET /admin/chatbot-ai-usage` for `chatbot_ai_usage` (written by the WhatsApp chatbot service): paginated logs, filters, summary including per-model, per-chat-type, and per-tool-name counts. Drizzle mirrors the table without FKs; migration `0031_chatbot_ai_usage` uses `CREATE TABLE IF NOT EXISTS` for local/CI DBs.
+> **FE version:** 1.33.0 — Admin dashboard third tab **Chatbot AI** (`/admin/plans?tab=chatbot-ai`): chatbot AI usage logs from `GET /admin/chatbot-ai-usage` with filters (`cbAi*` URL params), summaries, tool-call breakdown, expandable rows
 
 ---
 
@@ -127,7 +127,7 @@ A marketing home page with a hero section, a 3-step "How it works" quick intro (
 
 ### Admin
 
-Platform-level admin users open **`/admin/plans`** (from the header when signed in as admin). The page has **tabs**: **All Plans** lists every plan (no “create plan” button on this screen), supports the same delete and list behavior as the main plans list, and shows **pending join requests** across plans when present. The **AI Usage** tab loads **`GET /admin/ai-usage`**: filters (plan/user UUID, feature, status, date range) synced to the URL, paginated log table with **duration** and **color-coded status**, **expandable rows** for provider, language, prompt length, result count, log id, metadata JSON, and full error text, plus summary totals including breakdowns by feature and model.
+Platform-level admin users open **`/admin/plans`** (from the header when signed in as admin). The page has **tabs**: **All Plans** lists every plan (no “create plan” button on this screen), supports the same delete and list behavior as the main plans list, and shows **pending join requests** across plans when present. The **AI Usage** tab loads **`GET /admin/ai-usage`**: filters (plan/user UUID, feature, status, date range) synced to the URL, paginated log table with **duration** and **color-coded status**, **expandable rows** for provider, language, prompt length, result count, log id, metadata JSON, and full error text, plus summary totals including breakdowns by feature and model. The **Chatbot AI** tab loads **`GET /admin/chatbot-ai-usage`** for **`chatbot_ai_usage`** rows: filters (`userId`, `sessionId`, `chatType`, `status`, date range; URL keys `cbAi*`), summaries and breakdowns by model, chat type, and tool name, paginated table with expandable rows (session id, message index, tool calls, errors) — read-only; table is owned by the chatbot service.
 
 ---
 
@@ -217,6 +217,7 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 - **plan_invites** — invite send history and acceptance tracking per participant; optional `session_id` (for future flows)
 - **whatsapp_notifications** — audit log of WhatsApp messages sent (invitation_sent, join_request_pending/approved/rejected); optional `session_id`
 - **ai_usage_logs** — tracks every AI model invocation (tokens, cost, duration, model, feature type, status, full prompt text, raw model response, error type, finish reason); optional `session_id`. Admin-queryable via `GET /admin/ai-usage`
+- **chatbot_ai_usage** — chatbot-side AI call metrics (session, user, plan, model, dm/group, tool_calls JSONB, tokens, cost, status). Written by the WhatsApp chatbot service; backend admin route is **read-only**: `GET /admin/chatbot-ai-usage`
 
 ### Backend API Routes
 
@@ -241,7 +242,7 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 | Internal       | `PATCH /api/internal/items/:itemId/status`                                | Body `{ status: done \| pending }` — upserts caller’s `assignmentStatusList` entry (`done`→`purchased`). Caller must be a participant on the item’s plan. |
 | Auth           | `GET /me`, `GET /profile`, `PATCH /profile`, `POST /sync-profile`, `POST /logout` | Current user, read/update preferences, sync from Supabase, end browser session                                                                                                                                         |
 | Expenses       | `POST`, `GET`, `PATCH /:id`, `DELETE /:id`                                 | Create, list, update, delete expenses                                                                                                                                                                                        |
-| Admin          | `GET /admin/plans`, `GET /admin/ai-usage`                                  | Admin-only: list all plans, view AI usage logs with filters and cost summary                                                                                                                                                 |
+| Admin          | `GET /admin/plans`, `GET /admin/ai-usage`, `GET /admin/chatbot-ai-usage`   | Admin-only: list all plans; item-suggestion AI usage logs; chatbot AI usage logs (separate table, read-only)                                                                                                                    |
 
 ### CI/CD
 

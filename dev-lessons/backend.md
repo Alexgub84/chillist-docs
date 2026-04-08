@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Mirroring a table owned by another service — no FKs; JSONB unnest via raw SQL
+
+**Date:** 2026-04-08
+**Problem:** Admin needs read-only access to `chatbot_ai_usage` (written by the WhatsApp chatbot). Defining Drizzle `references()` or relations would risk migrations that `ALTER TABLE` a foreign-owned table or imply cascade behaviour.
+**Solution:** Define `chatbotAiUsage` as plain columns only — no `.references()`, no `relations()`. Route uses only `SELECT` plus one `db.execute()` call with Drizzle's `sql` template for `jsonb_array_elements_text(tool_calls)` aggregation. Idempotent `CREATE TABLE IF NOT EXISTS` migration for CI/local only.
+**Prevention:** For shared-DB tables owned by another deployable, treat the ORM definition as a read mirror; use raw SQL for operations Drizzle does not express (here: unnest JSONB arrays for `GROUP BY`).
+
 ### [Data] `users.phone` must be written by every flow that knows the user’s number — tests must not mask null
 
 **Date:** 2026-04-07

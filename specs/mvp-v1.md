@@ -137,11 +137,12 @@ A marketing home page with:
 
 Admin users (platform-level role, not per-plan) can:
 
-- Open the admin dashboard at `/admin/plans` with tabs: **All Plans** and **AI Usage**.
+- Open the admin dashboard at `/admin/plans` with tabs: **All Plans**, **AI Usage**, and **Chatbot AI**.
 - View all plans regardless of visibility; the admin **All Plans** tab does not show the “create plan” CTA (creation stays on the main `/plans` flow).
 - Delete any plan.
 - See pending join requests across all plans.
 - On **AI Usage**, view paginated AI usage logs and aggregated summary (tokens, cost, by feature/model) from `GET /admin/ai-usage` with filters; each row can be expanded for provider, language, timing/detail fields, metadata, and errors.
+- On **Chatbot AI**, view paginated rows from `chatbot_ai_usage` via `GET /admin/chatbot-ai-usage` (read-only; table is written by the chatbot service), with filters (`userId`, `sessionId`, `chatType`, `status`, date range; URL keys `cbAi*`), summaries (tokens, cost, by model, by chat type, by tool name), and expandable rows for session, message index, tool calls, and errors.
 
 ---
 
@@ -299,6 +300,7 @@ Base URL: `/` (versioning can be added later: `/v1`)
 
 - `GET /admin/plans` → `Plan[]` (JWT required, admin only — returns all plans regardless of visibility)
 - `GET /admin/ai-usage` → `{ logs, total, summary }` (JWT required, admin only — paginated AI usage logs with filters and aggregated summary. Query params: `planId`, `userId`, `featureType`, `status`, `from`, `to`, `limit`, `offset`)
+- `GET /admin/chatbot-ai-usage` → `{ logs, total, summary }` (JWT required, admin only — paginated `chatbot_ai_usage` rows with filters and aggregated summary including by-tool counts. Query params: `userId`, `sessionId`, `chatType`, `status`, `from`, `to`, `limit`, `offset`)
 
 ### Participants
 
