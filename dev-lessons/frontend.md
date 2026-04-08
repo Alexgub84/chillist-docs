@@ -4,6 +4,22 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [Async] Admin AI usage tabs — infinite network loop from unstable React Query key
+
+**Date:** 2026-04-08
+**Problem:** Opening the Chatbot AI (or AI Usage) admin tab hammered `GET /admin/...-usage` in a tight loop.
+**Root Cause:** When URL had no `from`/`to`, the component computed `buildDateRange(30)` on **every render**. That uses `new Date()` for the upper bound, so the `to` ISO string changed every render → the `query` object passed to `useQuery` changed → `queryKey` changed → React Query refetched repeatedly.
+**Solution:** Hold a **stable** default range once per mount: `const [defaultDateRange] = useState(() => buildDateRange(30))` and use that for `effectiveFromIso` / `effectiveToIso` only when URL params are absent. Quick-range and reset still `navigate()` explicit ISO strings into the URL.
+**Prevention:** Any value that feeds `useQuery`’s `queryKey` must be stable across renders unless inputs truly changed. Never derive query keys from `new Date()` without memoization or URL sync.
+
+### [Router] Root `errorComponent` / other boundaries rendered `Header` without `AuthProvider` — `useAuth` threw
+
+**Date:** 2026-04-08
+**Problem:** Intermittently (e.g. admin pages, plan pages), the app crashed with `useAuth must be used within an AuthProvider` when something triggered the router’s error UI or related boundaries.
+**Root Cause:** `LanguageProvider` / `AuthProvider` lived only in the root route **`component`**. TanStack Router renders `errorComponent`, Suspense fallbacks, and other root-match UI **outside** that component — inside `CatchBoundary` / `Suspense` **below** the same parent as `MatchInner`, but **not** inside the route `component`. So any root-level error UI that reused `Header` had no auth context. Duplicating providers only in `errorComponent` fixed that one path but not every boundary case.
+**Solution:** Set the root route’s **`shellComponent`** to wrap the full root match tree with `LanguageProvider` → `AuthProvider`. In `@tanstack/react-router`’s `Match.tsx`, `shellComponent` wraps `matchContext`, Suspense, and `CatchBoundary`, so both the happy path and `errorComponent` render under the same providers. Keep the route `component` as layout-only (no inner duplicate providers).
+**Prevention:** For app-wide context used by layout chrome (`Header`, modals from providers), prefer root **`shellComponent`** over wrapping only `component`, so router boundaries cannot “escape” the provider tree. `AuthProvider` must remain a **descendant** of `RouterProvider` (it uses `useNavigate()`).
+
 ### [Layout] BulkItemAddWizard submit button hidden below scroll on desktop
 
 **Date:** 2026-04-07
@@ -14,12 +30,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 **Root Cause — inline:** The initial modal fix changed `ItemsStep`'s outer div from `max-h-[calc(...)]` to `flex-1 min-h-0`. In the inline (create-plan) context there is no constrained flex parent, so `flex-1` has nothing to anchor against — the component grew to its full content height and the button ended up at the very bottom of a very tall layout. The submit button also lacked `shrink-0`, making it potentially squeezable under heavy flex pressure.
 
 **Solution:**
+
 - Added `noScroll?: boolean` prop to `Modal`. When set: panel uses `flex flex-col overflow-hidden`; title header gets `shrink-0`. This gives `ItemsStep` a proper fixed-height flex ancestor in modal mode.
 - `BulkItemAddWizard` passes `noScroll` to `Modal` and makes the content wrapper `flex-1 flex flex-col overflow-hidden` (fills the modal panel).
 - `ItemsStep` receives an `inline` prop and branches: `flex-1 min-h-0` in modal mode (parent provides height), `max-h-[calc(100dvh-Xrem)]` in inline mode (self-constraining via viewport cap).
 - Submit button wrapper gets `shrink-0` in both cases.
 
 **Prevention:**
+
 - `flex-1 min-h-0` only works when every ancestor up the chain has a hard `height` or is `overflow: hidden` + flex. A `max-height` + `overflow-y-auto` ancestor does **not** count — it lets the container grow and breaks containment.
 - When a component renders in two contexts (modal vs. inline), the height-constraint strategy must account for both. Removing a `max-h` that worked in one context to fix the other will silently break the first.
 - A flex footer (submit button) always needs `shrink-0`. Without it, `flex-1` siblings can starve the button to zero height when the container is tight.
@@ -31,12 +49,14 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 **Date:** 2026-04-05
 **Problem:** Users who registered via Supabase phone OTP had `'+10000000000'` written to `participants.contact_phone` on every plan they created, making them invisible to the chatbot's phone-based lookup.
 **Root Cause:** Four compounding gaps:
+
 1. `CreatePlanWizard.doCreatePlan` read `user.user_metadata.phone` but never checked `user.phone` (the top-level Supabase field where phone-OTP auth stores the number). When `user_metadata.phone` was absent, it fell through to a hardcoded placeholder.
 2. `complete-profile.lazy.tsx` had the same blind spot: phone pre-fill read only `user_metadata.phone`, so phone-OTP users saw a blank field and had no reason to fill it in.
 3. `AuthProvider` called `syncProfile` only on `USER_UPDATED`, not on `SIGNED_IN`, so first-time phone-OTP logins (who never explicitly edit their profile) never synced.
 4. The shared `MockSession` type in `tests/helpers/supabase-mock.ts` had no `phone` field on the user object — making phone-OTP users structurally unrepresentable in tests. Every test was silently forced into the email/Google path. Additionally, `invite-flow.test.tsx` seeded plans with `contactPhone: '+10000000000'`, accidentally normalizing the broken placeholder as acceptable.
-**Solution:** (1) In `CreatePlanWizard`, extract `resolveOwnerPhoneRaw(meta, userPhone)` as a pure helper that checks `user_metadata.phone` first, then falls back to `user.phone`. (2) In `complete-profile.lazy.tsx`, widen the prop type to include `phone?: string | null` and apply the same fallback. (3) In `AuthProvider`, add a non-blocking `syncProfile` call in the `SIGNED_IN` handler (mirroring the existing `USER_UPDATED` pattern, with try/catch). (4) Add `phone?: string | null` to `MockSession.user` in the shared helper so phone-OTP users become a first-class test persona.
-**Prevention:**
+   **Solution:** (1) In `CreatePlanWizard`, extract `resolveOwnerPhoneRaw(meta, userPhone)` as a pure helper that checks `user_metadata.phone` first, then falls back to `user.phone`. (2) In `complete-profile.lazy.tsx`, widen the prop type to include `phone?: string | null` and apply the same fallback. (3) In `AuthProvider`, add a non-blocking `syncProfile` call in the `SIGNED_IN` handler (mirroring the existing `USER_UPDATED` pattern, with try/catch). (4) Add `phone?: string | null` to `MockSession.user` in the shared helper so phone-OTP users become a first-class test persona.
+   **Prevention:**
+
 - Supabase has two distinct `phone` locations: `user.phone` (set by phone-OTP auth, top-level) and `user.user_metadata.phone` (set when the user saves their profile). Always check both when resolving a user's phone — `user_metadata.phone || user.phone`.
 - Any "I don't have this data yet" placeholder that satisfies a DB `not null` constraint (`'+10000000000'`, `'unknown@...'`, etc.) must be treated as a silent data corruption risk. Add a test asserting the fallback is never written with real user data.
 - When a mock helper lacks a field present on the real type, it is impossible to test that code path. After every auth-related bug, audit `MockSession` and test helpers against the real Supabase `User` shape.
