@@ -8,6 +8,16 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [Infra] Deploy does NOT run migrations — always run db:migrate:prod manually after shipping a migration
+
+**Date:** 2026-04-08
+**Problem:** `GET /admin/chatbot-ai-usage` returned HTTP 500 (`"Failed to retrieve chatbot AI usage"`) in staging and production immediately after shipping BE v1.30.0 and the FE admin tab. Root cause: migration `0031_chatbot_ai_usage` (which creates the `chatbot_ai_usage` table) was never applied to the Railway database. The deployment workflow (`deploy.yml`) only runs `railway up` — it does NOT run `db:migrate`. The `chatbot_ai_usage` table did not exist, so every Drizzle query (and the raw `CROSS JOIN LATERAL` SQL) threw `relation "chatbot_ai_usage" does not exist`, which the catch block swallowed and returned as a generic 500.
+**Solution:** Run `npm run db:migrate:prod` on staging and production to apply the pending migration. Also: (1) added non-production `detail` field to the 500 response body so the actual DB error is visible without checking Railway logs; (2) added an integration test (`tests/integration/admin-chatbot-ai-usage.test.ts`) that runs against a real testcontainer Postgres — this test would have failed in CI had it existed before shipping, catching the issue before deploy.
+**Prevention:**
+- **After every commit that includes a new migration file**, run `npm run db:migrate:prod` before or immediately after deploying. Treat it as part of the release — not optional cleanup.
+- **Always add an integration test for new admin/read-only routes** that exercises real SQL (especially raw `db.execute()` calls). Unit tests that mock the DB cannot detect a missing table or invalid SQL.
+- The deploy checklist in `guides/backend.md` now explicitly lists "run `db:migrate:prod` if any migration files changed" as a required deploy step.
+
 ### [Arch] Mirroring a table owned by another service — no FKs; JSONB unnest via raw SQL
 
 **Date:** 2026-04-08

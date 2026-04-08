@@ -241,6 +241,20 @@ Three workflow files:
 1. Install Railway CLI
 2. Deploy to Railway (`railway up --service $RAILWAY_SERVICE_ID`)
 
+> **IMPORTANT — migrations are NOT run automatically on deploy.** `deploy.yml` only ships code. After merging a PR that includes new migration files, you must run migrations manually:
+>
+> ```bash
+> npm run db:migrate:prod   # applies pending migrations to the Railway production database
+> ```
+>
+> Skipping this step will cause `relation "table_name" does not exist` errors (HTTP 500) for any route that queries the new table. This is a known footgun — see [dev-lessons/backend.md § Deploy does NOT run migrations](../dev-lessons/backend.md).
+>
+> **Release checklist when a PR includes migrations:**
+> 1. Merge the PR to `main`
+> 2. Wait for Railway deploy to complete
+> 3. Run `npm run db:migrate:prod`
+> 4. Smoke-test the affected endpoint
+
 **`branch-protection.yml`** — runs on PRs to `main` and `staging`:
 
 - Validates branch merge rules (informational)
