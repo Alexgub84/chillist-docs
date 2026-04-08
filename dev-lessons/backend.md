@@ -17,6 +17,7 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 - **After every commit that includes a new migration file**, run `npm run db:migrate:prod` before or immediately after deploying. Treat it as part of the release — not optional cleanup.
 - **Always add an integration test for new admin/read-only routes** that exercises real SQL (especially raw `db.execute()` calls). Unit tests that mock the DB cannot detect a missing table or invalid SQL.
 - The deploy checklist in `guides/backend.md` now explicitly lists "run `db:migrate:prod` if any migration files changed" as a required deploy step.
+- **`db:migrate:prod` previously used `railway run printenv`** which silently returns empty when the Railway CLI is not authenticated in the current shell — causing a misleading "DATABASE_URL_PUBLIC or DATABASE_URL environment variable is required" error. The script was fixed to read `DATABASE_URL_PUBLIC` directly from `.env` via `grep`. If `db:migrate:prod` ever fails with that message again, check that `DATABASE_URL_PUBLIC` is set in `.env`.
 
 ### [Arch] Mirroring a table owned by another service — no FKs; JSONB unnest via raw SQL
 
