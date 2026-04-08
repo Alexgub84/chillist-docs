@@ -66,6 +66,12 @@ When implementing Phase 4 (AI SDK):
 - **`getMyPlans` called at most once per turn** — the prompt and every relevant tool description must say "only call `getMyPlans` if the plan list is not already in context." Re-fetching wastes tokens and causes higher latency.
 - **`updateItemStatus` requires same-turn `getPlanDetails`** — item ids from prior turns are unreliable. The prompt and `updateItemStatus` tool description must both require calling `getPlanDetails` first in the same response, using the plan id already in context (not re-fetching `getMyPlans`).
 - **Never mention data discrepancies** — `getMyPlans` returns plan-wide item totals; `getPlanDetails` returns only the requesting user's items. The bot must never comment on this difference or suggest a sync issue.
+- **Use positive-reframe phrasing for tool-call frequency constraints** — "Reuse the plan IDs from the getMyPlans result already in this conversation" outperforms "do not call getMyPlans again". Lead with what the model should DO, not what it must avoid.
+- **Dual placement is required** — any important tool-call constraint must appear in BOTH the system prompt (under `## Tool usage rules`) AND the tool description. One without the other misses either the instruction-following phase or the tool-selection reasoning phase.
+- **For critical constraints, add architectural enforcement** — use `prepareStep` in `engine.ts` to remove the tool from `activeTools` after first use, AND add an execute guard inside the tool's `execute` function. Never rely on prompt alone for hard constraints.
+- **Never use cost/token framing** — "calling this wastes tokens" has no empirical support and may degrade compliance by adding semantic noise. Use logical + positive-reframe constraints only.
+- **Quality test assertions must include negative guards** — every multi-turn scenario in `prompt-quality.test.ts` must have `expect(t2.toolCalls).not.toContain("getMyPlans")` (or equivalent) where plans were already fetched. Happy-path outcome assertions alone are not sufficient.
+- **Add a `// Regression: [Bug title] — YYYY-MM-DD` comment** to every `it()` block that was added to prevent a known bug from regressing. This makes the test suite self-documenting.
 
 ---
 

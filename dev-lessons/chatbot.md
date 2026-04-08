@@ -14,6 +14,22 @@ Architecture, config, and integration choices made during development — the "w
 
 <!-- Add new Decision entries at the top of this section -->
 
+### [Decision] Positive-reframe phrasing over prohibition for tool-call constraints
+
+**Date:** 2026-04-08
+**Context:** The system prompt and tool description both had "do not call getMyPlans again" style rules. Conversation quality reports showed ~75% non-compliance across 4 runs and 3 multi-turn scenarios.
+**Decision:** Replace all tool-call frequency constraints with positive-reframe phrasing ("reuse the plan IDs from the getMyPlans result already in this conversation") rather than negation ("do not call getMyPlans again").
+**Reason:** Safety Adherence Benchmark (ICML 2025) showed positive-reframe achieves near-perfect compliance; NeQA benchmark confirmed negation compliance does NOT improve with model scale. Conditional allows ("only call X when Y") are second-best; hard prohibitions are worst.
+**Reuse tip:** For any tool that should be called at most N times: lead with what to DO ("reuse the result from earlier"), then state the narrow condition for when the tool call IS legitimate. Never lead with "don't" or "never" as the primary frame.
+
+### [Decision] Three-layer defense for critical tool-call frequency constraints
+
+**Date:** 2026-04-08
+**Context:** Layer 1 (prompt) alone achieves ~70–85% compliance at best. For tool calls that must never be redundant, prompt-only approaches are insufficient.
+**Decision:** Apply three layers: (1) positive-reframe phrasing in both system prompt and tool description + few-shot example; (2) `prepareStep` callback in `engine.ts` to dynamically remove the tool from `activeTools` after first use within a turn; (3) execute guard inside `getMyPlans.execute` that returns `{ error: "..." }` if the SDK still calls it despite Layer 2.
+**Reason:** AGENTIF benchmark (Tsinghua 2025) found even top models follow fewer than 30% of constraints perfectly. Architectural enforcement is needed as a deterministic backstop.
+**Reuse tip:** `prepareStep` handles within-turn redundancy. Cross-turn redundancy (calling the tool again in a later message) is primarily handled by Layer 1 (prompt). A future improvement would be to include tool-call results in message history so `prepareStep` can detect cross-turn prior calls.
+
 ---
 
 ## Wins
@@ -21,6 +37,20 @@ Architecture, config, and integration choices made during development — the "w
 Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenever a design choice, prompt, or approach is confirmed to work in practice.
 
 <!-- Add new Win entries at the top of this section -->
+
+### [Win] Three-layer tool-call guard eliminates redundant getMyPlans in quality reports
+
+**Date:** 2026-04-08
+**Context:** `getMyPlans` was being called redundantly in 3/4 scenarios across 4 conversation quality report runs, despite existing prompt rules.
+**Strategy:** (1) Rewrote `system-prompt.ts` with a `## Tool usage rules` section using positive-reframe phrasing + a few-shot XML example with bracket annotations. (2) Updated `getMyPlans` tool description to "call exactly once per conversation — reuse IDs directly". (3) Added `prepareStep` in `engine.ts` to hide `getMyPlans` from `activeTools` after it has been called in any step of the current turn. (4) Added execute guard in `getMyPlans.execute` that returns `{ error: "..." }` on duplicate calls (catches a known Vercel AI SDK bug where `activeTools` hides tools but the SDK still executes them if the model hallucinates a call).
+**Why it works:** Each layer addresses a different failure mode — prompt handles the model's intention, `prepareStep` enforces it architecturally within a turn, execute guard is the deterministic last resort.
+
+### [Win] Shared report-helpers.ts eliminates test duplication and adds auto-detection
+
+**Date:** 2026-04-08
+**Context:** `prompt-quality.test.ts` and `prompt-quality-he.test.ts` each duplicated `TurnResult`, `runTurn`, and `formatTurnBlock`. Reports had no way to detect anti-patterns at a glance.
+**Strategy:** Extracted all shared helpers to `tests/unit/conversation/report-helpers.ts`. Added `analyzeScenario()` that auto-detects (a) redundant `getMyPlans` calls in T2+, (b) `updateItemStatus` called without prior `getPlanDetails`. Added `formatSummaryTable()` that prepends a summary table to every report — one glance shows all scenarios and whether any flags fired. Added `// Regression: [Bug title] — YYYY-MM-DD` comment convention to each `it()` block.
+**Why it works:** The summary table turns a 166-line report into a 6-row table that immediately shows which scenarios passed. Auto-detection means a future regression triggers a visible flag even if the test assertion doesn't directly catch it.
 
 ### [Win] Hebrew conversation quality tests with number-selection and bulk-item scenarios
 
@@ -55,6 +85,13 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 ## Bugs
 
 <!-- Add new Bug entries at the top of this section -->
+
+### [Bug] Vercel AI SDK activeTools bug — hides tool from schema but still executes it
+
+**Date:** 2026-04-08
+**Problem:** `activeTools` correctly removes a tool from the model's schema so the model cannot see or select it. However, if the model hallucinates a call to a hidden tool (from conversation memory), the SDK's `runToolsTransformation` still executes it because it uses the full `tools` object instead of the filtered `stepTools`.
+**Solution:** Add an execute guard inside the tool's `execute` function that detects prior calls from the messages context and returns `{ error: "..." }` instead of performing the real operation.
+**Prevention:** For any tool where a second call would be harmful or wasteful: (a) use `prepareStep` to hide it via `activeTools`, AND (b) add an execute guard inside `execute` checking `messages` for a prior tool-result message. Never rely on `activeTools` alone as a hard gate.
 
 ### [Bug] Sessions keyed only by phone caused cross-context bleed between groups and DMs
 

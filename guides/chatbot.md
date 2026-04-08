@@ -505,6 +505,132 @@ Railway resolves `${{chillist-be-prod.PORT}}` to `8080` at deploy time.
 
 ---
 
+## Tool Call Frequency Control
+
+For any tool that should only be called once per conversation (or once per condition), apply all three layers — prompt alone is never sufficient.
+
+### Layer 1 — Positive-reframe phrasing + dual placement + few-shot example
+
+**System prompt** (`src/conversation/system-prompt.ts`): Add a `## Tool usage rules` section with a positive directive ("Call getMyPlans exactly once per conversation. For every later turn, reuse the plan IDs already returned.") followed by an `<example>` block with bracket annotations showing the correct multi-turn behavior.
+
+**Tool description** (`src/conversation/tools.ts`): Use the same positive-reframe style in the tool description itself ("Call this exactly once per conversation. After the first call... reuse those plan IDs directly.").
+
+Research basis: Safety Adherence Benchmark (ICML 2025) showed positive-reframe achieves near-perfect compliance. Negation ("do not call X") is the weakest pattern and does not improve with model scale (NeQA benchmark, arXiv 2305.17311).
+
+### Layer 2 — `prepareStep` architectural gating
+
+In `src/conversation/engine.ts`, pass a `prepareStep` callback to `aiClient.generateResponse`. The callback checks whether the tool was already called in any prior step of the **current** `generateText` call and removes it from `activeTools`:
+
+```ts
+prepareStep: ({ steps }) => {
+  const plansAlreadyFetched = steps.some((step) =>
+    step.toolCalls.some((tc) => tc.toolName === "getMyPlans"),
+  );
+  if (plansAlreadyFetched) {
+    return { activeTools: ["getPlanDetails", "updateItemStatus"] as string[] };
+  }
+  return {};
+},
+```
+
+**Scope:** `prepareStep` catches within-turn redundancy only (duplicate calls within the same `generateText` invocation). Cross-turn redundancy (calling the tool again in a later user message) is handled by Layer 1.
+
+### Layer 3 — Execute guard (deterministic backstop)
+
+Add a guard inside the tool's `execute` function that checks `messages` for a prior tool-result entry and returns `{ error: "..." }` instead of making the real API call:
+
+```ts
+execute: async (_, options) => {
+  const messages = (options as { messages?: unknown[] }).messages ?? [];
+  const alreadyCalled = messages.some(
+    (m) =>
+      (m as { role?: string }).role === "tool" &&
+      (m as { content?: Array<{ toolName?: string }> }).content?.some(
+        (c) => c.toolName === "getMyPlans",
+      ),
+  );
+  if (alreadyCalled) {
+    return { error: "Plan list already fetched. Use plan IDs from the prior getMyPlans result." };
+  }
+  // ... real fetch
+},
+```
+
+**Why needed:** Known Vercel AI SDK bug — `activeTools` hides tools from the model schema but the SDK still executes calls for hidden tools if the model hallucinates them from memory.
+
+---
+
+## Conversation Quality Test Playbook
+
+### Running the tests
+
+```bash
+npm run test:conversation-quality
+```
+
+Requires `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) in `.env`. Reports are written to `tests/conversation-quality-reports/report-<timestamp>.md` (gitignored).
+
+### Reading a report
+
+Every report opens with a **Tool Usage Summary** table:
+
+```
+## Tool Usage Summary
+
+| Scenario                    | Turns | Tool Pattern                     | Status |
+|-----------------------------|-------|----------------------------------|--------|
+| list my plans               | 1     | T1: getMyPlans                   | ✅     |
+| mark Tent done              | 2     | T1: getMyPlans, getPlanDetails \| T2: ⚠️ getPlanDetails, getMyPlans, ... | ⚠️ T2: redundant getMyPlans |
+```
+
+- **✅** — no known anti-patterns detected in this scenario
+- **⚠️** — one or more flags fired; the issue is described inline
+
+Auto-detected flags:
+- `T2: redundant getMyPlans` — `getMyPlans` called in T2+ after plans were already fetched
+- `T2: updateItemStatus without getPlanDetails` — item ID likely wrong
+
+### Adding a regression scenario
+
+When a bug involving conversation flow is fixed, add a scenario to `prompt-quality.test.ts` (and the Hebrew mirror `prompt-quality-he.test.ts`):
+
+1. **Name the `it()` after what you're preventing**, not what it does:
+   - Good: `"mark item done — no redundant getMyPlans in T2"`
+   - Bad: `"mark item done flow"`
+
+2. **Add the regression comment header**:
+   ```ts
+   it(
+     // Regression: [Bug] Bot re-calls getMyPlans redundantly — 2026-04-07
+     // Trigger: follow-up question after plans already fetched in T1
+     // Key assertion: T2 does NOT call getMyPlans
+     "mark item done — no redundant getMyPlans in T2",
+     async () => { ... },
+     { timeout: 120_000 },
+   );
+   ```
+
+3. **Include at least one negative assertion** (`not.toContain`, `not.toMatch`) that would have caught the bug. A test that only asserts the happy-path outcome (item was marked done) won't catch a regression in tool-call efficiency.
+
+4. **Seed only the minimal data needed** — don't reuse another scenario's session ID or state.
+
+5. **Call `scenarioSummaryRows.push(analyzeScenario(name, [t1, t2, ...]))`** before `appendReportSection` so the scenario appears in the summary table.
+
+6. Run `npm run test:conversation-quality` and verify the new scenario appears in the report with ✅.
+
+### Shared helpers
+
+All report helpers live in `tests/unit/conversation/report-helpers.ts`:
+
+| Helper | Purpose |
+|---|---|
+| `runTurn(deps, sessionId, userId, displayName, text)` | Run one conversation turn, return `TurnResult` |
+| `formatTurnBlock(index, userText, turn)` | Format a turn as a markdown block |
+| `analyzeScenario(name, turns)` | Check tool call pattern for known anti-patterns |
+| `formatSummaryTable(rows)` | Build the `## Tool Usage Summary` markdown table |
+
+---
+
 ## What's Next
 
 - [x] Session management (direct DB via `chatbot_sessions` table)
