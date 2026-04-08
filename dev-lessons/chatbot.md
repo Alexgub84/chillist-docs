@@ -38,6 +38,20 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 
 <!-- Add new Win entries at the top of this section -->
 
+### [Win] qt- session ID prefix + Source header makes test runs filterable in chatbot_ai_usage
+
+**Date:** 2026-04-08
+**Context:** Quality tests use `FakeUsageLogger` so entries normally don't reach the DB, but if ever run with a real logger, test data would pollute production metrics. Also, markdown report files had no self-identifying metadata.
+**Strategy:** Prefix all quality test session IDs with `"qt-"` (e.g. `"qt-mark-done"`) so DB queries can filter: `WHERE session_id LIKE 'qt-%'`. Added `Source: Quality Test` and `Suite: en/he` lines to the report header metadata block in `beforeAll`.
+**Why it works:** Zero schema changes — `session_id` is an unconstrained text field. Filterable at any time with a simple LIKE query. Report files are self-identifying at a glance.
+
+### [Win] Short-message scenarios expose real WhatsApp failure modes
+
+**Date:** 2026-04-08
+**Context:** Quality tests used verbose messages like "I packed the Tent — mark it done". Real WhatsApp users send "tent done" or "camping". Verbose messages can mask intent-parsing failures invisible in production.
+**Strategy:** Added a dedicated `short messages` scenario using single-word T1 (`"camping"`) and two-word T2 (`"tent done"`). Asserts that the bot resolves intent, fetches items, and marks the correct item done — from minimal input.
+**Why it works:** Model behavior on short/ambiguous input differs from verbose input. Testing both ensures prompt rules and tool descriptions work across the full input spectrum.
+
 ### [Win] Three-layer tool-call guard eliminates redundant getMyPlans in quality reports
 
 **Date:** 2026-04-08
@@ -85,6 +99,13 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 ## Bugs
 
 <!-- Add new Bug entries at the top of this section -->
+
+### [Bug] Prompt overcorrected — "once per conversation" breaks multi-turn plan ID lookups
+
+**Date:** 2026-04-08
+**Problem:** After changing the `getMyPlans` rule to "call exactly once per conversation", the bot stopped calling `getMyPlans` in T2+ turns, even when it had no plan IDs in context. This caused `getPlanDetails` to be called with guessed/wrong plan IDs → "Plan not found" error → `updateItemStatus` never reached. Both `mark item done` and `disambiguation` multi-turn scenarios regressed.
+**Solution:** Changed the rule scope from "per conversation" to "per response (turn)": the model can call `getMyPlans` at most once within a single response, but is free to call it again in a subsequent turn if plan IDs are not available. The `prepareStep` guard already enforces within-response deduplication architecturally; the prompt rule needed to match that scope.
+**Prevention:** When writing tool-call frequency constraints, always scope them to "per response" (i.e. within one `generateText` call), not "per conversation". The message store only persists plain text — plan IDs from prior turns are NOT available in subsequent turns unless the model re-fetches them. A "per conversation" rule conflicts with this architecture and causes silent failures.
 
 ### [Bug] Vercel AI SDK activeTools bug — hides tool from schema but still executes it
 

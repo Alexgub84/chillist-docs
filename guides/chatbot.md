@@ -507,13 +507,15 @@ Railway resolves `${{chillist-be-prod.PORT}}` to `8080` at deploy time.
 
 ## Tool Call Frequency Control
 
-For any tool that should only be called once per conversation (or once per condition), apply all three layers — prompt alone is never sufficient.
+For any tool that should only be called once per response, apply all three layers — prompt alone is never sufficient.
+
+> **Critical scope:** The constraint is **"per response"** (one `generateText` call), NOT "per conversation". The message store only persists plain text — plan IDs from prior turns are NOT available in subsequent turns unless the model re-fetches them. A "per conversation" prompt rule conflicts with this architecture and silently breaks multi-turn flows.
 
 ### Layer 1 — Positive-reframe phrasing + dual placement + few-shot example
 
-**System prompt** (`src/conversation/system-prompt.ts`): Add a `## Tool usage rules` section with a positive directive ("Call getMyPlans exactly once per conversation. For every later turn, reuse the plan IDs already returned.") followed by an `<example>` block with bracket annotations showing the correct multi-turn behavior.
+**System prompt** (`src/conversation/system-prompt.ts`): Use a positive directive scoped to the current response ("Call getMyPlans when you need the plan list and have not called it yet in this response. Within one response, once you have plan IDs from an earlier step, reuse those IDs directly.").
 
-**Tool description** (`src/conversation/tools.ts`): Use the same positive-reframe style in the tool description itself ("Call this exactly once per conversation. After the first call... reuse those plan IDs directly.").
+**Tool description** (`src/conversation/tools.ts`): Use the same positive-reframe style in the tool description itself ("Call this at most once per response. Across turns, if you need a plan ID that is not available from prior steps in this response, call this tool first.").
 
 Research basis: Safety Adherence Benchmark (ICML 2025) showed positive-reframe achieves near-perfect compliance. Negation ("do not call X") is the weakest pattern and does not improve with model scale (NeQA benchmark, arXiv 2305.17311).
 
@@ -569,6 +571,12 @@ npm run test:conversation-quality
 ```
 
 Requires `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) in `.env`. Reports are written to `tests/conversation-quality-reports/report-<timestamp>.md` (gitignored).
+
+All quality test session IDs are prefixed with `qt-` (e.g. `qt-mark-done`). If these tests are ever run against a real usage logger (e.g. in staging), the entries can be filtered out:
+
+```sql
+SELECT * FROM chatbot_ai_usage WHERE session_id LIKE 'qt-%'
+```
 
 ### Reading a report
 

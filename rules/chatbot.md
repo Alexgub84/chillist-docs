@@ -63,7 +63,7 @@ When implementing Phase 4 (AI SDK):
 
 - **Numbered list + digit reply** — whenever the prompt instructs the bot to present a numbered list, it must also say: "When the user replies with just a number, treat it as selecting that option from the most recent list." WhatsApp users never type full answers on mobile.
 - **Bulk item actions** — the prompt must explicitly say to call `updateItemStatus` once per item when the user names multiple items in one message. Without this rule the bot only acts on the first item.
-- **`getMyPlans` called at most once per turn** — the prompt and every relevant tool description must say "only call `getMyPlans` if the plan list is not already in context." Re-fetching wastes tokens and causes higher latency.
+- **`getMyPlans` called at most once per response (turn)** — the prompt and every relevant tool description must say "call `getMyPlans` at most once per response; if you already called it in an earlier step of this response, reuse those plan IDs." Across turns, re-calling `getMyPlans` is legitimate when plan IDs are not available from prior steps in the current response (the message store only persists plain text, not tool results). Never scope this constraint to "per conversation" — that conflicts with the architecture and breaks multi-turn flows.
 - **`updateItemStatus` requires same-turn `getPlanDetails`** — item ids from prior turns are unreliable. The prompt and `updateItemStatus` tool description must both require calling `getPlanDetails` first in the same response, using the plan id already in context (not re-fetching `getMyPlans`).
 - **Never mention data discrepancies** — `getMyPlans` returns plan-wide item totals; `getPlanDetails` returns only the requesting user's items. The bot must never comment on this difference or suggest a sync issue.
 - **Use positive-reframe phrasing for tool-call frequency constraints** — "Reuse the plan IDs from the getMyPlans result already in this conversation" outperforms "do not call getMyPlans again". Lead with what the model should DO, not what it must avoid.
@@ -72,6 +72,8 @@ When implementing Phase 4 (AI SDK):
 - **Never use cost/token framing** — "calling this wastes tokens" has no empirical support and may degrade compliance by adding semantic noise. Use logical + positive-reframe constraints only.
 - **Quality test assertions must include negative guards** — every multi-turn scenario in `prompt-quality.test.ts` must have `expect(t2.toolCalls).not.toContain("getMyPlans")` (or equivalent) where plans were already fetched. Happy-path outcome assertions alone are not sufficient.
 - **Add a `// Regression: [Bug title] — YYYY-MM-DD` comment** to every `it()` block that was added to prevent a known bug from regressing. This makes the test suite self-documenting.
+- **All quality test session IDs must use the `qt-` prefix** (e.g. `"qt-mark-done"`, `"qt-he-bulk"`) so test entries are filterable in `chatbot_ai_usage`: `SELECT * FROM chatbot_ai_usage WHERE session_id LIKE 'qt-%'`.
+- **Include short-message scenarios** in quality tests — real WhatsApp users send one or two words ("camping", "tent done"). Verbose-only test messages can mask intent-parsing failures that surface in production.
 
 ---
 
