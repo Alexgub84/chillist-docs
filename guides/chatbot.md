@@ -41,7 +41,7 @@ See `.env.example` in the repo for full annotated config. Summary:
 | `BOT_PHONE_NUMBER`         | — (optional; only needed for @mention detection in groups) | E.164 phone of the bot's WhatsApp number                            | for group chat   |
 | `FE_BASE_URL`              | `http://localhost:5173`                                    | `https://chillist-fe.pages.dev`                                     | yes              |
 | `DATABASE_URL`             | — (optional; sessions use in-memory if unset)              | Supabase **pooled** connection (port 6543)                          | yes              |
-| `DATABASE_URL_PUBLIC`      | — (optional; only needed for migrations)                   | Supabase **direct** connection (port 5432)                          | for migrations   |
+| `DATABASE_URL_PUBLIC`      | — (optional; enables quality-test DB logging when set)     | Supabase **direct** connection (port 5432)                          | for migrations   |
 | `SESSION_IDLE_TTL_MINUTES` | `15`                                                       | `15`                                                                | no (default 15)  |
 | `AI_PROVIDER`              | `fake` (noop client)                                       | `anthropic` or `openai`                                             | yes              |
 | `ANTHROPIC_API_KEY`        | — (optional in dev)                                        | from Anthropic dashboard                                            | when `anthropic` |
@@ -570,13 +570,24 @@ execute: async (_, options) => {
 npm run test:conversation-quality
 ```
 
-Requires `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) in `.env`. Reports are written to `tests/conversation-quality-reports/report-<timestamp>.md` (gitignored).
+Requires `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) in `.env`. The script sets `RUN_CONVERSATION_QUALITY=true`; without that flag, the quality suites do not run (even if a key is present). Reports are written to `tests/conversation-quality-reports/report-<timestamp>.md` (gitignored).
 
-All quality test session IDs are prefixed with `qt-` (e.g. `qt-mark-done`). If these tests are ever run against a real usage logger (e.g. in staging), the entries can be filtered out:
+All quality test session IDs are prefixed with `qt-` (e.g. `qt-mark-done`). When `DATABASE_URL_PUBLIC` is set in `.env`, token usage is also written to the real `chatbot_ai_usage` table so you can track quality-test spending over time. When it is not set, a fake in-memory logger is used and nothing is persisted.
+
+Filter quality-test entries in the DB:
 
 ```sql
-SELECT * FROM chatbot_ai_usage WHERE session_id LIKE 'qt-%'
+-- Quality-test entries only
+SELECT session_id, model_id, total_tokens, estimated_cost, created_at
+FROM chatbot_ai_usage
+WHERE session_id LIKE 'qt-%'
+ORDER BY created_at DESC;
+
+-- Production entries only (exclude test runs)
+SELECT * FROM chatbot_ai_usage WHERE session_id NOT LIKE 'qt-%';
 ```
+
+The active filter mode (`DB logging: enabled/disabled`) is printed in the report header under each run.
 
 ### Reading a report
 
@@ -632,10 +643,32 @@ All report helpers live in `tests/unit/conversation/report-helpers.ts`:
 
 | Helper | Purpose |
 |---|---|
-| `runTurn(deps, sessionId, userId, displayName, text)` | Run one conversation turn, return `TurnResult` |
+| `createQualityLoggerSetup()` | Returns `{ fakeLogger, usageLogger, cleanup }` — tee to DB when `DATABASE_URL_PUBLIC` is set, fake-only otherwise. Call `cleanup()` in `afterAll` to close the DB connection. |
+| `runTurn(deps, sessionId, userId, displayName, text, fakeLogger?)` | Run one conversation turn, return `TurnResult`. Pass `fakeLogger` explicitly when `deps.usageLogger` is a tee so assertion reads still hit the in-memory fake. |
 | `formatTurnBlock(index, userText, turn)` | Format a turn as a markdown block |
 | `analyzeScenario(name, turns)` | Check tool call pattern for known anti-patterns |
 | `formatSummaryTable(rows)` | Build the `## Tool Usage Summary` markdown table |
+
+**Using `createQualityLoggerSetup` in a test suite:**
+
+```ts
+const loggerSetup = createQualityLoggerSetup();
+usageLogger = loggerSetup.fakeLogger;  // FakeUsageLogger — for .clear() and assertion reads
+loggerCleanup = loggerSetup.cleanup;
+
+deps = {
+  ...
+  usageLogger: loggerSetup.usageLogger,  // tee (writes to DB when DATABASE_URL_PUBLIC is set)
+};
+
+afterAll(async () => {
+  await loggerCleanup();
+  // write report...
+});
+
+// Pass fakeLogger so runTurn reads from the in-memory fake, not the tee:
+const t1 = await runTurn(deps, sessionId, USER_ALEX, "Alex", "camping", usageLogger);
+```
 
 ---
 

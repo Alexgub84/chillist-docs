@@ -74,6 +74,7 @@ When implementing Phase 4 (AI SDK):
 - **Add a `// Regression: [Bug title] — YYYY-MM-DD` comment** to every `it()` block that was added to prevent a known bug from regressing. This makes the test suite self-documenting.
 - **All quality test session IDs must use the `qt-` prefix** (e.g. `"qt-mark-done"`, `"qt-he-bulk"`) so test entries are filterable in `chatbot_ai_usage`: `SELECT * FROM chatbot_ai_usage WHERE session_id LIKE 'qt-%'`.
 - **Include short-message scenarios** in quality tests — real WhatsApp users send one or two words ("camping", "tent done"). Verbose-only test messages can mask intent-parsing failures that surface in production.
+- **Quality test suites must use `createQualityLoggerSetup()`** from `report-helpers.ts` instead of `createFakeUsageLogger()` directly. Set `deps.usageLogger` to `loggerSetup.usageLogger` (the tee), keep a reference to `loggerSetup.fakeLogger` for `.clear()` and assertion reads, and pass `fakeLogger` explicitly to every `runTurn()` call. Call `loggerSetup.cleanup()` in `afterAll` to close the DB connection. This ensures token usage is logged to the real DB when `DATABASE_URL_PUBLIC` is set and falls back to fake-only otherwise — no test code changes needed to toggle DB logging.
 
 ---
 
@@ -101,6 +102,7 @@ When implementing Phase 4 (AI SDK):
 - **Unit tests need no HTTP server** — test handler functions directly by calling them with fake deps. No `supertest`, no `buildApp()`.
 - **Integration tests use fake session store + fake Green API + fake internal API** — only the network boundary (Green API webhook POST) is real HTTP.
 - **E2E prod tests are skipped without real creds** — wrap with `describe.skipIf(!process.env.GREEN_API_TOKEN)`.
+- **Conversation quality tests are opt-in** — `prompt-quality.test.ts` and `prompt-quality-he.test.ts` run only when `RUN_CONVERSATION_QUALITY` is set and a real AI API key is present. Use `npm run test:conversation-quality`; do not rely on keys in `.env` alone to gate them during `npm test`.
 - **Assert behavior, not implementation** — test what messages were sent (`getSentMessages()`), not which internal functions were called.
 - **Every new external service needs an env-guard test** — verify that `PROVIDER=fake` is rejected when `NODE_ENV=production`.
 
