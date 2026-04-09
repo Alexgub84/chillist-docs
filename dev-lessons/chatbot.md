@@ -14,6 +14,30 @@ Architecture, config, and integration choices made during development — the "w
 
 <!-- Add new Decision entries at the top of this section -->
 
+### [Decision] Quality test assertions must match their own comments — no silent contradictions
+
+**Date:** 2026-04-09
+**Context:** The disambiguation quality test had a comment saying "trouble accessing is acceptable" but then asserted `expect(t2.replyText).toMatch(/2025/)` — which fails when the bot gives an error without naming the year. This caused consistent false negatives on a structurally limited scenario.
+**Decision:** Assertions in quality tests must be consistent with their inline comments. If the comment says a class of response is acceptable, the assertion must not reject it. Comments that say "X is acceptable" are documentation of intent; the assertion is the law.
+**Reason:** Contradictory comment + assertion erodes trust in the test suite — it fails on known-acceptable behavior, so developers start ignoring failures.
+**Reuse tip:** Before writing a quality test assertion, write the comment first. Then write the assertion to match it. Never add a "technically stricter" assertion to a lenient comment.
+
+### [Decision] Remove analyzeScenario tool-chain warnings when architecture changes the expected pattern
+
+**Date:** 2026-04-09
+**Context:** `report-helpers.ts` flagged `updateItemStatus without getPlanDetails` as a ⚠️ warning. After introducing the plan context store, calling `updateItemStatus` directly in T2 (without re-fetching plan details) became the correct and desired behavior. The warning became a false positive on every mark-done warm test.
+**Decision:** Removed the `updateItemStatus without getPlanDetails` check from `analyzeScenario`. When the architecture changes what "correct" looks like, update the quality analysis logic to match.
+**Reason:** False positive warnings in quality reports train developers to ignore the report entirely.
+**Reuse tip:** Review all `analyzeScenario` checks after any architectural change to tool call patterns. Checks that encode assumptions about the old architecture must be updated or removed.
+
+### [Decision] System prompt item name examples must be language-neutral
+
+**Date:** 2026-04-09
+**Context:** The `updateItemStatus` rule used `(e.g. "Tent")` as the example item name. For Hebrew plans, item names are in Hebrew (e.g. "אוהל"). An English-only example could cause the model to transliterate or translate item names before passing them to the tool, breaking the exact-match lookup in the plan context store.
+**Decision:** Changed the example to "copy character-for-character, preserving original language". The tool description mirrors this.
+**Reason:** The plan context store uses case-insensitive string equality to match item names. Any name transformation (translation, transliteration) causes lookup failure.
+**Reuse tip:** Any time tool input is matched against stored data by string equality, make it explicit in the tool description and system prompt that the value must be copied verbatim, not paraphrased.
+
 ### [Decision] Session Plan Context Store — model never handles UUIDs
 
 **Date:** 2026-04-09
@@ -45,6 +69,13 @@ Architecture, config, and integration choices made during development — the "w
 Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenever a design choice, prompt, or approach is confirmed to work in practice.
 
 <!-- Add new Win entries at the top of this section -->
+
+### [Win] Mirrored quality test suites for each supported language
+
+**Date:** 2026-04-09
+**Context:** The English quality test suite had 8 scenarios (list, details, mark done warm, empty, disambiguation, cold-start, context follow-up, short messages). The Hebrew suite only had 6, missing cold-start, context follow-up, and short terse messages.
+**Strategy:** Extended the Hebrew suite to mirror English breadth: added cold-start mark done (`סמן את האוהל כבוצע`), text context follow-up (T2 answers from prior turn, no tool call), and short terse messages (`קמפינג` → `אוהל בוצע`).
+**Why it works:** Language-specific regressions surface only when the test suite exercises the same scenarios in both languages. Hebrew-specific failures (transliteration, RTL formatting, item name mismatch) are only caught by Hebrew tests. Mirror coverage is the minimum required to trust a multilingual bot.
 
 ### [Win] qt- session ID prefix + Source header makes test runs filterable in chatbot_ai_usage
 
