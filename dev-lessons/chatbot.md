@@ -94,6 +94,14 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 
 <!-- Add new Win entries at the top of this section -->
 
+### [Decision] Multi-plan switch assertion: "all real IDs + at least one target ID"
+
+**Date:** 2026-04-09
+**Context:** The multi-plan switch quality test (T3: "show me Beach Day items" after viewing Camping Trip) failed because the assertion required ALL `getPlanDetails` calls in T3 to use `PLAN_BEACH_ID`. The model legitimately called `getPlanDetails` for both plans in the same turn — refreshing Camping Trip context before switching to Beach Day. This is valid behavior, not hallucination.
+**Decision:** Changed T3 assertion from `t3Calls.every(c => c.planId === BEACH_ID)` to: (1) all calls use a known real plan ID (`validPlanIds.includes(c.planId)`), (2) at least one call uses `BEACH_ID` (`t3Calls.some(c => c.planId === BEACH_ID)`). Rejected the alternative of filtering calls to only check the last one — the "all real + some target" pattern is more robust.
+**Reason:** The model's tool-call behavior within a single turn is non-deterministic — it may call supplementary tools for context. What matters for anti-hallucination is: no fabricated IDs + correct plan appears in the response. Overly strict assertions cause flaky tests.
+**Reuse tip:** For any quality test that checks tool calls in a multi-step AI turn, assert "all calls use valid IDs AND at least one call hits the expected target" rather than "every call must match exactly one target."
+
 ### [Win] Anti-hallucination stress tests recreate exact production failure conditions
 
 **Date:** 2026-04-09
