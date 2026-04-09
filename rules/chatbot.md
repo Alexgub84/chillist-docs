@@ -64,7 +64,8 @@ When implementing Phase 4 (AI SDK):
 - **Numbered list + digit reply** — whenever the prompt instructs the bot to present a numbered list, it must also say: "When the user replies with just a number, treat it as selecting that option from the most recent list." WhatsApp users never type full answers on mobile.
 - **Bulk item actions** — the prompt must explicitly say to call `updateItemStatus` once per item when the user names multiple items in one message. Without this rule the bot only acts on the first item.
 - **`getMyPlans` called at most once per response (turn)** — the prompt and every relevant tool description must say "call `getMyPlans` at most once per response; if you already called it in an earlier step of this response, reuse those plan IDs." Across turns, re-calling `getMyPlans` is legitimate when plan IDs are not available from prior steps in the current response (the message store only persists plain text, not tool results). Never scope this constraint to "per conversation" — that conflicts with the architecture and breaks multi-turn flows.
-- **`updateItemStatus` requires same-turn `getPlanDetails`** — item ids from prior turns are unreliable. The prompt and `updateItemStatus` tool description must both require calling `getPlanDetails` first in the same response, using the plan id already in context (not re-fetching `getMyPlans`).
+- **Both `getPlanDetails` and `updateItemStatus` accept human-readable names, not UUIDs** — `getPlanDetails` takes `planName: string` and resolves to the correct plan ID via `IPlanContextStore.getPlanList()`. `updateItemStatus` takes `itemName: string` and resolves to the item ID via `IPlanContextStore.getActivePlan()`. The model never handles UUIDs in tool arguments. If a new tool needs an internal ID, follow the same pattern: accept a name, resolve inside `execute`.
+- **`updateItemStatus` requires same-turn `getPlanDetails`** — item ids from prior turns are unreliable. The prompt and `updateItemStatus` tool description must both require calling `getPlanDetails` first in the same response, using the plan name already in context (not re-fetching `getMyPlans`).
 - **Never mention data discrepancies** — `getMyPlans` returns plan-wide item totals; `getPlanDetails` returns only the requesting user's items. The bot must never comment on this difference or suggest a sync issue.
 - **Use positive-reframe phrasing for tool-call frequency constraints** — "Reuse the plan IDs from the getMyPlans result already in this conversation" outperforms "do not call getMyPlans again". Lead with what the model should DO, not what it must avoid.
 - **Dual placement is required** — any important tool-call constraint must appear in BOTH the system prompt (under `## Tool usage rules`) AND the tool description. One without the other misses either the instruction-following phase or the tool-selection reasoning phase.
@@ -157,19 +158,23 @@ Single source of truth for what `prompt-quality.test.ts` and `prompt-quality-he.
 | 8 | Short messages | EN+HE | "camping" / "tent done" | Terse input resolves intent; planContextStore seeded explicitly between turns |
 | 9 | Number selection | HE | "ספר לי על טיול הקמפינג" / "1" | Bare digit selects from numbered list |
 | 10 | Bulk items | HE | "קניתי אוהל ושק שינה, סמן אותם כבוצע" | updateItemStatus called once per item |
+| 11 | planName resolution | EN+HE | "What plans do I have?" / "Show me the items for Camping Trip" | T1 stores plan list, T2 resolves name→ID, no hallucinated UUID |
+| 12a | anti-hallucination: multi-plan switch | EN+HE | "What plans?" / "Camping Trip items" / "Beach Day items" | Switches between 2 plans across 3 turns — all getPlanDetails use real IDs |
+| 12b | anti-hallucination: cold plan details | EN+HE | "What items are on my Camping Trip?" (no prior getMyPlans) | getPlanDetails auto-fetches plan list, resolves name, no hallucinated UUID |
+| 12c | anti-hallucination: chitchat gap | EN+HE | "What plans?" / "Cool thanks!" / "Show Camping Trip items" | Intermediate non-tool turn pushes plan names further back in context |
 
 ### Planned (not yet implemented)
 
 | # | Scenario | Lang | User input example | What it tests | Key assertion |
 |---|----------|------|--------------------|---------------|---------------|
-| 11 | Off-topic / chitchat | EN+HE | "what's the weather?" / "ספר לי בדיחה" | Bot responds naturally, does NOT call any tools | toolCalls is empty, reply is non-empty, no error |
-| 12 | Greeting only | EN+HE | "hey" / "היי" | Bot greets back without calling tools | toolCalls is empty, reply is non-empty |
-| 13 | Undo action (mark pending) | EN+HE | "Show items" / "actually, mark Tent as pending" | updateItemStatus called with status="pending" | `lastUpdate.status === "pending"` |
-| 14 | Typo in item name | EN | "Show items" / "mark the Tnet done" | Bot either fuzzy-matches or tells user the correct names | Reply does not contain "something went wrong" |
-| 15 | Wrong plan name | EN | "show items for Birthday Party" (no such plan) | Bot says plan not found, no crash | Reply mentions available plans or suggests checking |
-| 16 | Item already done | EN+HE | "Show items" / "mark Charcoal done" (already done) | Bot handles gracefully | No error in reply |
-| 17 | Number selection (EN) | EN | "Tell me about the camping trip" / "1" | Same as #9 but in English | getPlanDetails called, non-empty reply |
-| 18 | Bulk items (EN) | EN | "I bought Tent and Sleeping Bag, mark them done" | Same as #10 but in English | updateItemStatus called twice |
+| 13 | Off-topic / chitchat | EN+HE | "what's the weather?" / "ספר לי בדיחה" | Bot responds naturally, does NOT call any tools | toolCalls is empty, reply is non-empty, no error |
+| 14 | Greeting only | EN+HE | "hey" / "היי" | Bot greets back without calling tools | toolCalls is empty, reply is non-empty |
+| 15 | Undo action (mark pending) | EN+HE | "Show items" / "actually, mark Tent as pending" | updateItemStatus called with status="pending" | `lastUpdate.status === "pending"` |
+| 16 | Typo in item name | EN | "Show items" / "mark the Tnet done" | Bot either fuzzy-matches or tells user the correct names | Reply does not contain "something went wrong" |
+| 17 | Wrong plan name | EN | "show items for Birthday Party" (no such plan) | Bot says plan not found, no crash | Reply mentions available plans or suggests checking |
+| 18 | Item already done | EN+HE | "Show items" / "mark Charcoal done" (already done) | Bot handles gracefully | No error in reply |
+| 19 | Number selection (EN) | EN | "Tell me about the camping trip" / "1" | Same as #9 but in English | getPlanDetails called, non-empty reply |
+| 20 | Bulk items (EN) | EN | "I bought Tent and Sleeping Bag, mark them done" | Same as #10 but in English | updateItemStatus called twice |
 
 ### Excluded (with reason)
 

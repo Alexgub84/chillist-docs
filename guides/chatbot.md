@@ -110,6 +110,10 @@ src/
     │   ├── postgres-session-store.ts  # createPostgresSessionStore (real DB)
     │   ├── fake-session-store.ts      # createFakeSessionStore (tests)
     │   └── index.ts          # re-exports all session types and factories
+    ├── plan-context/
+    │   ├── types.ts          # IPlanContextStore, ActivePlan, PlanListEntry
+    │   ├── in-memory-plan-context-store.ts  # createInMemoryPlanContextStore (production — in-memory Map)
+    │   └── fake-plan-context-store.ts       # createFakePlanContextStore (tests) + getStoredPlan(), getStoredPlanList()
     └── usage-logger/
         ├── types.ts          # IUsageLogger, AiUsageEntry, CreateUsageData
         ├── postgres-usage-logger.ts   # createPostgresUsageLogger (real DB)
@@ -200,6 +204,27 @@ Group and DM messages run the same unified `handleSessionAndPlansFlow()` functio
 `ISessionStore` interface methods: `getActiveSession(phoneNumber, chatId)`, `createSession`, `touchSession`, `deleteSession`.
 
 > **Why plain text instead of buttons?** Green API's `/sendButtons` returns `403` on the current instance plan. Plain text with reply instructions works universally. Button response handling is kept for forward compatibility.
+
+### Plan Context Store — model never handles UUIDs
+
+`IPlanContextStore` (`src/services/plan-context/types.ts`) is an in-memory store that enables tools to resolve human-readable names to internal IDs. The model never sees or passes UUIDs in tool arguments.
+
+**Two storage levels:**
+
+| Method | What it stores | Populated by |
+|---|---|---|
+| `setPlanList(sessionId, plans)` / `getPlanList(sessionId)` | `PlanListEntry[]` (id + name) for all user's plans | `getMyPlans` tool after fetching from internal API |
+| `setActivePlan(sessionId, plan)` / `getActivePlan(sessionId)` | `ActivePlan` (id, name, items) for the selected plan | `getPlanDetails` tool after fetching plan detail |
+
+**Tool input signatures (no UUIDs):**
+
+| Tool | Input | Resolves via |
+|---|---|---|
+| `getMyPlans` | `{}` | Fetches from internal API, stores plan list in context |
+| `getPlanDetails` | `{ planName: string }` | Looks up `planName` in `getPlanList()` → resolves to real `planId`. Auto-fetches plan list if not cached. |
+| `updateItemStatus` | `{ itemName: string, status: "done" \| "pending" }` | Looks up `itemName` in `getActivePlan()` → resolves to real `itemId` |
+
+**Why:** In production, the model hallucinated UUIDs when `getPlanDetails` accepted `planId: z.string().uuid()`. Plan names exist in conversation text but plan IDs do not (system prompt says "never paste UUIDs to the user"). By accepting human-readable names and resolving IDs inside `execute`, hallucination is architecturally impossible.
 
 ### AI layer structure (Phase 4 — implemented)
 
@@ -681,7 +706,7 @@ const t1 = await runTurn(deps, sessionId, USER_ALEX, "Alex", "camping", usageLog
 - [x] AI service structure — `IAiClient`, `createVercelAiClient`, `createFakeAiClient`, `createNoopAiClient`, plugin + DI
 - [x] `chatbot_messages` table — conversation history for AI context window (`IMessageStore` + postgres + fake)
 - [x] `chatbot_ai_usage` table — per-message AI cost, token, and tool tracking (`IUsageLogger` + postgres + fake)
-- [x] AI conversation tools — `getMyPlans`, `getPlanDetails`, `updateItemStatus` in `src/conversation/tools.ts`; system prompt in `src/conversation/system-prompt.ts`; `IInternalApiClient` implements app BE internal routes
+- [x] AI conversation tools — `getMyPlans`, `getPlanDetails(planName)`, `updateItemStatus(itemName)` in `src/conversation/tools.ts`; all tools accept human-readable names (no UUIDs); `IPlanContextStore` resolves name→ID internally; system prompt in `src/conversation/system-prompt.ts`; `IInternalApiClient` implements app BE internal routes
 - [x] Internal API data routes — `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status` (app BE)
 - [ ] Group sessions (linked plan, shared message history) — Phase 7
 

@@ -94,6 +94,13 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 
 <!-- Add new Win entries at the top of this section -->
 
+### [Win] Anti-hallucination stress tests recreate exact production failure conditions
+
+**Date:** 2026-04-09
+**Context:** The getPlanDetails UUID hallucination bug passed all quality tests because they used single-turn flows or pre-seeded fakes. Production failures occurred in multi-turn scenarios where the model only had plan names from conversation text (not tool results). Need tests that specifically stress the conditions that triggered hallucination.
+**Strategy:** Added 3 anti-hallucination quality test scenarios (EN+HE) that recreate the exact production failure conditions: (1) **multi-plan switch** — T1 lists plans, T2 gets Camping Trip details, T3 gets Beach Day details (tests name resolution across different plans in the same session); (2) **cold plan details** — user asks for plan details directly without listing plans first (tests `getPlanDetails` auto-fetch fallback — previously would always hallucinate a UUID); (3) **chitchat gap** — T1 lists plans, T2 is casual chat (no tool call), T3 asks for plan details (intermediate non-tool turn pushes plan names further back in context). Each asserts that ALL `getPlanDetailsCalls` use real plan IDs, not fabricated ones.
+**Why it works:** These scenarios target the specific gaps that existing tests missed: cross-plan switching (which requires correct name→ID mapping for different plans), auto-fetch when plan list is not cached, and name resolution with intervening context dilution. If the name resolution logic has any edge case bugs, these tests will catch them before production.
+
 ### [Win] Explicit planContextStore seeding between turns makes T2 deterministic
 
 **Date:** 2026-04-09
@@ -169,6 +176,13 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 ## Bugs
 
 <!-- Add new Bug entries at the top of this section -->
+
+### [Bug] getPlanDetails UUID hallucination — model fabricated plan IDs in follow-up turns
+
+**Date:** 2026-04-09
+**Problem:** In production, the model called `getPlanDetails` with hallucinated UUIDs (3 different fake IDs in one session, all returning 404). This happened because `getPlanDetails` accepted `planId: z.string().uuid()` — the model had plan *names* from conversation history but no plan *IDs* (system prompt says "never paste UUIDs to the user"). It fabricated valid-format UUIDs to satisfy the schema. Quality tests didn't catch this because `FakeInternalApiClient` was pre-seeded with exact UUIDs from `getMyPlans` within a single turn.
+**Solution:** Changed `getPlanDetails` input from `planId: z.string().uuid()` to `planName: z.string()`. The tool now resolves name → ID from `IPlanContextStore.getPlanList()` (populated by `getMyPlans`). If the plan list isn't cached yet, the tool auto-fetches it. Also added `try/catch` to `getMyPlans` (the only tool without error handling) and a defensive `Array.isArray` guard in `postgres-usage-logger` for `toolCalls` data. Added quality test scenarios that replicate the exact production failure: T1 lists plans, T2 requests details by name — asserts the internal API call uses a real plan ID.
+**Prevention:** Never let any tool accept a UUID as direct model input. Both `getPlanDetails` and `updateItemStatus` now accept human-readable names. The model never sees or handles UUIDs in tool arguments. The plan context store resolves all name → ID mappings deterministically inside tool `execute` functions.
 
 ### [Bug] Stochastic T1 assertion on terse messages caused recurring quality test failures
 
