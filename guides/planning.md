@@ -280,9 +280,19 @@ Then ask:
 
 ### 5. Commit & Push (after approval)
 
-Once the user approves, execute this sequence in order:
+Once the user approves, execute **both steps below in order**. They have different rules — do not mix them up.
 
-**Step A — Commit the feature branch (code + related doc updates in the same repo):**
+---
+
+#### Step A — Code repo: commit to feature branch only
+
+1. Sync the branch with `main` first:
+
+```bash
+git fetch origin main && git merge origin/main
+```
+
+2. Commit to the feature branch:
 
 ```bash
 git add -A && git commit -m "feat: <what was done>"
@@ -290,15 +300,19 @@ git add -A && git commit -m "feat: <what was done>"
 
 Use [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
 
-**Do NOT push the feature branch** unless the user explicitly says "push" or "push the branch".
+> **STOP here. Do NOT push the feature branch** unless the user explicitly says "push" or "push the branch".
+> The branch stays local until the user instructs otherwise.
 
-**Step B — Commit and push `chillist-docs` to `main` immediately:**
+---
+
+#### Step B — Docs repo: commit AND push to `main` immediately
 
 ```bash
 cd ../chillist-docs && git add -A && git commit -m "docs: <what was updated>" && git push origin main
 ```
 
-The docs repo always ships directly to `main`. This is not optional — docs must be pushed before the task is considered complete.
+> **This push is mandatory and must happen before the task is considered complete.**
+> The `chillist-docs` repo always ships directly to `main` — no branches, no PRs.
 
 ### 6. Close
 
@@ -325,7 +339,9 @@ Never do these:
 - Pushing directly to `main` or `staging`
 - Using `--no-verify` on `git push` or `git commit` — if hooks fail, fix the issue
 - Making a code change and presenting it as done without running the affected tests
-- Running `git push` on the feature branch without explicit user instruction
+- Pushing the feature branch (code repo) without explicit user instruction — commit only, then stop
+- Merging or committing code directly to `main` in the code repo — always use a feature branch
+- Forgetting to sync the feature branch with `main` before committing
 - Committing any code before updating the relevant docs (always update docs first)
 - Presenting only code changes for review — always show docs changes in the same review step
 - Closing a task without pushing `chillist-docs` to `main`
