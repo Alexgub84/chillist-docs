@@ -107,6 +107,7 @@ When implementing Phase 4 (AI SDK):
 - **E2E prod tests are skipped without real creds** — wrap with `describe.skipIf(!process.env.GREEN_API_TOKEN)`.
 - **Conversation quality tests are opt-in** — `prompt-quality.test.ts` and `prompt-quality-he.test.ts` run only when `RUN_CONVERSATION_QUALITY` is set and a real AI API key is present. Use `npm run test:conversation-quality`; do not rely on keys in `.env` alone to gate them during `npm test`.
 - **Assert behavior, not implementation** — test what messages were sent (`getSentMessages()`), not which internal functions were called.
+- **Quality test assertions use two tiers** — **Hard assertions** (`expect`) for user-visible correctness: non-empty reply, no error phrases, no UUID leaks, write-tool calls (`updateItemStatus`) with correct `itemId`/`status`. **Soft assertions** (`softAssert`) for model reasoning path: read-tool calls (`getMyPlans`, `getPlanDetails`), no-tool expectations, on-topic keyword checks, planId correctness. Soft failures are logged as warnings in the report but never fail the test. Import `softAssert` from `report-helpers.ts`.
 - **Every new external service needs an env-guard test** — verify that `PROVIDER=fake` is rejected when `NODE_ENV=production`.
 
 ---

@@ -14,6 +14,22 @@ Architecture, config, and integration choices made during development — the "w
 
 <!-- Add new Decision entries at the top of this section -->
 
+### [Decision] maxRetries bumped to 4 for Anthropic API calls (5 total attempts)
+
+**Date:** 2026-04-09
+**Context:** In production, the Anthropic API returned HTTP 529 "Overloaded" on a `getPlanDetails` follow-up turn. The AI SDK default `maxRetries: 2` (3 total attempts) exhausted within ~20s. The user manually said "try again" 3 seconds later and it worked — the overload was transient.
+**Decision:** Set `maxRetries: 4` (5 total attempts) as the default in `ai.client.ts`. Made it configurable via `AiGenerateParams.maxRetries` so tests can override. Rejected alternatives: (a) app-level retry in engine.ts — duplicates SDK logic; (b) provider fallback to OpenAI — adds complexity, different model behavior, and a second API key dependency.
+**Reason:** The AI SDK already implements exponential backoff for retryable errors (429, 529). Two extra attempts add ~10-15s of backoff window, which covers the typical Anthropic overload burst. Cost is negligible (failed attempts consume no tokens).
+**Reuse tip:** Always set `maxRetries: 4` on `generateText()` for production AI calls. The SDK default of 2 is too low for services with transient capacity spikes.
+
+### [Decision] Railway log-fetching script for WhatsApp bot service
+
+**Date:** 2026-04-09
+**Context:** Debugging production issues required manually running `railway logs` with ad-hoc flags. The backend (`chillist-be`) already had `scripts/fetch-railway-logs.sh` + `npm run railway:logs` + a Cursor rule. The WhatsApp bot had nothing.
+**Decision:** Ported the same three-part setup: `scripts/fetch-railway-logs.sh`, `npm run railway:logs` script in `package.json`, and `.cursor/rules/production-logs.mdc`. The Railway CLI is linked to service `chillist-whatsapp-chatbot` in the `chillist-be` Railway project.
+**Reason:** Consistent debugging workflow across both services. The Cursor rule ensures the AI agent fetches logs first when asked to debug production issues.
+**Reuse tip:** Every Railway-deployed service should have this three-part setup from day one: fetch script, npm script, and Cursor rule.
+
 ### [Decision] Multi-turn edge-case tests use explicit planContextStore seeding
 
 **Date:** 2026-04-09
@@ -206,6 +222,13 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 ## Bugs
 
 <!-- Add new Bug entries at the top of this section -->
+
+### [Bug] Anthropic 529 "Overloaded" exhausted default 3 retries — user had to manually retry
+
+**Date:** 2026-04-09
+**Problem:** User asked for plan details ("טיול ב-24 באפריל") in a group conversation. Anthropic API returned HTTP 529 "Overloaded" on all 3 attempts (default `maxRetries: 2` = 3 total). The conversation engine caught the `AI_RetryError`, logged it, and sent the generic fallback: "משהו השתבש אצלי. נסה שוב בעוד רגע." The user tagged the bot again with "תנסה שוב" (try again) 3 seconds later and it worked — the overload was transient (~20s window).
+**Solution:** Increased `maxRetries` from default 2 to 4 (5 total attempts) in `ai.client.ts`. Made it configurable via `AiGenerateParams.maxRetries`. The AI SDK uses exponential backoff, so 2 extra attempts add ~10-15s of additional retry window.
+**Prevention:** Always set `maxRetries: 4` on production `generateText()` calls. The AI SDK default of 2 is too aggressive for services with transient overload spikes. Monitor via `railway:logs` — filter for `"Conversation engine failed"` and check if the retry count was the bottleneck.
 
 ### [Bug] tool_calls double-serialized as JSONB string in chatbot_ai_usage
 
@@ -461,3 +484,11 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 **Problem:** `getMyPlans` returns plan-wide item totals (all participants' items), while `getPlanDetails` returns only items visible to the requesting user. When the bot saw "10 items" from `getMyPlans` but only 1 item in `getPlanDetails`, it told the user: *"there might be a sync issue."* This undermines trust in the app.
 **Solution:** Added an explicit rule to `system-prompt.ts`: "getMyPlans returns plan-wide item totals (all participants); getPlanDetails returns only items visible to the requesting user — this discrepancy is expected and normal, never comment on it or suggest a sync issue."
 **Prevention:** Any time `getMyPlans` and `getPlanDetails` return different item counts, the bot must stay silent on the discrepancy. Add a quality test scenario that verifies this.
+
+### [Decision] Two-tier assertion model for quality tests
+
+**Date:** 2026-04-09
+**Context:** Quality tests against a live LLM were flaky: 1-2 tests failed per run due to strict `expect(toolCalls).toContain("readTool")` assertions. At `temperature=0` with `retry: 2`, the model still occasionally skips a read tool or answers from context. Three separate bug entries documented the same root cause. Patching individual tests just moved the flakiness elsewhere.
+**Decision:** Split every quality-test assertion into two tiers. Hard assertions (`expect`) cover user-visible correctness: non-empty reply, no error phrases, no UUID leaks, write-tool mutations (`updateItemStatus`) with correct `itemId`/`status`. Soft assertions (`softAssert` from `report-helpers.ts`) cover model reasoning path: read-tool calls, no-tool expectations, keyword matches, planId correctness. Soft failures are logged as warnings in the Markdown report but never fail the test.
+**Reason:** The suite conflated behavioral correctness (must pass) with implementation verification (nice to track). Splitting the two gives stable CI while preserving full visibility into model behavior via reports.
+**Reuse tip:** In any LLM-backed test suite, separate "did the user get the right outcome" from "did the model take the expected path." Only fail the test on the first category.
