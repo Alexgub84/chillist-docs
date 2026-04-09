@@ -14,6 +14,14 @@ Architecture, config, and integration choices made during development — the "w
 
 <!-- Add new Decision entries at the top of this section -->
 
+### [Decision] Quality tests use temperature=0 and retry=2 to absorb LLM non-determinism
+
+**Date:** 2026-04-09
+**Context:** Quality tests assert deterministic tool-call patterns against a live LLM API. Even verbose, explicit messages like "Mark the Tent as done on my Camping Trip" intermittently returned empty tool calls — 5/17 tests failed in one run, different tests each time. Patching individual assertions after each failure created an endless change loop.
+**Decision:** (1) Pass `temperature: 0` through `AiGenerateParams` → `generateText()` to maximize determinism. (2) Add `retry: 2` to every `it()` block via Vitest's per-test retry option. Production code is unaffected — temperature is optional and defaults to provider default. Alternative considered: semantic evaluation (LLM-as-judge) — deferred as Tier 2 if retry+temp0 proves insufficient.
+**Reason:** Industry best practice (Advisor360, Iterathon 2026): "You can't assert your way out of non-determinism." Temperature=0 reduces variance; retry absorbs the remaining ~5-15% that greedy decoding cannot eliminate (MoE routing, probability ties). Together they broke the change loop without weakening any assertions.
+**Reuse tip:** For any test suite that calls a real LLM: always set temperature=0 and add retry=2-3. Assert outcomes (correct tool, correct ID), not exact response text. Any scenario failing 3 consecutive retries at temperature=0 is a real regression.
+
 ### [Decision] Quality tests write real token usage to DB via tee logger
 
 **Date:** 2026-04-09

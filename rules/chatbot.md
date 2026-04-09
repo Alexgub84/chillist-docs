@@ -75,6 +75,7 @@ When implementing Phase 4 (AI SDK):
 - **All quality test session IDs must use the `qt-` prefix** (e.g. `"qt-mark-done"`, `"qt-he-bulk"`) so test entries are filterable in `chatbot_ai_usage`: `SELECT * FROM chatbot_ai_usage WHERE session_id LIKE 'qt-%'`.
 - **Include short-message scenarios** in quality tests — real WhatsApp users send one or two words ("camping", "tent done"). Verbose-only test messages can mask intent-parsing failures that surface in production.
 - **Short-message test assertions must NOT require T1 tool calls** — single-word or two-word messages are inherently ambiguous; the model may respond conversationally with no tool call. The correct pattern is: (a) assert only that T1 replied about the right topic (`replyText.toMatch`), (b) explicitly seed `planContextStore` between T1 and T2, (c) assert T2 tool calls and outcome. Never gate T2 correctness on T1 tool invocation.
+- **Quality tests must use temperature=0 and retry=2** — LLM output is non-deterministic; even verbose explicit messages can fail to trigger tool calls on any given run. Set `deps.temperature = 0` to maximize determinism, and add `retry: 2` to every `it()` block so Vitest retries up to 2 times on failure. Any scenario that fails 3 consecutive attempts at temperature=0 is a real regression, not flakiness.
 - **Quality test suites must use `createQualityLoggerSetup()`** from `report-helpers.ts` instead of `createFakeUsageLogger()` directly. Set `deps.usageLogger` to `loggerSetup.usageLogger` (the tee), keep a reference to `loggerSetup.fakeLogger` for `.clear()` and assertion reads, and pass `fakeLogger` explicitly to every `runTurn()` call. Call `loggerSetup.cleanup()` in `afterAll` to close the DB connection. This ensures token usage is logged to the real DB when `DATABASE_URL_PUBLIC` is set and falls back to fake-only otherwise — no test code changes needed to toggle DB logging.
 
 ---
@@ -133,3 +134,43 @@ Before closing **any** task — fix, feature, refactor, or config change — ans
 ```
 
 Never close a task without answering all four questions.
+
+---
+
+## 9) Quality Test Scenario Catalog
+
+Single source of truth for what `prompt-quality.test.ts` and `prompt-quality-he.test.ts` must cover. Every scenario here must have a corresponding `it()` block, and every `it()` block must appear here.
+
+**Keeping this catalog current:** Whenever a new quality test scenario is added or an existing one is modified, update this catalog in the same commit. When brainstorming new scenarios, start by reviewing this catalog for gaps.
+
+### Implemented
+
+| # | Scenario | Lang | User input (T1 / T2) | What it tests |
+|---|----------|------|-----------------------|---------------|
+| 1 | List my plans | EN+HE | "What plans do I have?" | getMyPlans called, plan names in reply, no UUIDs |
+| 2 | Plan details + follow-up | EN+HE | "What items on my Camping Trip?" / "Which food items are pending?" | getPlanDetails, T2 answers from context or re-fetches |
+| 3 | Mark item done (warm) | EN+HE | "Show items" / "I packed the Tent — mark it done" | T1 loads plan, T2 calls updateItemStatus with correct ID |
+| 4 | Empty plans | EN+HE | "What are my plans?" (user has none) | Encouraging message, no error, includes site link |
+| 5 | Disambiguation | EN | "Tell me about the camping trip" (2 matches) / "The 2025 one" | Bot asks which one, T2 resolves selection |
+| 6 | Cold-start mark done | EN+HE | "Mark the Tent as done on my Camping Trip" | All 3 tools chained in one turn |
+| 7 | Context follow-up | EN+HE | "What items?" / "Which are still pending?" | T2 answers from prior turn text, no tool call |
+| 8 | Short messages | EN+HE | "camping" / "tent done" | Terse input resolves intent; planContextStore seeded explicitly between turns |
+| 9 | Number selection | HE | "ספר לי על טיול הקמפינג" / "1" | Bare digit selects from numbered list |
+| 10 | Bulk items | HE | "קניתי אוהל ושק שינה, סמן אותם כבוצע" | updateItemStatus called once per item |
+
+### Planned (not yet implemented)
+
+| # | Scenario | Lang | User input example | What it tests | Key assertion |
+|---|----------|------|--------------------|---------------|---------------|
+| 11 | Off-topic / chitchat | EN+HE | "what's the weather?" / "ספר לי בדיחה" | Bot responds naturally, does NOT call any tools | toolCalls is empty, reply is non-empty, no error |
+| 12 | Greeting only | EN+HE | "hey" / "היי" | Bot greets back without calling tools | toolCalls is empty, reply is non-empty |
+| 13 | Undo action (mark pending) | EN+HE | "Show items" / "actually, mark Tent as pending" | updateItemStatus called with status="pending" | `lastUpdate.status === "pending"` |
+| 14 | Typo in item name | EN | "Show items" / "mark the Tnet done" | Bot either fuzzy-matches or tells user the correct names | Reply does not contain "something went wrong" |
+| 15 | Wrong plan name | EN | "show items for Birthday Party" (no such plan) | Bot says plan not found, no crash | Reply mentions available plans or suggests checking |
+| 16 | Item already done | EN+HE | "Show items" / "mark Charcoal done" (already done) | Bot handles gracefully | No error in reply |
+| 17 | Number selection (EN) | EN | "Tell me about the camping trip" / "1" | Same as #9 but in English | getPlanDetails called, non-empty reply |
+| 18 | Bulk items (EN) | EN | "I bought Tent and Sleeping Bag, mark them done" | Same as #10 but in English | updateItemStatus called twice |
+
+### Excluded (with reason)
+
+- **Mixed language item name** ("סמן את ה-tent כבוצע") — item name resolution uses exact match from getPlanDetails results which are in one language. Cross-language matching would be a feature, not a test gap.
