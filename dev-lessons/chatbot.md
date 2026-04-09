@@ -14,6 +14,22 @@ Architecture, config, and integration choices made during development — the "w
 
 <!-- Add new Decision entries at the top of this section -->
 
+### [Decision] Quality tests write real token usage to DB via tee logger
+
+**Date:** 2026-04-09
+**Context:** Quality tests use a real AI API and consume tokens, but the `FakeUsageLogger` meant that cost/usage data was silently discarded — there was no way to track quality-test spending over time.
+**Decision:** When `DATABASE_URL_PUBLIC` is set in `.env`, quality tests use a tee logger (`createQualityLoggerSetup` in `report-helpers.ts`) that writes to both the in-memory fake (for assertion reads) and the real `chatbot_ai_usage` table. When `DATABASE_URL_PUBLIC` is absent, the fake-only path is used (CI-safe, no side effects). The `qt-` session ID prefix already in place makes these entries filterable: `SELECT * FROM chatbot_ai_usage WHERE session_id LIKE 'qt-%'`.
+**Reason:** Allows tracking quality-test token costs over time without any schema changes. Uses `DATABASE_URL_PUBLIC` (the externally-accessible URL) rather than `DATABASE_URL` (Railway internal) so local runs can connect.
+**Reuse tip:** Any test suite that uses real AI should follow the same pattern: `FakeLogger` for assertion reads, `tee(fake, real)` for persistence, and a `cleanup()` to close the DB connection in `afterAll`.
+
+### [Decision] RUN_CONVERSATION_QUALITY gates real-model quality tests in the default test run
+
+**Date:** 2026-04-09
+**Context:** `prompt-quality.test.ts` and `prompt-quality-he.test.ts` ran whenever `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` was present in `.env`, including during `npm test` / `npm run test:unit` — slow and costly.
+**Decision:** Suites use `runQuality = Boolean(process.env.RUN_CONVERSATION_QUALITY?.trim()) && hasRealApiKey` and `describeQuality = runQuality ? describe : describe.skip`. `npm run test:conversation-quality` prefixes the command with `RUN_CONVERSATION_QUALITY=true` and runs both EN and Hebrew files.
+**Reason:** Opt-in at the command level; local dev can keep API keys in `.env` without accidentally running expensive tests on every suite.
+**Reuse tip:** For any opt-in integration test that needs real credentials, pair an env flag with the credential check and set the flag only in a dedicated npm script.
+
 ### [Decision] Quality test assertions must match their own comments — no silent contradictions
 
 **Date:** 2026-04-09
