@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Mirroring a table owned by another service — always copy the schema exactly
+
+**Date:** 2026-04-09
+**Problem:** `GET /admin/chatbot-ai-usage` returned 500 with `PostgresError: cannot get array length of a scalar`. The BE Drizzle schema for `chatbot_ai_usage` was written without consulting the WhatsApp bot's actual migration (`004_chatbot_ai_usage.sql`). Mismatches: (1) `tool_calls` was typed as nullable (`string[] | null`) when the real column is `JSONB NOT NULL DEFAULT '[]'`; (2) `session_id` was nullable instead of `NOT NULL`; (3) `estimated_cost` had precision 12 vs the real 10; (4) missing defaults on `id` (`gen_random_uuid`), `step_count` (1), `tool_call_count` (0). The nullable `tool_calls` type led to defensive `IS NOT NULL` + `jsonb_typeof = 'array'` + `jsonb_array_length > 0` guards in the raw SQL query, but `jsonb_array_length` throws on non-array JSONB and PostgreSQL doesn't short-circuit AND. The `CROSS JOIN LATERAL` also evaluates before WHERE filters.
+**Solution:** (1) Aligned the Drizzle schema with the bot's migration exactly: `notNull()`, `default([])`, `defaultRandom()`, correct precision. (2) Simplified the raw SQL to use a subquery with `tool_calls != '[]'::jsonb` — safe because the column is `NOT NULL` and always an array. (3) Updated migration `0031` to match the bot's DDL (including CHECK constraints and indexes).
+**Prevention:** When mirroring a table owned by another service, always read the owning service's migration/schema file and copy it exactly. Never guess column nullability, defaults, or constraints. If the schema drifts, update the mirror immediately. Add a code comment in the schema definition pointing to the source of truth (e.g., `// Mirror of chillist-whatsapp-bot/migrations/004_chatbot_ai_usage.sql`).
+
 ### [DB] `db.execute(sql`...`)` — pass ISO strings, not Date objects, as raw parameters
 
 **Date:** 2026-04-09
