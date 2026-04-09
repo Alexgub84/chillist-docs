@@ -595,7 +595,7 @@ execute: async (_, options) => {
 npm run test:conversation-quality
 ```
 
-Requires `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) in `.env`. The script sets `RUN_CONVERSATION_QUALITY=true`; without that flag, the quality suites do not run (even if a key is present). Reports are written to `tests/conversation-quality-reports/report-<timestamp>.md` (gitignored).
+Requires `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) in `.env`. The script sets `RUN_CONVERSATION_QUALITY=true`; without that flag, the quality suites do not run (even if a key is present). Reports are written to `tests/conversation-quality-reports/report-<timestamp>.md` (gitignored). The script uses Vitest’s `verbose` reporter so the terminal does not spam hundreds of identical “running” lines: the default reporter redraws the live tree, and long real-API turns (minutes per test) cause integrated terminals to log each redraw as a new line.
 
 All quality test session IDs are prefixed with `qt-` (e.g. `qt-mark-done`). When `DATABASE_URL_PUBLIC` is set in `.env`, token usage is also written to the real `chatbot_ai_usage` table so you can track quality-test spending over time. When it is not set, a fake in-memory logger is used and nothing is persisted.
 

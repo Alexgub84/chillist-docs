@@ -94,6 +94,13 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 
 <!-- Add new Win entries at the top of this section -->
 
+### [Win] Conversation-quality script uses Vitest `verbose` reporter to avoid terminal spam
+
+**Date:** 2026-04-09
+**Context:** `npm run test:conversation-quality` filled the terminal with hundreds of identical lines (`❯ prompt-quality-he.test.ts (13)`), as if tests were duplicated.
+**Strategy:** Add `--reporter=verbose` to the `test:conversation-quality` script only (leave default reporter for fast unit tests). Document in `guides/chatbot.md` why.
+**Why it works:** Vitest’s default reporter redraws the live suite tree while a test is running. Real-API quality tests take minutes per case, so there are many redraws. Integrated terminals (including Cursor) often log each redraw as a new line instead of overwriting in place. Verbose reporter prints one line per test when it finishes — no live redraw loop.
+
 ### [Decision] Multi-plan switch assertion: "all real IDs + at least one target ID"
 
 **Date:** 2026-04-09
