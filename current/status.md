@@ -1,8 +1,8 @@
 # Chillist — Current Status
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
-> **Last updated:** 2026-04-08
-> **BE version:** 1.30.0 — Admin read-only API `GET /admin/chatbot-ai-usage` for `chatbot_ai_usage` (written by the WhatsApp chatbot service): paginated logs, filters, summary including per-model, per-chat-type, and per-tool-name counts. Drizzle mirrors the table without FKs; migration `0031_chatbot_ai_usage` uses `CREATE TABLE IF NOT EXISTS` for local/CI DBs.
+> **Last updated:** 2026-04-09
+> **BE version:** ef09c9a — Fix `GET /admin/chatbot-ai-usage` 500 error: raw `db.execute()` date params now passed as ISO strings instead of `Date` objects; removed `commit.mdc` rule (consolidated into `planning.md` Phase 5).
 > **FE version:** 1.33.0 — Admin dashboard third tab **Chatbot AI** (`/admin/plans?tab=chatbot-ai`): chatbot AI usage logs from `GET /admin/chatbot-ai-usage` with filters (`cbAi*` URL params), summaries, tool-call breakdown, expandable rows
 
 ---
