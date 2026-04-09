@@ -4,6 +4,15 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [Types] Chatbot AI usage admin — `sessionId` Zod UUID rejected valid `qt-` rows
+
+**Date:** 2026-04-09
+**Problem:** `chatbotAiUsageLogSchema` used `sessionId: z.string().uuid()`. Quality-test chatbot logs store `session_id` values like `qt-list` (not UUIDs), so the response failed Zod parse and the Chatbot AI tab could error or show nothing for those rows.
+**Solution:** Relax to `z.string().min(1)` and derive “quality test” with `sessionId.startsWith('qt-')` for UI and a client-side session-type filter.
+**Prevention:** Do not assume external IDs are UUIDs when the product documents string prefixes; validate against real shapes from the DB or chatbot code.
+
+---
+
 ### [Async] Admin AI usage tabs — infinite network loop from unstable React Query key
 
 **Date:** 2026-04-08
