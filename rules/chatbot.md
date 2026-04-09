@@ -162,19 +162,18 @@ Single source of truth for what `prompt-quality.test.ts` and `prompt-quality-he.
 | 12a | anti-hallucination: multi-plan switch | EN+HE | "What plans?" / "Camping Trip items" / "Beach Day items" | Switches between 2 plans across 3 turns — all getPlanDetails use real IDs |
 | 12b | anti-hallucination: cold plan details | EN+HE | "What items are on my Camping Trip?" (no prior getMyPlans) | getPlanDetails auto-fetches plan list, resolves name, no hallucinated UUID |
 | 12c | anti-hallucination: chitchat gap | EN+HE | "What plans?" / "Cool thanks!" / "Show Camping Trip items" | Intermediate non-tool turn pushes plan names further back in context |
+| 13 | Off-topic / chitchat | EN+HE | "what's the weather?" / "ספר לי בדיחה" | Bot responds naturally, does NOT call any tools |
+| 14 | Greeting only | EN+HE | "hey" / "היי" | Bot greets back without calling tools |
+| 15 | Undo action (mark pending) | EN+HE | "Show items" / "actually, mark Tent as pending" | updateItemStatus called with status="pending" |
+| 16 | Typo in item name | EN | "Show items" / "mark the Tnet done" | Bot suggests correct names or auto-corrects; no "something went wrong" |
+| 17 | Wrong plan name | EN | "show items for Birthday Party" (no such plan) | Bot mentions available plans or says not found, no crash |
+| 18 | Item already done | EN+HE | "Show items" / "mark Charcoal done" (already done) | Bot handles gracefully, no error in reply |
+| 19 | Number selection (EN) | EN | "Tell me about the camping trip" / "1" | Same as #9 but in English; getPlanDetails called |
+| 20 | Bulk items (EN) | EN | "I bought Tent and Sleeping Bag, mark them done" | Same as #10 but in English; updateItemStatus called twice |
 
 ### Planned (not yet implemented)
 
-| # | Scenario | Lang | User input example | What it tests | Key assertion |
-|---|----------|------|--------------------|---------------|---------------|
-| 13 | Off-topic / chitchat | EN+HE | "what's the weather?" / "ספר לי בדיחה" | Bot responds naturally, does NOT call any tools | toolCalls is empty, reply is non-empty, no error |
-| 14 | Greeting only | EN+HE | "hey" / "היי" | Bot greets back without calling tools | toolCalls is empty, reply is non-empty |
-| 15 | Undo action (mark pending) | EN+HE | "Show items" / "actually, mark Tent as pending" | updateItemStatus called with status="pending" | `lastUpdate.status === "pending"` |
-| 16 | Typo in item name | EN | "Show items" / "mark the Tnet done" | Bot either fuzzy-matches or tells user the correct names | Reply does not contain "something went wrong" |
-| 17 | Wrong plan name | EN | "show items for Birthday Party" (no such plan) | Bot says plan not found, no crash | Reply mentions available plans or suggests checking |
-| 18 | Item already done | EN+HE | "Show items" / "mark Charcoal done" (already done) | Bot handles gracefully | No error in reply |
-| 19 | Number selection (EN) | EN | "Tell me about the camping trip" / "1" | Same as #9 but in English | getPlanDetails called, non-empty reply |
-| 20 | Bulk items (EN) | EN | "I bought Tent and Sleeping Bag, mark them done" | Same as #10 but in English | updateItemStatus called twice |
+All catalog scenarios are now implemented. Add new scenarios here before implementing.
 
 ### Excluded (with reason)
 

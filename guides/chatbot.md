@@ -123,7 +123,8 @@ migrations/
 ├── 001_chatbot_sessions.sql          # CREATE TABLE chatbot_sessions + index
 ├── 002_chatbot_sessions_chat_id.sql  # ADD COLUMN chat_id; updated index on (phone_number, chat_id, expires_at)
 ├── 003_chatbot_messages.sql          # CREATE TABLE chatbot_messages (conversation history for AI context)
-└── 004_chatbot_ai_usage.sql          # CREATE TABLE chatbot_ai_usage (AI cost/token/tool tracking)
+├── 004_chatbot_ai_usage.sql          # CREATE TABLE chatbot_ai_usage (AI cost/token/tool tracking)
+└── 005_fix_tool_calls_jsonb.sql      # Fix double-serialized tool_calls JSONB strings → arrays
 ```
 
 ---
