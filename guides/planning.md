@@ -286,13 +286,27 @@ Once the user approves, execute **both steps below in order**. They have differe
 
 #### Step A — Code repo: commit to feature branch only
 
-1. Sync the branch with `main` first:
+1. If currently on `main`, create a feature branch first:
+
+```bash
+git checkout -b <descriptive-branch-name>
+```
+
+2. Sync the branch with `main`:
 
 ```bash
 git fetch origin main && git merge origin/main
 ```
 
-2. Commit to the feature branch:
+3. Regenerate the OpenAPI spec and stage it if it changed:
+
+```bash
+npm run openapi:generate
+```
+
+Stage `docs/openapi.json` along with all other changed files.
+
+4. Commit:
 
 ```bash
 git add -A && git commit -m "feat: <what was done>"
