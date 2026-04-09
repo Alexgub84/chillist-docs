@@ -157,6 +157,7 @@ All routes that require JWT will return 401. Guest invite routes (`/plans/:planI
 | `npm run db:migrate:prod`  | Run migrations on production via Railway                     |
 | `npm run openapi:generate` | Generate `docs/openapi.json` from route schemas              |
 | `npm run openapi:validate` | Validate OpenAPI spec                                        |
+| `npm run railway:logs`     | Fetch production logs from Railway (default: last 24h). Args: `-- <hours> [filter]` |
 
 ## Database (Drizzle + PostgreSQL)
 
