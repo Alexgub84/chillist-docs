@@ -200,7 +200,7 @@ Present the full Master Plan to the user:
 - Test plan (unit / integration / e2e)
 - File breakdown with responsibilities
 - Execution flow
-- Documentation plan
+- Documentation plan (list every doc file that will be updated and why)
 
 Then ask:
 > "Does this plan look right? Should I adjust anything before I start writing tests?"
@@ -249,21 +249,40 @@ npm run build
 
 If any check fails, fix the code and re-run validation. Do NOT ask for permission to fix failures — fix them.
 
-### 3. User Confirmation
+### 3. Update Docs (MANDATORY — before any commit)
 
-Only after ALL checks pass, ask:
-> "The solution validates. Is this step complete according to the plan?"
+**This step is not optional.** Before committing anything, update every doc file identified in Step 6 of the Master Plan:
 
-### 4. Update Docs & Commit
+1. Update `../chillist-docs/dev-lessons/backend.md` (or `chatbot.md`, `frontend.md`) if a bug was fixed or a lesson was learned
+2. Update `../chillist-docs/current/status.md` if features were added, changed, or removed
+3. Update `../chillist-docs/specs/mvp-v1.md` or other spec files if scope or endpoints changed
+4. Update `../chillist-docs/rules/*.md` if a new rule should always apply going forward
+5. Update any other docs identified in the plan
 
-Upon confirmation:
+If no docs need updating, you **must** state explicitly:
+> "No docs changes needed — reason: [why]"
 
-1. Update `../chillist-docs/dev-lessons/backend.md` if a bug was fixed or a lesson was learned
-2. Update `../chillist-docs/current/status.md` if features changed
-3. Update any other docs identified in Step 6 of the Master Plan
-4. Run `npm run openapi:generate` to regenerate the OpenAPI spec (the pre-commit hook also does this, but run it manually to validate)
-5. Sync with main: `git fetch origin main && git merge origin/main`
-6. Output a single copy-pasteable commit command:
+Skipping this step or committing before docs are updated is a **hard violation** of this workflow.
+
+### 4. Present All Changes for Review
+
+**STOP. Do not commit yet.**
+
+Show the user a summary of everything that changed:
+- Code files modified (with a brief description of each change)
+- Doc files modified (with a brief description of each update)
+- Any generated files (e.g., OpenAPI spec)
+
+Then ask:
+> "Here is everything that changed — code and docs. Does this look right? Should I adjust anything before I commit?"
+
+**Only proceed after the user explicitly approves all changes.**
+
+### 5. Commit & Push (after approval)
+
+Once the user approves, execute this sequence in order:
+
+**Step A — Commit the feature branch (code + related doc updates in the same repo):**
 
 ```bash
 git add -A && git commit -m "feat: <what was done>"
@@ -271,11 +290,19 @@ git add -A && git commit -m "feat: <what was done>"
 
 Use [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
 
-**Do NOT run `git push`** unless the user explicitly says "push" or "push the branch".
+**Do NOT push the feature branch** unless the user explicitly says "push" or "push the branch".
 
-### 5. Close
+**Step B — Commit and push `chillist-docs` to `main` immediately:**
 
-State: **"Task complete. Please start a NEW CHAT for the next item."**
+```bash
+cd ../chillist-docs && git add -A && git commit -m "docs: <what was updated>" && git push origin main
+```
+
+The docs repo always ships directly to `main`. This is not optional — docs must be pushed before the task is considered complete.
+
+### 6. Close
+
+State: **"Task complete. Docs pushed to main. Please start a NEW CHAT for the next item."**
 
 ---
 
@@ -298,4 +325,8 @@ Never do these:
 - Pushing directly to `main` or `staging`
 - Using `--no-verify` on `git push` or `git commit` — if hooks fail, fix the issue
 - Making a code change and presenting it as done without running the affected tests
-- Running `git push` without explicit user instruction
+- Running `git push` on the feature branch without explicit user instruction
+- Committing any code before updating the relevant docs (always update docs first)
+- Presenting only code changes for review — always show docs changes in the same review step
+- Closing a task without pushing `chillist-docs` to `main`
+- Saying "no docs changes needed" without explicitly stating the reason
