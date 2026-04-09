@@ -485,6 +485,13 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 **Solution:** Added an explicit rule to `system-prompt.ts`: "getMyPlans returns plan-wide item totals (all participants); getPlanDetails returns only items visible to the requesting user — this discrepancy is expected and normal, never comment on it or suggest a sync issue."
 **Prevention:** Any time `getMyPlans` and `getPlanDetails` return different item counts, the bot must stay silent on the discrepancy. Add a quality test scenario that verifies this.
 
+### [Bug] Anthropic 529 Overloaded causes "something went wrong" in production
+
+**Date:** 2026-04-09
+**Problem:** Anthropic API returned HTTP 529 "Overloaded" during a real user conversation. The AI SDK's default `maxRetries: 2` (3 total attempts) was insufficient; all retries failed and the user saw "something went wrong."
+**Solution:** Set `maxRetries: 6` explicitly in `runConversationEngine` and raised the default in `ai.client.ts` from 4 to 6. The Vercel AI SDK uses exponential backoff between retries, so 6 retries covers ~2 minutes of backoff, enough to ride out brief API blips.
+**Prevention:** Always set `maxRetries` explicitly in the engine call rather than relying on defaults. For longer outages, a model-fallback mechanism (Anthropic → OpenAI) should be implemented as a separate feature.
+
 ### [Decision] Two-tier assertion model for quality tests
 
 **Date:** 2026-04-09

@@ -58,6 +58,7 @@ When implementing Phase 4 (AI SDK):
 - **Fake AI client must be deterministic** — `createFakeAiClient()` takes a pre-configured response map (tool name → result). Tests must not depend on real LLM responses.
 - **Never trust AI tool arguments blindly** — validate tool call arguments at the handler layer with Zod before passing to services.
 - **One `IAiClient` method per concern** — e.g. `chat(messages, tools)` → `AiResponse`. Do not add helper logic to the interface.
+- **Always set `maxRetries` explicitly** — never rely on the AI SDK default (which is only 2). Production calls must use at least `maxRetries: 6` to survive brief Anthropic 529 blips. Set it in the `generateResponse` call site, not only as a fallback in `ai.client.ts`.
 
 ### Prompt Rules (always keep in system-prompt.ts)
 
