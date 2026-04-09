@@ -8,6 +8,14 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [DB] `db.execute(sql`...`)` — pass ISO strings, not Date objects, as raw parameters
+
+**Date:** 2026-04-09
+**Problem:** `GET /admin/chatbot-ai-usage` returned 500 for any request that included `from`/`to` date filters. The `buildFilterSqlParts` helper passed `new Date(from)` (a JavaScript `Date` instance) as a bound parameter inside a Drizzle `sql` template used in `db.execute()`. The `postgres.js` driver's wire-protocol `Bind` path calls `Buffer.byteLength` on each parameter value, which requires a string/Buffer — not a `Date`. It threw `TypeError [ERR_INVALID_ARG_TYPE]: The "string" argument must be of type string or an instance of Buffer or ArrayBuffer. Received an instance of Date`.
+**Root cause:** Drizzle's query-builder methods (`gte`, `lte`, etc.) know the column type and serialize `Date` objects internally before handing them to the driver. Raw `db.execute(sql`...`)` does no such serialization — it forwards values verbatim to `postgres.js`, which in prepared-statement mode cannot accept a bare `Date`.
+**Solution:** Changed `buildFilterSqlParts` to pass `new Date(from).toISOString()` (a string) instead of `new Date(from)`. PostgreSQL accepts ISO 8601 strings for `timestamptz` comparisons.
+**Prevention:** In any raw `db.execute(sql`...`)` or `sql` template, convert `Date` objects to ISO strings before interpolating as parameters. Only Drizzle query-builder helpers (`eq`, `gte`, `lte`, etc.) handle `Date` → driver serialization automatically.
+
 ### [Infra] Deploy does NOT run migrations — always run db:migrate:prod manually after shipping a migration
 
 **Date:** 2026-04-08
