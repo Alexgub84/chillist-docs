@@ -4,6 +4,15 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [Logic] Profile phone save did not call PATCH /auth/profile — chatbot could not identify user
+
+**Date:** 2026-04-09
+**Problem:** `updateUserProfile` in `profile-utils.ts` saved the phone number only to Supabase metadata via `supabase.auth.updateUser({ data: { phone } })`. It never called `PATCH /auth/profile` with the phone field, so `users.phone` in the BE database was never written. The secondary sync path (`POST /auth/sync-profile`, triggered by `USER_UPDATED`) also silently failed because `SUPABASE_SERVICE_ROLE_KEY` was missing in production. Result: chatbot's `POST /api/internal/auth/identify` returned 404 for users who saved their phone on the profile page.
+**Solution:** Added `patchProfile({ phone })` call inside `updateUserProfile` after `supabase.auth.updateUser` succeeds. This directly writes to `users.phone` via the BE. The call is non-blocking for non-phone errors (logged as warning) but surfaces 400 + "phone" validation errors to the form. `sync-profile` remains as a secondary fallback.
+**Prevention:** When the BE has a dedicated write endpoint (e.g., `PATCH /auth/profile`), the FE must call it directly — never rely solely on an indirect sync mechanism (`sync-profile`) that depends on backend infrastructure (env vars, service role keys) the FE team does not control. Any data the chatbot or other services read from the BE must be written there explicitly.
+
+---
+
 ### [Types] Chatbot AI usage admin — `sessionId` Zod UUID rejected valid `qt-` rows
 
 **Date:** 2026-04-09
