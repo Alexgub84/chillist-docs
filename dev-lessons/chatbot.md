@@ -14,6 +14,14 @@ Architecture, config, and integration choices made during development — the "w
 
 <!-- Add new Decision entries at the top of this section -->
 
+### [Decision] Session Plan Context Store — model never handles UUIDs
+
+**Date:** 2026-04-09
+**Context:** `updateItemStatus` required the model to pass a correct `itemId` UUID. In warm T2, tool results from T1 are not in message history — only the bot's text reply is. The model either hallucinated an ID or had to re-chain `getMyPlans → getPlanDetails` from scratch. Production failure: bot called `getPlanDetails` 7x with hallucinated IDs, never reaching `updateItemStatus`.
+**Decision:** Introduce `IPlanContextStore` (in-memory `Map`, shared across requests). `getPlanDetails` saves the plan (id, name, items) on success. `updateItemStatus` input changes from `itemId: uuid` to `itemName: string`; the tool resolves name → ID from the store internally.
+**Reason:** Eliminates the entire category of UUID hallucination bugs. The model works with human-readable names (which it handles reliably). ID resolution is deterministic and happens inside the tool, not in the model's chain-of-thought.
+**Reuse tip:** For any write tool that needs a real ID: store the fetched parent object in a session context store keyed by session ID. Accept human-readable input in the tool schema and resolve to the ID inside `execute`. The model never touches UUIDs in tool arguments.
+
 ### [Decision] Positive-reframe phrasing over prohibition for tool-call constraints
 
 **Date:** 2026-04-08
@@ -99,6 +107,13 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 ## Bugs
 
 <!-- Add new Bug entries at the top of this section -->
+
+### [Bug] updateItemStatus never reached — bot looped getPlanDetails with hallucinated planIds
+
+**Date:** 2026-04-07
+**Problem:** User asked to mark an item done. Bot called `getPlanDetails` 7 times in one turn, each time with a different hallucinated UUID (not from `getMyPlans`). Every call returned 404. `updateItemStatus` was never called.
+**Solution:** (1) PR #21 added `prepareStep` guard to remove `getMyPlans` from `activeTools` after first use, and tightened system prompt phrasing. (2) Session plan context store: `updateItemStatus` now accepts item name, resolves ID from store — model never passes UUIDs.
+**Prevention:** Never let a write tool accept a UUID as direct model input. Always resolve IDs from a session-level context store populated by the preceding read tool.
 
 ### [Bug] Prompt overcorrected — "once per conversation" breaks multi-turn plan ID lookups
 
