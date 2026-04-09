@@ -455,6 +455,7 @@ Migration files:
 - `002_chatbot_sessions_chat_id.sql` — adds `chat_id` column + updated index
 - `003_chatbot_messages.sql` — creates `chatbot_messages` table (conversation history for AI context)
 - `004_chatbot_ai_usage.sql` — creates `chatbot_ai_usage` table (AI cost/token/tool tracking per message)
+- `005_fix_tool_calls_jsonb.sql` — fixes double-serialized `tool_calls` JSONB strings back to arrays
 
 The `chatbot_sessions` table stores one row per active conversation session:
 
