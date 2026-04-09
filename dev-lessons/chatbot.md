@@ -86,6 +86,13 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 
 <!-- Add new Win entries at the top of this section -->
 
+### [Win] Explicit planContextStore seeding between turns makes T2 deterministic
+
+**Date:** 2026-04-09
+**Context:** Short-message quality tests ("camping" → "tent done") failed intermittently because T1's tool invocation was non-deterministic — sometimes calling `getMyPlans`, sometimes not. T2 depended on the planContextStore being populated by T1's tool chain.
+**Strategy:** Seed the `planContextStore` explicitly between T1 and T2 in both English and Hebrew short-message tests. Remove T1 tool-call assertions entirely; only assert T1 replied on-topic (`replyText.toMatch`). Assert T2 tool calls and outcome.
+**Why it works:** T2 correctness is decoupled from T1 tool behaviour. The test now verifies what matters (bot understands terse input and marks the right item) without requiring deterministic tool invocation on an ambiguous one-word message.
+
 ### [Win] Mirrored quality test suites for each supported language
 
 **Date:** 2026-04-09
@@ -154,6 +161,13 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 ## Bugs
 
 <!-- Add new Bug entries at the top of this section -->
+
+### [Bug] Stochastic T1 assertion on terse messages caused recurring quality test failures
+
+**Date:** 2026-04-09
+**Problem:** `expect(t1.toolCalls).toContain("getMyPlans")` on a one-word message (`"camping"`) failed intermittently — the model sometimes responded conversationally with no tool call. Each failure triggered a fix-revert loop (change T1 wording → passes → revert → fails again).
+**Solution:** Removed the T1 tool-call assertion. The `planContextStore` was already seeded explicitly between T1 and T2, making T1's tool behaviour irrelevant to T2's correctness. Added a rule to `chatbot.md`: short-message tests must never gate T2 on T1 tool invocation.
+**Prevention:** For any quality test scenario with intentionally ambiguous input, only assert that the reply is on-topic (`replyText.toMatch`). Seed deterministic state (planContextStore) explicitly between turns rather than relying on the model's stochastic tool chain.
 
 ### [Bug] updateItemStatus never reached — bot looped getPlanDetails with hallucinated planIds
 
