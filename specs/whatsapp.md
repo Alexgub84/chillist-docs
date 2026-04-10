@@ -208,7 +208,7 @@ All under `/api/internal/*`, `x-service-key` = `CHATBOT_SERVICE_KEY`, plus `x-us
 | Method | Path | Purpose |
 | ------ | ---- | ------- |
 | `POST` | `/api/internal/auth/identify` | Resolve E.164 phone → `userId` + display name (lookup on **`users.phone`** — see [phone-management.md](./phone-management.md)) |
-| `GET` | `/api/internal/plans` | List user’s plans with summary counts |
+| `GET` | `/api/internal/plans` | List user’s plans with summary counts (undated or `startDate` ≥ now UTC; past-dated plans omitted) |
 | `GET` | `/api/internal/plans/:planId` | Full plan: participants and items (chatbot field names; membership required) |
 | `PATCH` | `/api/internal/items/:itemId/status` | Body `{ status: "done" \| "pending" }` — upserts caller’s assignment (`done` maps to `purchased` in DB) |
 
