@@ -211,6 +211,7 @@ All under `/api/internal/*`, `x-service-key` = `CHATBOT_SERVICE_KEY`, plus `x-us
 | `GET` | `/api/internal/plans` | List user’s plans with summary counts (undated or `startDate` ≥ now UTC; past-dated plans omitted) |
 | `GET` | `/api/internal/plans/:planId` | Full plan: participants and items (chatbot field names; membership required) |
 | `PATCH` | `/api/internal/items/:itemId/status` | Body `{ status: "done" \| "pending" }` — upserts caller’s assignment (`done` maps to `purchased` in DB) |
+| `GET` | `/api/internal/plan-tags` | Full 3-tier tag taxonomy — no `x-user-id` needed (global reference data). Used by chatbot to present plan-type choices. |
 
 Contract details: `docs/openapi.json` (tag `internal`).
 

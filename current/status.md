@@ -1,8 +1,8 @@
 # Chillist — Current Status
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
-> **Last updated:** 2026-04-09
-> **BE version:** ef09c9a — Fix `GET /admin/chatbot-ai-usage` 500 error: raw `db.execute()` date params now passed as ISO strings instead of `Date` objects; removed `commit.mdc` rule (consolidated into `planning.md` Phase 5).
+> **Last updated:** 2026-04-12
+> **BE version:** c741ea8 — Add Plan Tags Taxonomy API: `GET /plan-tags` (JWT) + `GET /api/internal/plan-tags` (x-service-key); hybrid-normalized DB schema (`plan_tag_versions` + `plan_tag_options`); seeded v1.2 taxonomy with 10 plan types, mutex groups, and cross-group rules.
 > **FE version:** 1.34.0 — **Chatbot AI** tab: session-type filter (All / Production / Quality test via `cbAiSessionType`), **Test** column for `qt-` sessions, summary note when filtering; chatbot usage schema accepts non-UUID `sessionId` strings
 
 ---
@@ -218,6 +218,8 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 - **whatsapp_notifications** — audit log of WhatsApp messages sent (invitation_sent, join_request_pending/approved/rejected); optional `session_id`
 - **ai_usage_logs** — tracks every AI model invocation (tokens, cost, duration, model, feature type, status, full prompt text, raw model response, error type, finish reason); optional `session_id`. Admin-queryable via `GET /admin/ai-usage`
 - **chatbot_ai_usage** — chatbot-side AI call metrics (session, user, plan, model, dm/group, tool_calls JSONB, tokens, cost, status). Written by the WhatsApp chatbot service; backend admin route is **read-only**: `GET /admin/chatbot-ai-usage`
+- **plan_tag_versions** — versioned taxonomy rows (`version` string, `description`, `tier_labels` JSONB with tier key/label/conditional_on). Each row is a complete taxonomy snapshot, enabling rolling forward to a new version with zero downtime
+- **plan_tag_options** — individual tag options (`id` text PK, `version_id` FK, `tier` 1/2/3, `parent_id` self-referencing FK, `label`, `emoji`, `sort_order`, `mutex_group`, `cross_group_rules` JSONB). Indexed on `(version_id, tier)` and `parent_id`
 
 ### Backend API Routes
 
@@ -243,6 +245,8 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 | Auth           | `GET /me`, `GET /profile`, `PATCH /profile`, `POST /sync-profile`, `POST /logout` | Current user, read/update preferences, sync from Supabase, end browser session                                                                                                                                               |
 | Expenses       | `POST`, `GET`, `PATCH /:id`, `DELETE /:id`                                        | Create, list, update, delete expenses                                                                                                                                                                                        |
 | Admin          | `GET /admin/plans`, `GET /admin/ai-usage`, `GET /admin/chatbot-ai-usage`          | Admin-only: list all plans; item-suggestion AI usage logs; chatbot AI usage logs (separate table, read-only)                                                                                                                 |
+| Plan Tags      | `GET /plan-tags`                                                                   | Returns the latest 3-tier plan tag taxonomy. JWT required.                                                                                                                                                                   |
+| Internal       | `GET /api/internal/plan-tags`                                                      | Same taxonomy for the WhatsApp chatbot. `x-service-key` required; `x-user-id` not required (taxonomy is global reference data).                                                                                              |
 
 ### CI/CD
 

@@ -42,10 +42,10 @@ Many Chillist users coordinate via WhatsApp group chats. The chatbot meets them 
 | Get my plans       | Read  | "What plans do I have?"          |
 | Get plan details   | Read  | "Show me the camping trip items" |
 | Update item status | Write | "Mark the tent as done"          |
+| Create a plan      | Write | "Create a camping trip for next Friday" |
 
 ### Explicitly out of scope (v1)
 
-- Creating new plans
 - Adding/removing items
 - Inviting participants
 - Managing join requests
@@ -436,9 +436,58 @@ Response 404:
   { "message": "Item not found" }
 ```
 
+#### POST /api/internal/plans (Pending -- BE route not yet implemented)
+
+Creates a new plan. The chatbot sends only `title` (required) and optional metadata. The BE resolves the owner from `x-user-id`. The chatbot never sends owner details in the request body. The BE looks up the user's profile (name, phone) to create the owner participant row automatically.
+
+```
+Request:
+  Header: x-service-key: <CHATBOT_SERVICE_KEY>
+  Header: x-user-id: <supabase-user-id>
+  Body:
+  {
+    "title": "Camping Trip",
+    "description": "Weekend at Yosemite",
+    "startDate": "2026-06-01",
+    "endDate": "2026-06-03",
+    "tags": ["outdoor", "camping"],
+    "defaultLang": "he",
+    "estimatedAdults": 4,
+    "estimatedKids": 2,
+    "locationName": "Yosemite National Park"
+  }
+
+Response 201:
+  {
+    "plan": {
+      "id": "plan-uuid",
+      "name": "Camping Trip",
+      "date": "2026-06-01T00:00:00.000Z"
+    }
+  }
+
+Response 400:
+  { "message": "title is required" }
+
+Response 401:
+  { "message": "Unauthorized" }
+```
+
+Only `title` is required. All other fields are optional (nullable).
+
+**Owner resolution (BE responsibility):**
+
+The internal create-plan route receives `x-user-id` (Supabase UUID). The BE must resolve the owner participant data from this userId:
+1. Look up the user's `users.phone` for contact phone
+2. Look up name from Supabase `user_metadata` or most recent `participants` row for `name`, `lastName`
+3. Create the owner participant row with `role: 'owner'`, `userId: x-user-id`, and an `inviteToken`
+4. Fallback: if name cannot be resolved, use `displayName` from the user's session or a default
+
+The chatbot never collects or sends owner PII (name, phone, email). This keeps the chatbot's write surface minimal and avoids duplicating user-profile logic.
+
 ### Access control
 
-Data routes require `x-user-id` to match a **participants** row for the target plan (`GET /plans`, `GET /plans/:planId`) or for the item’s plan (`PATCH /items/:itemId/status`). This matches who receives plan rows from `GET /api/internal/plans`. Public-plan visibility alone does not grant access without membership.
+Data routes require `x-user-id` to match a **participants** row for the target plan (`GET /plans`, `GET /plans/:planId`) or for the item’s plan (`PATCH /items/:itemId/status`). This matches who receives plan rows from `GET /api/internal/plans`. `POST /plans` creates a new plan owned by the `x-user-id` user. Public-plan visibility alone does not grant access without membership.
 
 ### Shared type definitions (chatbot API client reference)
 
