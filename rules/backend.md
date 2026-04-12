@@ -59,11 +59,14 @@ Strict, minimal instructions for `chillist-be`. Read these before executing any 
 - **All Entry Points:** When writing tests for a new handler behavior, cover every entry point that reaches that behavior — DM and group — in the same commit. Do not test only the path you just modified.
 - **Fake Services:** When creating a fake/mock service for tests (e.g., `FakeWhatsAppService`): (a) block the fake provider in production via env `.refine()`, (b) never let the factory function create the fake — only inject via `buildApp` options, (c) add env guard unit tests that verify `fake` is rejected in production, (d) add an E2E prod test (`describe.skipIf(!CREDS)`) that validates the real service with real credentials before deploy.
 
-## 6. Seed Maintenance
+## 6. Database Changes & Seed Maintenance
 
+- **Full instructions:** See [Backend Guide § DB cheat sheet](../guides/backend.md#db-cheat-sheet--what-to-run-and-when) for the step-by-step commands for every DB scenario (schema change, reference data, full reset, post-deploy).
 - **Update on new features:** The seed (`src/db/seed.ts`) should be updated with each new feature and endpoint, or reviewed to determine if an update is needed.
 - When adding a new table or entity, add representative seed data and include it in the TRUNCATE list if applicable.
 - When adding a new endpoint that returns data, consider whether the seed should provide sample data to exercise that endpoint.
+- **Reference/lookup data:** Tables populated with static data (taxonomy, categories, config) must ship with an idempotent `src/db/seed-<name>.ts` (no TRUNCATE, skips if data exists), plus `db:seed:<name>:local` and `db:seed:<name>:prod` npm scripts. The task is not complete until prod data is populated.
+- **Every DB script must load `.env.local`:** Standalone scripts (`migrate.ts`, `seed.ts`, `seed-*.ts`) must include `loadEnvLocal()` so they work when invoked directly, not just inside `dev:local`.
 
 ## 7. WhatsApp
 

@@ -177,26 +177,70 @@ All routes that require JWT will return 401. Guest invite routes (`/plans/:planI
 
 ### Schema
 
-Defined in `src/db/schema.ts` using Drizzle ORM.
+Defined in `src/db/schema.ts` using Drizzle ORM. Migration files live in `drizzle/`.
 
-### Migrations
+### DB cheat sheet — what to run and when
 
-```bash
-npm run db:generate   # create migration from schema changes
-npm run db:migrate    # apply pending migrations
-```
-
-Migration files live in `drizzle/` directory.
-
-### Production database
-
-Railway manages PostgreSQL. All prod scripts read `DATABASE_URL_PUBLIC` from `.env` (no Railway CLI needed):
+#### Adding or altering a table (schema change)
 
 ```bash
-npm run db:migrate:prod       # apply pending migrations to production
-npm run db:seed:tags:prod     # seed reference data (idempotent, safe)
-npm run db:seed:prod          # ⚠️ TRUNCATES all tables — full reset only
+# 1. Edit src/db/schema.ts
+# 2. Generate migration
+npm run db:generate
+
+# 3. Apply locally
+npm run db:migrate:local
+
+# 4. Update local seed if needed (adds sample data for the new table)
+#    Edit src/db/seed.ts, then:
+npm run db:seed:local          # ⚠️ TRUNCATES all local tables
+
+# 5. After PR merges and Railway deploys:
+npm run db:migrate:prod
 ```
+
+#### Adding reference/lookup data (taxonomy, categories, config)
+
+```bash
+# 1. Create src/db/seed-<name>.ts (idempotent, NO truncate, skips if data exists)
+# 2. Add npm scripts to package.json:
+#    "db:seed:<name>": "tsx src/db/seed-<name>.ts"
+#    "db:seed:<name>:local": "npm run db:seed:<name>"
+#    "db:seed:<name>:prod": "DATABASE_URL_PUBLIC=$(grep '^DATABASE_URL_PUBLIC=' .env | cut -d'=' -f2-) npm run db:seed:<name>"
+
+# 3. Seed locally
+npm run db:seed:<name>:local
+
+# 4. After PR merges and Railway deploys + migrates:
+npm run db:seed:<name>:prod
+```
+
+#### Full local reset (nuke and rebuild)
+
+```bash
+docker compose down -v         # destroy container + data volume
+npm run dev:local              # recreate everything from scratch
+```
+
+#### Post-deploy checklist (when a PR includes DB changes)
+
+1. Merge the PR to `main`
+2. Wait for Railway deploy to complete
+3. `npm run db:migrate:prod` — apply pending migrations
+4. `npm run db:seed:<name>:prod` — if the migration adds reference/lookup tables
+5. Smoke-test the affected endpoint
+
+### All DB scripts
+
+| Action | Local | Production |
+|---|---|---|
+| Apply migrations | `npm run db:migrate:local` | `npm run db:migrate:prod` |
+| Full seed (TRUNCATES) | `npm run db:seed:local` | `npm run db:seed:prod` (dangerous) |
+| Seed taxonomy (safe) | `npm run db:seed:tags:local` | `npm run db:seed:tags:prod` |
+| Generate migration | `npm run db:generate` | — |
+| Drizzle Studio | `npm run db:studio` | — |
+
+> **Every standalone DB script** (`migrate.ts`, `seed.ts`, `seed-*.ts`) must include `loadEnvLocal()` so it works both inside `dev:local` and when invoked directly. See [dev-lessons](../dev-lessons/backend.md).
 
 ## OpenAPI Spec Generation
 
@@ -257,20 +301,7 @@ Three workflow files:
 1. Install Railway CLI
 2. Deploy to Railway (`railway up --service $RAILWAY_SERVICE_ID`)
 
-> **IMPORTANT — migrations are NOT run automatically on deploy.** `deploy.yml` only ships code. After merging a PR that includes new migration files, you must run migrations manually:
->
-> ```bash
-> npm run db:migrate:prod   # applies pending migrations to the Railway production database
-> ```
->
-> Skipping this step will cause `relation "table_name" does not exist` errors (HTTP 500) for any route that queries the new table. This is a known footgun — see [dev-lessons/backend.md § Deploy does NOT run migrations](../dev-lessons/backend.md).
->
-> **Release checklist when a PR includes migrations:**
-> 1. Merge the PR to `main`
-> 2. Wait for Railway deploy to complete
-> 3. Run `npm run db:migrate:prod`
-> 4. If the migration adds reference/lookup tables, run `npm run db:seed:<name>:prod`
-> 5. Smoke-test the affected endpoint
+> **IMPORTANT — migrations are NOT run automatically on deploy.** `deploy.yml` only ships code. If a PR includes DB changes, follow the [Post-deploy checklist](#post-deploy-checklist-when-a-pr-includes-db-changes) above. Skipping this causes `relation "table_name" does not exist` errors (HTTP 500). See [dev-lessons/backend.md](../dev-lessons/backend.md).
 
 **`branch-protection.yml`** — runs on PRs to `main` and `staging`:
 
