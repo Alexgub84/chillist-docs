@@ -2,8 +2,8 @@
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
 > **Last updated:** 2026-04-12
-> **BE version:** c741ea8 — Add Plan Tags Taxonomy API: `GET /plan-tags` (JWT) + `GET /api/internal/plan-tags` (x-service-key); hybrid-normalized DB schema (`plan_tag_versions` + `plan_tag_options`); seeded v1.2 taxonomy with 10 plan types, mutex groups, and cross-group rules.
-> **FE version:** 1.34.0 — **Chatbot AI** tab: session-type filter (All / Production / Quality test via `cbAiSessionType`), **Test** column for `qt-` sessions, summary note when filtering; chatbot usage schema accepts non-UUID `sessionId` strings
+> **BE version:** ef09c9a — Fix `GET /admin/chatbot-ai-usage` 500 error: raw `db.execute()` date params now passed as ISO strings instead of `Date` objects; removed `commit.mdc` rule (consolidated into `planning.md` Phase 5).
+> **FE version:** 1.35.0 — **Plan tags from API**: tag taxonomy (3-tier conditional selection) is now fetched from `GET /plan-tags` via React Query (`staleTime: Infinity`) instead of a local JSON file. `PlanTagWizard` and `TagChips` show loading/error states; `tag-utils` refactored to accept `tagMap` as parameter; mock server and E2E fixtures updated; `src/data/plan-creation-tags.json` deleted.
 
 ---
 
@@ -19,7 +19,7 @@ A web app for organizing group activities — camping trips, dinner parties, bea
 
 Create a plan for any group event using a **4-step wizard**:
 
-1. **Plan Type** — title (required) at the top, then a 3-tier tag wizard that collects structured tags describing the plan (e.g., Camping → Cooking → Shared meals), then an optional description textarea below the tags. Tier 1 is single-select, tiers 2 and 3 are multi-select. Tier 2 options are organized by concern (stay, food, vibe) with **mutex groups** enforcing mutually exclusive choices within each concern and **cross-group rules** that disable or deselect contradictory options across concerns. Duration/day-count questions are omitted (handled by the date picker in step 2). Tags are stored as `string[]` on the plan. Legacy tag ids from older plans are preserved through round-trips even if no longer offered in the wizard. The step can be skipped entirely (title is validated before advancing). Selected tags are shown as chips with back-navigation to edit previous tiers. A summary screen shows all selections before confirming.
+1. **Plan Type** — title (required) at the top, then a 3-tier tag wizard that collects structured tags describing the plan (e.g., Camping → Cooking → Shared meals), then an optional description textarea below the tags. **Tag options are fetched from `GET /plan-tags`** (React Query, `staleTime: Infinity`); a spinner is shown while loading and an error state with retry on failure. Tier 1 is single-select, tiers 2 and 3 are multi-select. Tier 2 options are organized by concern (stay, food, vibe) with **mutex groups** enforcing mutually exclusive choices within each concern and **cross-group rules** that disable or deselect contradictory options across concerns. Duration/day-count questions are omitted (handled by the date picker in step 2). Tags are stored as `string[]` on the plan. Legacy tag ids from older plans are preserved through round-trips even if no longer offered in the wizard. The step can be skipped entirely (title is validated before advancing). Selected tags are shown as chips with back-navigation to edit previous tiers. A summary screen shows all selections before confirming.
 2. **Plan Details** — date/time (one-day toggle or date range), location (Google Maps autocomplete — only place name is shown; city/country/region/lat/lon are auto-populated), language, and currency.
 3. **Preferences** — two clearly separated sections: **Your Details** (owner's adults/kids count, food preferences, allergies, notes; RSVP auto-set to "confirmed") and **Total Group Estimate** (estimated total adults and kids for planning quantities). The plan is created silently at this step — the user sees a seamless transition to the next step.
 4. **Add Items** — the bulk add wizard is embedded inline so the owner can immediately pick items from the 700+ item library. This step can be skipped.
@@ -218,8 +218,6 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 - **whatsapp_notifications** — audit log of WhatsApp messages sent (invitation_sent, join_request_pending/approved/rejected); optional `session_id`
 - **ai_usage_logs** — tracks every AI model invocation (tokens, cost, duration, model, feature type, status, full prompt text, raw model response, error type, finish reason); optional `session_id`. Admin-queryable via `GET /admin/ai-usage`
 - **chatbot_ai_usage** — chatbot-side AI call metrics (session, user, plan, model, dm/group, tool_calls JSONB, tokens, cost, status). Written by the WhatsApp chatbot service; backend admin route is **read-only**: `GET /admin/chatbot-ai-usage`
-- **plan_tag_versions** — versioned taxonomy rows (`version` string, `description`, `tier_labels` JSONB with tier key/label/conditional_on). Each row is a complete taxonomy snapshot, enabling rolling forward to a new version with zero downtime
-- **plan_tag_options** — individual tag options (`id` text PK, `version_id` FK, `tier` 1/2/3, `parent_id` self-referencing FK, `label`, `emoji`, `sort_order`, `mutex_group`, `cross_group_rules` JSONB). Indexed on `(version_id, tier)` and `parent_id`
 
 ### Backend API Routes
 
@@ -245,8 +243,6 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 | Auth           | `GET /me`, `GET /profile`, `PATCH /profile`, `POST /sync-profile`, `POST /logout` | Current user, read/update preferences, sync from Supabase, end browser session                                                                                                                                               |
 | Expenses       | `POST`, `GET`, `PATCH /:id`, `DELETE /:id`                                        | Create, list, update, delete expenses                                                                                                                                                                                        |
 | Admin          | `GET /admin/plans`, `GET /admin/ai-usage`, `GET /admin/chatbot-ai-usage`          | Admin-only: list all plans; item-suggestion AI usage logs; chatbot AI usage logs (separate table, read-only)                                                                                                                 |
-| Plan Tags      | `GET /plan-tags`                                                                   | Returns the latest 3-tier plan tag taxonomy. JWT required.                                                                                                                                                                   |
-| Internal       | `GET /api/internal/plan-tags`                                                      | Same taxonomy for the WhatsApp chatbot. `x-service-key` required; `x-user-id` not required (taxonomy is global reference data).                                                                                              |
 
 ### CI/CD
 

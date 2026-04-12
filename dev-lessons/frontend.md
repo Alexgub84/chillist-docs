@@ -4,6 +4,38 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [Test] E2E error-state tests require `retry: false` on React Query hooks
+
+**Date:** 2026-04-12
+**Problem:** Writing an E2E test for "API returns 500 → error state shown" failed because React Query's default `retry: 3` automatically retried the failed request and succeeded before the error state could ever render. The mock route was set to fail only on the first call, so the first retry resolved the data and `isError` never became `true`.
+**Solution:** Set `retry: false` in `usePlanTags` (and any hook where the data is stable reference data with `staleTime: Infinity`). Immediate error feedback + user-controlled retry (via the retry button) is better UX than silent background retries for taxonomy data.
+**Prevention:** When a `useQuery` hook fetches stable reference data (`staleTime: Infinity`), set `retry: false`. This makes error states deterministic, E2E-testable, and gives the user immediate feedback. Only use auto-retries for ephemeral or frequently-changing data where transient failures are expected.
+
+---
+
+### [Arch] Plan tag taxonomy migrated from local JSON to `GET /plan-tags` API
+
+**Date:** 2026-04-12
+**Problem:** `src/data/plan-creation-tags.json` was imported directly into `PlanTagWizard.tsx` and `tag-utils.ts` at module load time. This meant the FE could not pick up taxonomy changes deployed to the BE without a new FE build. It also made `tag-utils.ts` functions implicitly dependent on static module-level state.
+**Solution:**
+
+1. Created `src/core/schemas/plan-tags.ts` (Zod schema + `PlanTagData` type) matching the `GET /plan-tags` response shape.
+2. Added `fetchPlanTags()` to `src/core/api.ts` (Zod-parses the response).
+3. Created `src/hooks/usePlanTags.ts` — React Query hook with `staleTime: Infinity` and `gcTime: 1h`. Also builds and returns `tagMap` via `useMemo` for O(1) emoji/label lookups.
+4. Refactored `tag-utils.ts`: removed JSON import, `buildTagMap(tagData)` now accepts `PlanTagData`; `getTagEmoji` and `isKnownTag` now accept `tagMap` as first arg (pure functions).
+5. Updated `PlanTagWizard.tsx` to call `usePlanTags()`. Loading spinner shown while fetching; error state + retry button on failure. Initial tags restored via `useEffect` (once, guarded by `useRef`) after `tagData` resolves — avoids calling state setters during render.
+6. Updated `TagChips.tsx` to call `usePlanTags()` for emoji resolution.
+7. Added `GET /plan-tags` route to `api/server.ts` and `tests/e2e/fixtures.ts` (using `api/mock-plan-tags.ts` typed fixture).
+8. Deleted `src/data/plan-creation-tags.json`.
+   **Prevention:**
+
+- When a wizard depends on structured taxonomy data, fetch it from the API (React Query, `staleTime: Infinity`) rather than bundling it as a static JSON file — the BE owns the data, the FE should not gate taxonomy updates on a deploy.
+- When refactoring a module that previously closed over static data, always convert the functions to accept the data as parameters — this makes them pure and easier to test.
+- Use `useEffect` + `useRef` for "initialize state once when async data arrives" patterns. Calling `setState` from the component body (render-time side effects) is fragile; `useEffect` with a `didInitRef` guard is the correct idiom.
+- After deleting a static data file, run `npx tsc --noEmit` to verify no imports were missed.
+
+---
+
 ### [Logic] Profile phone save did not call PATCH /auth/profile — chatbot could not identify user
 
 **Date:** 2026-04-09
