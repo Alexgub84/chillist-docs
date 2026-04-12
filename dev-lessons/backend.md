@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [Workflow] Features that add reference/lookup tables must include a prod-safe seed script
+
+**Date:** 2026-04-12
+**Problem:** After shipping `plan_tag_versions` + `plan_tag_options` (migration 0032), the API returned 404 on production because the tables were empty. `npm run db:seed` runs against the **local** dev database and uses `TRUNCATE` — it cannot be run safely against prod. No prod-safe seed path existed, so the task was considered "done" but the feature was non-functional on prod.
+**Solution:** Added `src/db/seed-tags.ts` — an idempotent insert-only script (no TRUNCATE, skips if version already exists) — with matching npm scripts `db:seed:tags` (local) and `db:seed:tags:prod` (reads `DATABASE_URL_PUBLIC`). Run `npm run db:seed:tags:prod` after deploying any feature that introduces new reference/lookup data.
+**Prevention:** Any feature that adds a table populated with static reference data (taxonomy, categories, config) must ship with: (1) an idempotent `src/db/seed-<name>.ts` with no TRUNCATE, (2) `db:seed:<name>` + `db:seed:<name>:prod` npm scripts, and (3) `npm run db:seed:<name>:prod` as a step in the PR's "Test on Production" checklist. The task is not complete until prod data is populated.
+
 ### [Workflow] AI agent commits directly to main instead of a feature branch
 
 **Date:** 2026-04-12
