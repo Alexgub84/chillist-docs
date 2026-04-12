@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [Workflow] AI agent commits directly to main instead of a feature branch
+
+**Date:** 2026-04-12
+**Problem:** AI agent committed the plan-tags taxonomy feature directly to `main` instead of creating a feature branch. The `workflow.mdc` rule says "pull main and merge before committing" — the agent read this as permission to commit on main. The `common.md` rule ("NEVER commit directly to main") is in the docs repo, not the BE `.cursor/rules/` folder, so it is not always read before coding begins.
+**Solution:** Moved the local commit off main using `git checkout -b feat/plan-tags-taxonomy-api` + `git reset --hard` on main. No push had occurred so no force-push was needed.
+**Prevention:** The `workflow.mdc` pre-commit checklist must include an explicit branch check. Step 1 should be: "Confirm you are NOT on `main`. If you are, stash and switch to a feature branch first."
+
 ### [Arch] Mirroring a table owned by another service — always copy the schema exactly
 
 **Date:** 2026-04-09
