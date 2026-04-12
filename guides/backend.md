@@ -53,17 +53,17 @@ Key variables:
 ```bash
 npm run db:migrate:local       # apply pending migrations
 npm run db:seed:local          # seed with sample data (TRUNCATES all tables)
-npm run db:seed:tags:local     # seed taxonomy only (idempotent, no truncate)
 ```
 
 **Production** (reads `DATABASE_URL_PUBLIC` from `.env`):
 
 ```bash
 npm run db:migrate:prod        # apply pending migrations
-npm run db:seed:tags:prod      # seed taxonomy (idempotent, safe to re-run)
 ```
 
-> **WARNING:** `npm run db:seed:prod` runs TRUNCATE on all tables. Only use for a full production reset. For reference data, always use the targeted `db:seed:<name>:prod` scripts.
+> **Note:** Plan tag taxonomy is now served from `src/data/plan-creation-tags.json` (bundled with the code) — no DB seeding needed for taxonomy.
+>
+> **WARNING:** `npm run db:seed:prod` runs TRUNCATE on all tables. Only use for a full production reset.
 
 **Seed maintenance:** When adding a new feature or endpoint, update the seed (`src/db/seed.ts`) or review whether an update is needed. See [Backend Rules § Seed Maintenance](../rules/backend.md#6-seed-maintenance).
 
@@ -167,8 +167,6 @@ All routes that require JWT will return 401. Guest invite routes (`/plans/:planI
 | `npm run db:studio`            | Open Drizzle Studio                                          |
 | `npm run db:seed:local`        | Seed local DB with sample data (**TRUNCATES all tables**)    |
 | `npm run db:seed:prod`         | Seed production DB (**TRUNCATES** — use only for full reset) |
-| `npm run db:seed:tags:local`   | Seed plan tag taxonomy locally (idempotent, no truncate)     |
-| `npm run db:seed:tags:prod`    | Seed plan tag taxonomy on production (idempotent, safe)      |
 | `npm run openapi:generate` | Generate `docs/openapi.json` from route schemas              |
 | `npm run openapi:validate` | Validate OpenAPI spec                                        |
 | `npm run railway:logs`     | Fetch production logs from Railway (default: last 24h). Args: `-- <hours> [filter]` |
@@ -236,11 +234,10 @@ npm run dev:local              # recreate everything from scratch
 |---|---|---|
 | Apply migrations | `npm run db:migrate:local` | `npm run db:migrate:prod` |
 | Full seed (TRUNCATES) | `npm run db:seed:local` | `npm run db:seed:prod` (dangerous) |
-| Seed taxonomy (safe) | `npm run db:seed:tags:local` | `npm run db:seed:tags:prod` |
 | Generate migration | `npm run db:generate` | — |
 | Drizzle Studio | `npm run db:studio` | — |
 
-> **Every standalone DB script** (`migrate.ts`, `seed.ts`, `seed-*.ts`) must include `loadEnvLocal()` so it works both inside `dev:local` and when invoked directly. See [dev-lessons](../dev-lessons/backend.md).
+> **Every standalone DB script** (`migrate.ts`, `seed.ts`) must include `loadEnvLocal()` so it works both inside `dev:local` and when invoked directly. See [dev-lessons](../dev-lessons/backend.md).
 
 ## OpenAPI Spec Generation
 

@@ -294,9 +294,9 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 **Solution:** Replaced with a simpler `every item has a non-empty subcategory` assertion. Also removed the duplicated subcategory guidance from `plan-context-formatters.ts` (imported `SUBCATEGORY_GUIDANCE` from `prompt-templates.ts` instead).
 **Prevention:** When changing prompt guidance from "prefer this list" to "use as inspiration", immediately check test assertions that assumed the old behavior (percentage-based vocabulary compliance checks).
 
-### [Category] Short Title
+### [Architecture] Static JSON file is the right choice for read-only reference data
 
-**Date:** YYYY-MM-DD
-**Problem:** One sentence describing what went wrong
-**Solution:** One sentence describing the fix
-**Prevention:** How to avoid this in the future
+**Date:** 2026-04-12
+**Problem:** Plan tag taxonomy was stored in two DB tables (`plan_tag_versions` + `plan_tag_options`) with a service layer to assemble the nested JSON. This added migration overhead, seed scripts, a complex `assembleTaxonomyResponse` function, and a DB round-trip on every request — all for data that never changes between deploys.
+**Solution:** Replaced the two tables with a single static JSON file (`src/data/plan-creation-tags.json`) checked into the repo. The service reads it once at import time (cached forever). Migration 0033 drops the two tables. No seed step needed — the file is bundled with the code.
+**Prevention:** Before adding DB tables for reference/configuration data, ask: "Does this data change independently of deploys?" If no → use a static JSON file in `src/data/`. Only reach for the DB when the data must be editable at runtime (e.g. by admins via an API) or when it grows large enough that bundling becomes impractical.
