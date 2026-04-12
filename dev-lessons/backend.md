@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [DB] `migrate.ts` must load `.env.local` — standalone `db:migrate` fails without it
+
+**Date:** 2026-04-12
+**Problem:** Running `npm run db:migrate` standalone (outside of `dev:local`) failed with `"DATABASE_URL_PUBLIC or DATABASE_URL environment variable is required"`. The `seed.ts` script already had a `loadEnvLocal()` helper that reads `.env.local`, but `migrate.ts` relied solely on environment variables being pre-set by the caller. The `dev:local` script works because it sources `.env.local` before calling `db:migrate`, but running `db:migrate` directly (e.g. to apply a single new migration) had no way to find `DATABASE_URL`.
+**Solution:** Added the same `loadEnvLocal()` helper to `migrate.ts`. Now `npm run db:migrate` reads `DATABASE_URL` from `.env.local` automatically (like `seed.ts` already did).
+**Prevention:** Every standalone DB script (`migrate.ts`, `seed.ts`, `seed-*.ts`) must include `loadEnvLocal()` so it works both inside `dev:local` and when invoked directly. When creating a new DB script, copy the pattern from `seed-tags.ts`.
+
 ### [Workflow] Features that add reference/lookup tables must include a prod-safe seed script
 
 **Date:** 2026-04-12

@@ -48,10 +48,22 @@ Key variables:
 
 ### Database setup
 
+**Local** (reads `DATABASE_URL` from `.env.local`):
+
 ```bash
-npm run db:migrate    # run Drizzle migrations
-npm run db:seed       # seed with sample data (optional)
+npm run db:migrate       # apply pending migrations
+npm run db:seed          # seed with sample data (TRUNCATES all tables)
+npm run db:seed:tags     # seed taxonomy only (idempotent, no truncate)
 ```
+
+**Production** (reads `DATABASE_URL_PUBLIC` from `.env`):
+
+```bash
+npm run db:migrate:prod       # apply pending migrations
+npm run db:seed:tags:prod     # seed taxonomy (idempotent, safe to re-run)
+```
+
+> **WARNING:** `npm run db:seed:prod` runs TRUNCATE on all tables. Only use for a full production reset. For reference data, always use the targeted `db:seed:<name>:prod` scripts.
 
 **Seed maintenance:** When adding a new feature or endpoint, update the seed (`src/db/seed.ts`) or review whether an update is needed. See [Backend Rules § Seed Maintenance](../rules/backend.md#6-seed-maintenance).
 
@@ -150,11 +162,13 @@ All routes that require JWT will return 401. Guest invite routes (`/plans/:planI
 | `npm run test:e2e`         | E2E tests only (requires Docker)                             |
 | `npm run test:ai-prompt-quality` | Real AI API — item-suggestion prompt quality (optional; costs tokens; needs `AI_PROVIDER` + key in `.env`) |
 | `npm run db:generate`      | Generate Drizzle migration files                             |
-| `npm run db:migrate`       | Run pending migrations                                       |
+| `npm run db:migrate`       | Run pending migrations (local — loads `.env.local`)          |
+| `npm run db:migrate:prod`  | Run migrations on production (reads `DATABASE_URL_PUBLIC` from `.env`) |
 | `npm run db:studio`        | Open Drizzle Studio                                          |
-| `npm run db:seed`          | Seed database with sample data                               |
-| `npm run db:seed:prod`     | Seed production database via Railway                         |
-| `npm run db:migrate:prod`  | Run migrations on production via Railway                     |
+| `npm run db:seed`          | Seed database with sample data (local — **TRUNCATES all tables**) |
+| `npm run db:seed:prod`     | Seed production database (**TRUNCATES** — use only for full reset) |
+| `npm run db:seed:tags`     | Seed plan tag taxonomy (local — idempotent, no truncate)     |
+| `npm run db:seed:tags:prod`| Seed plan tag taxonomy on production (idempotent, safe)      |
 | `npm run openapi:generate` | Generate `docs/openapi.json` from route schemas              |
 | `npm run openapi:validate` | Validate OpenAPI spec                                        |
 | `npm run railway:logs`     | Fetch production logs from Railway (default: last 24h). Args: `-- <hours> [filter]` |
@@ -176,11 +190,12 @@ Migration files live in `drizzle/` directory.
 
 ### Production database
 
-Railway manages PostgreSQL. Use Railway CLI for production operations:
+Railway manages PostgreSQL. All prod scripts read `DATABASE_URL_PUBLIC` from `.env` (no Railway CLI needed):
 
 ```bash
-npm run db:migrate:prod   # migrate production DB
-npm run db:seed:prod      # seed production DB
+npm run db:migrate:prod       # apply pending migrations to production
+npm run db:seed:tags:prod     # seed reference data (idempotent, safe)
+npm run db:seed:prod          # ⚠️ TRUNCATES all tables — full reset only
 ```
 
 ## OpenAPI Spec Generation
@@ -254,7 +269,8 @@ Three workflow files:
 > 1. Merge the PR to `main`
 > 2. Wait for Railway deploy to complete
 > 3. Run `npm run db:migrate:prod`
-> 4. Smoke-test the affected endpoint
+> 4. If the migration adds reference/lookup tables, run `npm run db:seed:<name>:prod`
+> 5. Smoke-test the affected endpoint
 
 **`branch-protection.yml`** — runs on PRs to `main` and `staging`:
 
