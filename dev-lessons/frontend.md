@@ -4,6 +4,15 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [Logic] AI suggestion ID never wired on item accept
+
+**Date:** 2026-04-14
+**Problem:** Items accepted from the AI suggestions modal always showed source=manual and ai_suggestion_id=null in the DB because aiSuggestionId was never included in the bulk-create payload.
+**Solution:** Added id to itemSuggestionSchema, aiUsageLogId to itemSuggestionsResponseSchema, and aiSuggestionId: suggestion.id in suggestionToItemCreate (fixed in c772605).
+**Prevention:** When the BE ships a linkage field on a response schema, immediately add it to the FE Zod schema AND wire it through every downstream create payload. Add an E2E request-body assertion to lock it in.
+
+---
+
 ### [Arch] Full-bleed sections inside a max-width root layout
 
 **Date:** 2026-04-14
