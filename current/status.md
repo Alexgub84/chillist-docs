@@ -1,9 +1,9 @@
 # Chillist — Current Status
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
-> **Last updated:** 2026-04-12
+> **Last updated:** 2026-04-14
 > **BE version:** ef09c9a — Fix `GET /admin/chatbot-ai-usage` 500 error: raw `db.execute()` date params now passed as ISO strings instead of `Date` objects; removed `commit.mdc` rule (consolidated into `planning.md` Phase 5).
-> **FE version:** 1.35.0 — **Plan tags from API**: tag taxonomy (3-tier conditional selection) is now fetched from `GET /plan-tags` via React Query (`staleTime: Infinity`) instead of a local JSON file. `PlanTagWizard` and `TagChips` show loading/error states; `tag-utils` refactored to accept `tagMap` as parameter; mock server and E2E fixtures updated; `src/data/plan-creation-tags.json` deleted.
+> **FE version:** 1.34.0 — **PostHog production proxy:** analytics requests use same-origin `/ingest` (Cloudflare Pages Function → `us.i.posthog.com` / `us-assets.i.posthog.com`) so production events are not blocked; `ui_host` set for PostHog UI. Local/dev still uses `VITE_PUBLIC_POSTHOG_HOST` (direct). See `guides/frontend.md` § PostHog.
 
 ---
 
@@ -201,7 +201,7 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 - Security headers (Helmet), CORS restricted to frontend URL in production.
 - All input validated with Zod. SQL injection prevented via Drizzle ORM parameterized queries.
 - **Browser session (FE + BE):** The SPA generates a UUID v4 per browser profile, stores it in `localStorage` (`chillist-session-id` + `chillist-session-last-active`), refreshes activity on user interaction (debounced), expires after 15 minutes of inactivity, and clears on explicit sign-out. Every outbound API request sends `X-Session-ID` via `doFetch` / `authFetch`. The BE upserts `sessions` from that header (see Database Tables), correlates logs with `sessionId` + `userId`, and records `session_id` on analytics rows where relevant. Independent of PostHog analytics IDs.
-- **PostHog analytics (FE):** `posthog-js` + `@posthog/react`; client initialized in `src/lib/posthog.ts` (no init in `main.tsx`). `initAnalytics()` registers `session_id` on boot. `identifyUser` / `registerUserContext` / `trackUserSignedIn` on `SIGNED_IN`; `trackUserSignedOut` / `unregisterUserContext` / `resetAnalytics` on `SIGNED_OUT`. `PlanProvider` registers `plan_id` while a plan route is mounted. Disabled when token is placeholder `"token"`. `VITE_POSTHOG_MOCK=true` uses `src/lib/mock-posthog.ts` (no network). Config via `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN` + `VITE_PUBLIC_POSTHOG_HOST`.
+- **PostHog analytics (FE):** `posthog-js` + `@posthog/react`; client initialized in `src/lib/posthog.ts` (no init in `main.tsx`). Production builds set `api_host` to `/ingest` and `ui_host` to `https://us.posthog.com`; `functions/ingest/[[path]].ts` proxies to PostHog US ingest and asset hosts. Dev uses `VITE_PUBLIC_POSTHOG_HOST` (direct). `initAnalytics()` registers `session_id` on boot. `identifyUser` / `registerUserContext` / `trackUserSignedIn` on `SIGNED_IN`; `trackUserSignedOut` / `unregisterUserContext` / `resetAnalytics` on `SIGNED_OUT`. `PlanProvider` registers `plan_id` while a plan route is mounted. Disabled when token is placeholder `"token"`. `VITE_POSTHOG_MOCK=true` uses `src/lib/mock-posthog.ts` (no network). Token: `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN`.
 
 ### Database Tables
 
@@ -240,8 +240,8 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 | Internal       | `GET /api/internal/plans`                                                         | List plans for a resolved chatbot user — returns `InternalPlanSummary[]` with `id`, `name`, `date`, `role`, `participantCount`, `itemCount`, `completedItemCount`. Requires `x-service-key` + `x-user-id`. Chatbot use only. |
 | Internal       | `GET /api/internal/plans/:planId`                                                 | Full plan detail for chatbot — participants (`id`, `name`, `role`) and items with chatbot `status`/`assignee`/`category` (`gear`/`food`). Caller must be a plan participant. `401`/`403`/`404` as documented in OpenAPI.     |
 | Internal       | `PATCH /api/internal/items/:itemId/status`                                        | Body `{ status: done \| pending }` — upserts caller’s `assignmentStatusList` entry (`done`→`purchased`). Caller must be a participant on the item’s plan.                                                                    |
-| Internal       | `GET /api/internal/plan-tags`                                                     | Full plan tag taxonomy (v1.4) for chatbot use. JSON includes `selection_by_tier` (explicit single vs multi per tier/flag/axis). Served from `src/data/plan-creation-tags.json`. Requires `x-service-key` only.              |
-| Plan Tags      | `GET /plan-tags`                                                                  | Full plan tag taxonomy v1.4 (`selection_by_tier` + nested `select` fields, universal flag contradictions, tier3 `default_select` / `multi_select_parents`). Served from static JSON file. Requires JWT.                       |
+| Internal       | `GET /api/internal/plan-tags`                                                     | Full plan tag taxonomy for chatbot use. Served from static JSON file (`src/data/plan-creation-tags.json`). Requires `x-service-key` only.                                                                                   |
+| Plan Tags      | `GET /plan-tags`                                                                  | Full plan tag taxonomy (tier1 archetypes, universal flags, tier2 axes, tier3 specifics, item generation bundles). Served from static JSON file bundled with server. Requires JWT.                                            |
 | Auth           | `GET /me`, `GET /profile`, `PATCH /profile`, `POST /sync-profile`, `POST /logout` | Current user, read/update preferences, sync from Supabase, end browser session                                                                                                                                               |
 | Expenses       | `POST`, `GET`, `PATCH /:id`, `DELETE /:id`                                        | Create, list, update, delete expenses                                                                                                                                                                                        |
 | Admin          | `GET /admin/plans`, `GET /admin/ai-usage`, `GET /admin/chatbot-ai-usage`          | Admin-only: list all plans; item-suggestion AI usage logs; chatbot AI usage logs (separate table, read-only)                                                                                                                 |
@@ -263,7 +263,7 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 See [MVP Target](mvp-target.md) for the full breakdown. Key gaps:
 
 - WhatsApp send list — FE UI done, BE `/api/send-list` endpoint implemented; actual Green API delivery integration in progress
-- WhatsApp chatbot — Phase 3 complete + Phase 4 BE: `GET /api/internal/plans`, `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status`, `GET /api/internal/plan-tags` (taxonomy for create-plan; see [whatsapp-chatbot-spec](../specs/whatsapp-chatbot-spec.md#get-apiinternalplan-tags-implemented)) implemented; AI layer (Vercel AI SDK, tool definitions) pending
+- WhatsApp chatbot — Phase 3 complete + Phase 4 BE: `GET /api/internal/plans`, `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status` implemented; AI layer (Vercel AI SDK, tool definitions) pending
 - Error tracking and structured logging (BE + FE)
 - Analytics event collection (BE + FE)
 - Health monitoring and alerts
