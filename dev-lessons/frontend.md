@@ -4,6 +4,35 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [Arch] Full-bleed sections inside a max-width root layout
+
+**Date:** 2026-04-14
+**Problem:** `__root.tsx` wraps `<Outlet />` in `max-w-7xl mx-auto px-*`, so marketing sections with edge-to-edge background colors looked inset instead of spanning the viewport.
+**Solution:** Define a `full-bleed` `@utility` in `src/index.css` (`100vw` + negative `margin-left`/`margin-right` using `50vw` centering). Wrap each full-bleed band in that class, then nest an inner `max-w-7xl mx-auto px-*` for content. Offset the home route with negative horizontal margin on its root wrapper so the page aligns with the header while sections break out.
+**Prevention:** Prefer this pattern over duplicating root layouts per route unless an entire subtree must ignore the shell.
+
+---
+
+### PostHog `401` on `/ingest/flags/` (“invalid API key”) behind the Pages proxy
+
+**Date:** 2026-04-14
+**Problem:** After deploy, browser showed `POST …/ingest/flags/ … 401` and PostHog’s error body about an invalid API key, even though the project token was correct.
+**Root cause:** The ingest proxy forwarded **all** incoming request headers to `us.i.posthog.com`. Stray headers (e.g. app `Authorization` / `x-api-key`, `cf-*`, or a mismatched `host` / `content-length` chain) can break PostHog’s validation for the flags endpoint. A second common cause is **region mismatch**: EU project token + US ingest host (`us.i.posthog.com`) also yields auth-style errors.
+**Solution:** Rebuild the proxy to forward only an **allowlist** (`content-type`, `accept`, `accept-language`, `user-agent`, `X-Forwarded-For` from `CF-Connecting-IP`). Optional Cloudflare env `POSTHOG_INGEST_HOST` / `POSTHOG_ASSET_HOST` for EU. Documented in `guides/frontend.md`.
+**Lesson:** Reverse proxies to third-party analytics should not blindly forward client headers; treat EU/US PostHog regions as strict pairs (token + ingest host + asset host + `ui_host`).
+
+---
+
+### PostHog `ERR_BLOCKED_BY_CONTENT_BLOCKER` on `/ingest/static/posthog-recorder.js`
+
+**Date:** 2026-04-14
+**Problem:** Production console showed `GET …/ingest/static/posthog-recorder.js net::ERR_BLOCKED_BY_CONTENT_BLOCKER` even with a first-party `/ingest` Cloudflare proxy.
+**Root cause:** That Chrome error indicates a **browser content blocker** (extensions, Brave Shields, Safari content blockers), not Cloudflare or the Pages Function. Lists match PostHog’s recorder script name and analytics paths; same-origin proxy does not hide the filename from extensions.
+**Solution:** Default **`disable_session_recording: true`** in `src/lib/posthog.ts` unless `VITE_PUBLIC_POSTHOG_SESSION_RECORDING=true`. Session replay is opt-in; events/pageviews do not need the recorder script. Documented in `guides/frontend.md`.
+**Lesson:** Do not treat `ERR_BLOCKED_BY_CONTENT_BLOCKER` as a broken deploy — reproduce in a clean profile without extensions. If replay matters, enable the env var knowing many users will still block the script.
+
+---
+
 ### [Test] E2E error-state tests require `retry: false` on React Query hooks
 
 **Date:** 2026-04-12
