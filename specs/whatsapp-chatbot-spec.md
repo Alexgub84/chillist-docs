@@ -438,7 +438,7 @@ Response 404:
 
 #### GET /api/internal/plan-tags (implemented)
 
-Returns the **full plan-creation tag taxonomy** as a single JSON document. Same payload as the app’s `GET /plan-tags` (JWT on public route; here only service key). Source of truth in the app BE repo: `src/data/plan-creation-tags.json` (bundled at deploy). OpenAPI: `PlanTagsResponse` in `chillist-be/docs/openapi.json`.
+Returns the **full plan-creation tag taxonomy** as a single JSON document — same payload as the app’s public `GET /plan-tags` (unauthenticated on that route). This internal route requires `x-service-key` only. Source of truth: `src/data/plan-creation-tags.json` (bundled at deploy). OpenAPI: `PlanTagsResponse` in `chillist-be/docs/openapi.json`.
 
 **Auth**
 

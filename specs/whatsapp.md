@@ -211,7 +211,7 @@ All under `/api/internal/*`, `x-service-key` = `CHATBOT_SERVICE_KEY`, plus `x-us
 | `GET` | `/api/internal/plans` | `x-service-key` + `x-user-id` | List user’s plans with summary counts (undated or `startDate` ≥ now UTC; past-dated plans omitted) |
 | `GET` | `/api/internal/plans/:planId` | `x-service-key` + `x-user-id` | Full plan: participants and items (chatbot field names; membership required) |
 | `PATCH` | `/api/internal/items/:itemId/status` | `x-service-key` + `x-user-id` | Body `{ status: "done" \| "pending" }` — upserts caller’s assignment (`done` maps to `purchased` in DB) |
-| `GET` | `/api/internal/plan-tags` | `x-service-key` only | **Global reference data** — full plan-creation tag taxonomy (same JSON as `GET /plan-tags` for the app). No user context; safe to cache in the WhatsApp service for the process lifetime. |
+| `GET` | `/api/internal/plan-tags` | `x-service-key` only | **Global reference data** — full bundled taxonomy JSON (same document as public `GET /plan-tags`). No user context; safe to cache for the process lifetime. |
 
 **Plan tags (`GET /api/internal/plan-tags`) — how the WhatsApp service should use it**
 
