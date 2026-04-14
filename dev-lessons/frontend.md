@@ -4,6 +4,16 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [Infra] PostHog production events silently dropped — gzip compression through Pages Function proxy
+
+**Date:** 2026-04-14
+**Problem:** Zero production events appeared in PostHog despite the proxy returning `{"status":"Ok"}` for every request. All 1,231 events over 30 days were from localhost only.
+**Root cause:** The PostHog JS SDK uses `compression=gzip-js` by default, sending gzip-compressed request bodies. The Cloudflare Pages Function proxy (with `_middleware.ts` calling `next()` in the chain) corrupts binary gzip bodies during forwarding. PostHog's `/e/` endpoint returns `{"status":"Ok"}` regardless of payload validity but silently drops events it cannot decompress. Uncompressed events through the same proxy arrive fine. The official PostHog docs show this pattern for standalone Cloudflare Workers — not Pages Functions with middleware.
+**Solution:** Added `disable_compression: true` to `posthogJs.init()` in `src/lib/posthog.ts`. The SDK now sends plain JSON bodies which the proxy forwards correctly.
+**Prevention:** When using a Cloudflare Pages Function as a reverse proxy for a third-party service, test with both compressed and uncompressed payloads. Pages Functions with middleware may not preserve binary request bodies. If gzip is needed long-term, consider migrating to a standalone Cloudflare Worker on a subdomain (matching the official PostHog proxy docs) or skipping middleware for `/ingest/*` paths.
+
+---
+
 ### [Logic] AI suggestion ID never wired on item accept
 
 **Date:** 2026-04-14
@@ -60,7 +70,6 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 #### How the generic wizard works
 
 **Data flow:**
-
 1. `usePlanTags()` lazy-fetches `GET /plan-tags` on first wizard open (`staleTime: Infinity`, `retry: false`).
 2. The hook returns `tagData: PlanTagData` (Zod-validated).
 3. `buildSteps(tagData, selections)` is called on every render. It iterates the schema in this fixed order:
@@ -80,13 +89,11 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 | tier3 | check `tier3.multi_select_parents.includes(tier2Id)` — if yes, `multi`; otherwise, `tier3.default_select` (default: `"single"`) |
 
 **Contradiction logic:**
-
 - If a flag has a `contradictions: [string, string][]` array, `buildSteps` calls `computeDisabledIds(currentFlagSelections, contradictions)`.
 - This returns a `Set<string>` of option IDs that must be disabled in the UI.
 - When the conflicting selection is removed, the disabled set recalculates automatically (no explicit re-enable step).
 
 **Auto-advance:**
-
 - Steps with `select: "single"` auto-advance synchronously on click (no Next button needed).
 - Steps with `select: "multi"` show a Next button. The user must explicitly advance.
 
@@ -118,7 +125,6 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 7. Run the full validation suite: `prettier → eslint → tsc → vitest run`.
 
 **Prevention:**
-
 - Never hardcode option IDs, axis names, or tier names in `PlanTagWizard.tsx`. All iteration must read from `tagData`.
 - The `selections` state is a `Record<string, string[]>` — the key is the step's `key` field (e.g., `"tier1"`, `"destination_scope"`, `"sleep"`, `"tier3_tent"`). Add new step types following this convention.
 - Run `tests/unit/data/plan-creation-tags.test.ts` after every mock-data update to catch structural regressions before they reach production.

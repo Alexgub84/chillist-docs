@@ -17,14 +17,14 @@ After creating a plan, users can trigger AI to generate a suggested packing/food
 
 All fields are optional. AI degrades gracefully when some are absent.
 
-| Signal | Source | Derived value |
-|---|---|---|
-| `startDate` / `endDate` | `plans` table | Nights count, trip duration in days |
-| `location` (name, country, region) | `plans.location` JSONB | Destination context string |
-| `tags[]` | `plans.tags` | Activity type (camping, beach, skiing, etc.) |
-| `estimatedAdults` | `plans` table | Adult count |
-| `estimatedKids` | `plans` table | Child count |
-| Dietary summary | `participants` rows with `rsvp_status` in `confirmed` or `pending` | Aggregated from `dietary_members` (per-person diets) or legacy `food_preferences` JSON string / plain diet keyword — formatted human-readable line injected into the prompt as **Dietary needs** |
+| Signal                             | Source                                                             | Derived value                                                                                                                                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `startDate` / `endDate`            | `plans` table                                                      | Nights count, trip duration in days                                                                                                                                                              |
+| `location` (name, country, region) | `plans.location` JSONB                                             | Destination context string                                                                                                                                                                       |
+| `tags[]`                           | `plans.tags`                                                       | Activity type (camping, beach, skiing, etc.)                                                                                                                                                     |
+| `estimatedAdults`                  | `plans` table                                                      | Adult count                                                                                                                                                                                      |
+| `estimatedKids`                    | `plans` table                                                      | Child count                                                                                                                                                                                      |
+| Dietary summary                    | `participants` rows with `rsvp_status` in `confirmed` or `pending` | Aggregated from `dietary_members` (per-person diets) or legacy `food_preferences` JSON string / plain diet keyword — formatted human-readable line injected into the prompt as **Dietary needs** |
 
 ---
 
@@ -57,23 +57,23 @@ All fields are optional. AI degrades gracefully when some are absent.
 
 **Error responses:**
 
-| Status | When |
-|---|---|
-| 401 | JWT missing or invalid |
-| 404 | Plan not found or caller is not a participant |
-| 503 | AI provider threw an error (timeout, rate limit, etc.) — error name starts with `AI_` |
-| 500 | Non-AI error (DB failure, unexpected error) |
+| Status | When                                                                                  |
+| ------ | ------------------------------------------------------------------------------------- |
+| 401    | JWT missing or invalid                                                                |
+| 404    | Plan not found or caller is not a participant                                         |
+| 503    | AI provider threw an error (timeout, rate limit, etc.) — error name starts with `AI_` |
+| 500    | Non-AI error (DB failure, unexpected error)                                           |
 
 ### `ItemSuggestion` shape
 
-| Field | Type | Constraint |
-|---|---|---|
-| `name` | `string` | Free text (AI-generated) |
-| `category` | `enum` | `group_equipment`, `personal_equipment`, `food` — from `ITEM_CATEGORY_VALUES` in `src/db/schema.ts` |
+| Field         | Type     | Constraint                                                                                                                                                                                                 |
+| ------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | `string` | Free text (AI-generated)                                                                                                                                                                                   |
+| `category`    | `enum`   | `group_equipment`, `personal_equipment`, `food` — from `ITEM_CATEGORY_VALUES` in `src/db/schema.ts`                                                                                                        |
 | `subcategory` | `string` | Free text in the plan language. The prompt lists example subcategories as inspiration; the model may invent new labels (e.g. plan-specific gear groupings) when they fit the trip better than any example. |
-| `quantity` | `number` | Positive integer. `personal_equipment` items use quantity=1 (assigned per participant) |
-| `unit` | `enum` | `pcs`, `kg`, `g`, `lb`, `oz`, `l`, `ml`, `m`, `cm`, `pack`, `set` — from `UNIT_VALUES` in `src/db/schema.ts` |
-| `reason` | `string` | Short explanation of why the AI suggested this item |
+| `quantity`    | `number` | Positive integer. `personal_equipment` items use quantity=1 (assigned per participant)                                                                                                                     |
+| `unit`        | `enum`   | `pcs`, `kg`, `g`, `lb`, `oz`, `l`, `ml`, `m`, `cm`, `pack`, `set` — from `UNIT_VALUES` in `src/db/schema.ts`                                                                                               |
+| `reason`      | `string` | Short explanation of why the AI suggested this item                                                                                                                                                        |
 
 ---
 
@@ -171,15 +171,18 @@ Prompt assembly in `src/services/ai/item-suggestions/build-prompt.ts` uses templ
 Every AI request logged at `info` level in the route handler:
 
 ```typescript
-request.log.info({
-  planId,
-  lang,
-  modelId: model.modelId,
-  promptLength: result.prompt.length,
-  suggestionsCount: result.suggestions.length,
-  usage: result.usage,
-  durationSec,
-}, `AI item suggestions generated — … (${model.modelId})`)
+request.log.info(
+  {
+    planId,
+    lang,
+    modelId: model.modelId,
+    promptLength: result.prompt.length,
+    suggestionsCount: result.suggestions.length,
+    usage: result.usage,
+    durationSec,
+  },
+  `AI item suggestions generated — … (${model.modelId})`,
+);
 ```
 
 Failure: `request.log.error({ err, planId }, 'Failed to generate AI suggestions')` → 503 or 500.
@@ -188,11 +191,11 @@ Failure: `request.log.error({ err, planId }, 'Failed to generate AI suggestions'
 
 ## 7. Environment Variables
 
-| Variable | Dev default | Production |
-|---|---|---|
-| `AI_PROVIDER` | `anthropic` | required — `anthropic` or `openai` |
-| `ANTHROPIC_API_KEY` | optional | required when `AI_PROVIDER=anthropic` |
-| `OPENAI_API_KEY` | optional | required when `AI_PROVIDER=openai` |
+| Variable            | Dev default | Production                            |
+| ------------------- | ----------- | ------------------------------------- |
+| `AI_PROVIDER`       | `anthropic` | required — `anthropic` or `openai`    |
+| `ANTHROPIC_API_KEY` | optional    | required when `AI_PROVIDER=anthropic` |
+| `OPENAI_API_KEY`    | optional    | required when `AI_PROVIDER=openai`    |
 
 Env guards in `src/env.ts` (`.refine()`):
 
@@ -211,15 +214,15 @@ Uses `MockLanguageModelV2` from `ai/test` — drop-in replacement for any `Langu
 
 ### Unit tests
 
-| File | What it tests |
-|---|---|
-| `tests/unit/ai/subcategories.test.ts` | Non-empty arrays, regression guard for all known seed values |
-| `tests/unit/ai/plan-context-formatters.test.ts` | All formatter functions with field combos |
-| `tests/unit/ai/env-guards.test.ts` | AI env variable validation guards |
-| `tests/unit/ai/item-suggestions/output-schema.test.ts` | Zod schema parsing, enum validation, rejection of invalid data |
-| `tests/unit/ai/item-suggestions/build-prompt.test.ts` | Prompt content for various plan scenarios |
-| `tests/unit/ai/dietary-summary.test.ts` | Aggregation of participant diets into prompt text |
-| `tests/unit/ai/item-suggestions/generate.test.ts` | `generateItemSuggestions` with MockLanguageModelV2 — happy path, usage, empty, invalid JSON, invalid category, model error |
+| File                                                   | What it tests                                                                                                              |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `tests/unit/ai/subcategories.test.ts`                  | Non-empty arrays, regression guard for all known seed values                                                               |
+| `tests/unit/ai/plan-context-formatters.test.ts`        | All formatter functions with field combos                                                                                  |
+| `tests/unit/ai/env-guards.test.ts`                     | AI env variable validation guards                                                                                          |
+| `tests/unit/ai/item-suggestions/output-schema.test.ts` | Zod schema parsing, enum validation, rejection of invalid data                                                             |
+| `tests/unit/ai/item-suggestions/build-prompt.test.ts`  | Prompt content for various plan scenarios                                                                                  |
+| `tests/unit/ai/dietary-summary.test.ts`                | Aggregation of participant diets into prompt text                                                                          |
+| `tests/unit/ai/item-suggestions/generate.test.ts`      | `generateItemSuggestions` with MockLanguageModelV2 — happy path, usage, empty, invalid JSON, invalid category, model error |
 
 ### Integration tests
 
@@ -238,6 +241,7 @@ Uses `MockLanguageModelV2` from `ai/test` — drop-in replacement for any `Langu
 5 scenarios: camping trip (3 nights, family), beach day (adults only), hotel city break, minimal context, winter camping.
 
 Each scenario validates:
+
 - Valid category/unit enum values
 - Non-empty name and reason
 - Every item has a non-empty subcategory (custom labels allowed)
@@ -255,8 +259,8 @@ Run manually: `npm run test:ai-prompt-quality` (see `scripts/test-ai-prompt-qual
 2. On the plan page, user clicks "Suggest Items" button
 3. FE calls `POST /plans/:planId/ai-suggestions`
 4. Loading state shown while AI generates
-5. Response arrives → preview modal shows suggested items with checkboxes
-6. User selects/deselects items, adjusts quantities if needed
+5. Response arrives → preview modal shows suggested items grouped by category and subcategory, with select/deselect all at category and subcategory level plus per-item checkboxes
+6. User selects/deselects items (by line, subcategory, or whole category), adjusts quantities if needed
 7. User confirms → FE calls `POST /plans/:planId/items/bulk` with selected items
 8. Items appear in the plan
 
