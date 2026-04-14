@@ -294,6 +294,15 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 **Solution:** Replaced with a simpler `every item has a non-empty subcategory` assertion. Also removed the duplicated subcategory guidance from `plan-context-formatters.ts` (imported `SUBCATEGORY_GUIDANCE` from `prompt-templates.ts` instead).
 **Prevention:** When changing prompt guidance from "prefer this list" to "use as inspiration", immediately check test assertions that assumed the old behavior (percentage-based vocabulary compliance checks).
 
+### [Schema Design] Encode mutual-exclusion in the data file, not just in FE logic
+
+**Date:** 2026-04-11
+**Problem:** The `plan-creation-tags.json` taxonomy defined several multi-select groups (e.g. `group_character`, tier3 drill-downs) where options were logically contradictory — e.g. selecting both "Chill / low-key" and "Party-oriented" simultaneously, or selecting both "Full board" and "Half board". These contradictions lived only in FE/product knowledge, not in the schema, so they were easy to miss.
+**Solution:** Added two new structural fields to the v1.3 schema:
+1. `universal_flags[*].contradictions` — an array of `[idA, idB]` pairs. FE deselects `idB` when `idA` is selected and vice versa.
+2. `tier3.multi_select_parents` — array of tier2 option ids whose tier3 groups allow multi-select. All other tier3 groups default to single-select (radio). Currently only `booked_activity` is multi (its options are additive, not exclusive).
+**Prevention:** When designing any multi-select group, explicitly decide whether its options are additive facts or mutually exclusive alternatives. Encode that decision in the schema so every consumer (FE, chatbot, future APIs) benefits automatically — don't leave it to convention.
+
 ### [Architecture] Static JSON file is the right choice for read-only reference data
 
 **Date:** 2026-04-12
