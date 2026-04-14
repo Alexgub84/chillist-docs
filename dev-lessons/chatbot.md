@@ -14,6 +14,14 @@ Architecture, config, and integration choices made during development — the "w
 
 <!-- Add new Decision entries at the top of this section -->
 
+### [Decision] Resolve bilingual labels in the tool layer, not in the AI prompt
+
+**Date:** 2026-04-14
+**Context:** The `GET /api/internal/plan-tags` endpoint returns the full taxonomy with every label as `{ en, he }`. The AI model needs a single-language view — passing bilingual objects would double the payload, require the model to reason about language selection, and risk it picking the wrong language.
+**Decision:** The `getPlanTags` tool resolves all bilingual labels to a single string before returning the result to the model. A `resolveTagsForLang(tags, lang)` helper in `tools.ts` walks the full taxonomy structure (tier1, universal_flags, tier2_axes, tier3, item_generation_bundles) and replaces every `{ en, he }` with the appropriate string. `ctx.lang ?? "en"` is the fallback. Option `id` values and structural metadata (select, shown_for_tier1, defaults_by_tier1, contradictions, etc.) are preserved unchanged.
+**Reason:** The tool layer is the right place for this translation: it keeps the AI prompt shorter, eliminates a class of model reasoning errors (wrong language), and is fully testable with fixed fixtures.
+**Reuse tip:** Any tool that fetches bilingual data should resolve to one language before returning. Pass `ctx.lang ?? "en"` as the resolution key. `item_generation_bundles` items are `{ en, he }` directly (no `label` wrapper) — handle them separately from option objects.
+
 ### [Decision] maxRetries bumped to 4 for Anthropic API calls (5 total attempts)
 
 **Date:** 2026-04-09

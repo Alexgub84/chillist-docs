@@ -97,9 +97,9 @@ src/
     │   ├── noop-green-api.client.ts  # createNoopGreenApiClient (dev mode)
     │   └── fake-green-api.client.ts  # createFakeGreenApiClient (tests) + getSentButtons()
     ├── internal-api/
-    │   ├── types.ts          # IInternalApiClient, IdentifyResult, PlanSummary, PlansResult
+    │   ├── types.ts          # IInternalApiClient, IdentifyResult, PlanSummary, PlansResult, PlanTagsResponse
     │   ├── internal-api.client.ts       # createHttpInternalApiClient (real HTTP)
-    │   └── fake-internal-api.client.ts  # createFakeInternalApiClient (tests) + setPlans()
+    │   └── fake-internal-api.client.ts  # createFakeInternalApiClient (tests) + setPlans(), setPlanTags()
     ├── message-store/
     │   ├── types.ts          # IMessageStore, ChatbotMessage, CreateMessageData
     │   ├── postgres-message-store.ts  # createPostgresMessageStore (real DB)
@@ -708,8 +708,9 @@ const t1 = await runTurn(deps, sessionId, USER_ALEX, "Alex", "camping", usageLog
 - [x] AI service structure — `IAiClient`, `createVercelAiClient`, `createFakeAiClient`, `createNoopAiClient`, plugin + DI
 - [x] `chatbot_messages` table — conversation history for AI context window (`IMessageStore` + postgres + fake)
 - [x] `chatbot_ai_usage` table — per-message AI cost, token, and tool tracking (`IUsageLogger` + postgres + fake)
-- [x] AI conversation tools — `getMyPlans`, `getPlanDetails(planName)`, `updateItemStatus(itemName)` in `src/conversation/tools.ts`; all tools accept human-readable names (no UUIDs); `IPlanContextStore` resolves name→ID internally; system prompt in `src/conversation/system-prompt.ts`; `IInternalApiClient` implements app BE internal routes
-- [x] Internal API data routes — `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status` (app BE)
+- [x] AI conversation tools — `getMyPlans`, `getPlanDetails(planName)`, `updateItemStatus(itemName)`, `createPlan`, `getPlanTags` in `src/conversation/tools.ts`; all tools accept human-readable names (no UUIDs); `IPlanContextStore` resolves name→ID internally; system prompt in `src/conversation/system-prompt.ts`; `IInternalApiClient` implements app BE internal routes
+- [x] Internal API data routes — `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status`, `GET /api/internal/plan-tags` (app BE)
+- [x] `getPlanTags` tool — fetches full plan-creation taxonomy from `GET /api/internal/plan-tags` and resolves all bilingual `{ en, he }` labels to the user's language before returning to the model; no `x-user-id` required (global reference data)
 - [ ] Group sessions (linked plan, shared message history) — Phase 7
 
 ### Ops: chatbot Postgres migrations
