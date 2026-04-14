@@ -13,6 +13,80 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [Arch] Plan tag wizard is fully schema-driven — adding or changing tiers requires no FE code changes
+
+**Date:** 2026-04-12
+**Problem / Background:** The wizard previously had layout concerns baked into components (`FlagSection`, `AxisSection`), with multi-select mode and contradiction rules hardcoded. This meant every BE taxonomy change required a FE code change to pick up new rules.
+**Solution:** The wizard was redesigned around a `buildSteps(tagData, selections) → WizardStep[]` function that reads all rendering rules from the API response and returns an ordered, flat array of screens. Each `WizardStep` carries everything a generic `StepScreen` component needs to render it — no branching per tier type in render code.
+
+#### How the generic wizard works
+
+**Data flow:**
+
+1. `usePlanTags()` lazy-fetches `GET /plan-tags` on first wizard open (`staleTime: Infinity`, `retry: false`).
+2. The hook returns `tagData: PlanTagData` (Zod-validated).
+3. `buildSteps(tagData, selections)` is called on every render. It iterates the schema in this fixed order:
+   - One `Tier1Step` from `tier1.options`
+   - One `FlagStep` per entry in `universal_flags` (e.g. `destination_scope`, `group_character`)
+   - One `AxisStep` per entry in `tier2_axes` whose `shown_for_tier1` array contains the currently selected tier1 id
+   - One `Tier3Step` per tier2 option id (from all axis selections) that has children in `tier3.options_by_parent`
+   - One `SummaryStep` at the end
+4. The resulting array is stored as a computed value; `stepIndex` (integer) tracks which screen is visible.
+
+**Select mode — source of truth is always the JSON:**
+| Tier | Rule |
+|------|------|
+| tier1 | always `single` (auto-advance on click) |
+| universal_flags | read `flag.select` from the flag object (`"single"` or `"multi"`) |
+| tier2_axes | read `axis.select` from the axis object |
+| tier3 | check `tier3.multi_select_parents.includes(tier2Id)` — if yes, `multi`; otherwise, `tier3.default_select` (default: `"single"`) |
+
+**Contradiction logic:**
+
+- If a flag has a `contradictions: [string, string][]` array, `buildSteps` calls `computeDisabledIds(currentFlagSelections, contradictions)`.
+- This returns a `Set<string>` of option IDs that must be disabled in the UI.
+- When the conflicting selection is removed, the disabled set recalculates automatically (no explicit re-enable step).
+
+**Auto-advance:**
+
+- Steps with `select: "single"` auto-advance synchronously on click (no Next button needed).
+- Steps with `select: "multi"` show a Next button. The user must explicitly advance.
+
+#### What the FE adapts to automatically (no code change needed)
+
+- New option added to an existing tier1, flag, axis, or tier3 group → shows up in the wizard.
+- New flag added to `universal_flags` → a new step appears in the wizard in iteration order.
+- New axis added to `tier2_axes` → appears as a step for the relevant tier1 selections.
+- New tier3 parent/child group added to `tier3.options_by_parent` → a new tier3 step appears after the axis step that selects the parent.
+- `select` field changed on a flag or axis (`"single"` ↔ `"multi"`) → wizard uses the new mode automatically.
+- New entry added to `tier3.multi_select_parents` → that tier3 group switches to multi-select.
+- New pair added to `group_character.contradictions` → that pair is disabled/re-enabled automatically.
+
+#### What requires a FE code change
+
+- **Entirely new tier type** (e.g., a `tier4` block with its own top-level key in the JSON) — `buildSteps` needs a new branch to handle the new structure and emit new `WizardStep` entries.
+- **New selection rule shape** (e.g., `max_select: N`) — needs to be read in `buildSteps` and enforced in `handleSelect`.
+- **New schema field that changes navigation order** — `buildSteps` processes tiers in a hardcoded order (tier1 → flags → axes → tier3 → summary); reordering requires a code change.
+- **New `contradictions`-style rule on a type other than flags** — `computeDisabledIds` is only called for `FlagStep`s today.
+
+#### Adding a new tier — checklist for developers
+
+1. **BE adds the new tier** to the JSON (e.g., `tier4`) with a `select` field and an `options` array or map.
+2. **Update `src/core/schemas/plan-tags.ts`** — add a Zod schema for the new tier and add it to `planTagsSchema`.
+3. **Update `buildSteps` in `src/components/PlanTagWizard.tsx`** — add a new block that iterates the new tier's data and pushes `WizardStep` objects. Define a new `WizardStep` variant type if needed.
+4. **Update `api/mock-plan-tags.ts`** — add mock data for the new tier.
+5. **Update `tests/unit/data/plan-creation-tags.test.ts`** — add assertions for the new tier's structure and schema compliance.
+6. **Add unit tests** in `PlanTagWizard.test.tsx` to cover the new step type and its navigation.
+7. Run the full validation suite: `prettier → eslint → tsc → vitest run`.
+
+**Prevention:**
+
+- Never hardcode option IDs, axis names, or tier names in `PlanTagWizard.tsx`. All iteration must read from `tagData`.
+- The `selections` state is a `Record<string, string[]>` — the key is the step's `key` field (e.g., `"tier1"`, `"destination_scope"`, `"sleep"`, `"tier3_tent"`). Add new step types following this convention.
+- Run `tests/unit/data/plan-creation-tags.test.ts` after every mock-data update to catch structural regressions before they reach production.
+
+---
+
 ### [Arch] Plan tag taxonomy migrated from local JSON to `GET /plan-tags` API
 
 **Date:** 2026-04-12

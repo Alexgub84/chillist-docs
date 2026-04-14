@@ -3,7 +3,7 @@
 > **Status:** In Progress — Phase 4 core tools shipped (plan list, plan detail, item status); polish/hardening pending
 > **Scope:** This document defines the chatbot as a standalone service that communicates with the existing Chillist app backend via internal HTTP API. No implementation code is included.
 > **Prerequisite:** WhatsApp Integration Phase 1 & 2 (notifications + list sharing via Green API) must be complete before chatbot work begins.
-> **Last updated:** 2026-04-14 — Documented `GET /api/internal/plan-tags` (taxonomy JSON, bilingual labels, tier flow, contradictions, tier3 `multi_select_parents`). Added `selection_by_tier` + tier3 `default_select` (v1.4). Clarified 2026-04-07: `POST /api/internal/auth/identify` resolves phone via `users.phone` (see [phone-management.md](./phone-management.md)), not `participants.contact_phone` alone.
+> **Last updated:** 2026-04-14 — Taxonomy **v1.5:** dinner/party no longer show Tier 2 `food_strategy` (venue drill-down covers food); added Tier 3 under `rented_space` (catered / potluck / ordering in). Earlier: documented `GET /api/internal/plan-tags` (bilingual labels, tier flow, contradictions, tier3 `multi_select_parents`); v1.4 added `selection_by_tier` + tier3 `default_select`. Clarified 2026-04-07: `POST /api/internal/auth/identify` resolves phone via `users.phone` (see [phone-management.md](./phone-management.md)), not `participants.contact_phone` alone.
 
 ---
 
