@@ -3,7 +3,7 @@
 > **Status:** In Progress — Phase 4 core tools shipped (plan list, plan detail, item status); polish/hardening pending
 > **Scope:** This document defines the chatbot as a standalone service that communicates with the existing Chillist app backend via internal HTTP API. No implementation code is included.
 > **Prerequisite:** WhatsApp Integration Phase 1 & 2 (notifications + list sharing via Green API) must be complete before chatbot work begins.
-> **Last updated:** 2026-04-07 — Clarified registered-user identification: `POST /api/internal/auth/identify` resolves phone via `users.phone` (see [phone-management.md](./phone-management.md)), not `participants.contact_phone` alone.
+> **Last updated:** 2026-04-14 — Documented `GET /api/internal/plan-tags` (taxonomy JSON, bilingual labels, tier flow, contradictions, tier3 `multi_select_parents`). Clarified 2026-04-07: `POST /api/internal/auth/identify` resolves phone via `users.phone` (see [phone-management.md](./phone-management.md)), not `participants.contact_phone` alone.
 
 ---
 
@@ -21,7 +21,7 @@
 
 > Phases 2–5 each require corresponding **app BE** work (internal routes, internal-auth plugin). Those BE changes will be called out in each phase's plan.
 > Phase 3 app BE work is complete: `POST /api/internal/auth/identify` implemented with registered + guest user support.
-> Phase 4 app BE: `GET /api/internal/plans`, `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status` implemented (schemas in `src/schemas/internal.schema.ts`). Chatbot client: `getPlans`, `getPlanDetails`, `updateItemStatus` on `IInternalApiClient`.
+> Phase 4 app BE: `GET /api/internal/plans`, `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status`, `GET /api/internal/plan-tags` implemented (plan-tags schema in `src/schemas/plan-tags.schema.ts`). Chatbot client: `getPlans`, `getPlanDetails`, `updateItemStatus` on `IInternalApiClient`; add `getPlanTags` when implementing create-plan via chatbot.
 
 ---
 
@@ -435,6 +435,70 @@ Response 403:
 Response 404:
   { "message": "Item not found" }
 ```
+
+#### GET /api/internal/plan-tags (implemented)
+
+Returns the **full plan-creation tag taxonomy** as a single JSON document. Same payload as the app’s `GET /plan-tags` (JWT on public route; here only service key). Source of truth in the app BE repo: `src/data/plan-creation-tags.json` (bundled at deploy). OpenAPI: `PlanTagsResponse` in `chillist-be/docs/openapi.json`.
+
+**Auth**
+
+```
+Request:
+  Header: x-service-key: <CHATBOT_SERVICE_KEY>
+  (No x-user-id — global reference data, not user-specific.)
+```
+
+**Response 200**
+
+The body is the full taxonomy. Top-level keys (stable contract):
+
+| Key | Role |
+| --- | --- |
+| `version` | Taxonomy version string (e.g. `"1.3"`). Consumers may cache the doc and compare versions after deploy. |
+| `description` | Human summary of the schema. |
+| `structural_contract` | **Read this first** — guarantees, safe vs breaking changes. |
+| `design_principles` | Product intent (short). |
+| `tier1` | Plan archetype: `select: "single"`, `options[]` with `{ id, label: { en, he }, emoji }`. |
+| `universal_flags` | Flags asked for every plan (e.g. destination, group character). Values are objects with `key`, `select`, `options`, etc. |
+| `tier2_axes` | Named axes (sleep, food_strategy, activities, …) each with `shown_for_tier1`, `defaults_by_tier1`, `hidden_options_by_tier1` where applicable. |
+| `tier3` | `options_by_parent`: map **tier2 option id** → follow-up options; `multi_select_parents` lists parents that allow multi-select in tier3. |
+| `item_generation_bundles` | Named bundles of checklist items (`{ en, he }`) injected when an option references `injects_bundle`. |
+| `changelog` | Per-version notes. |
+
+**Bilingual labels**
+
+Every user-facing `label` is **`{ "en": string, "he": string }`**. The chatbot should pick **one** language per message (match the user’s language or last message).
+
+**Stable ids**
+
+All option and axis identifiers are English **`id` strings**. These are what get stored on plans (`tags: string[]`). **Do not** persist translated labels.
+
+**Conversation flow (wizard order)**
+
+1. **Tier 1** — User picks exactly one plan type (`tier1.options`).
+2. **Universal flags** — For each entry in `universal_flags`, render per `select` (`single` = one choice, `multi` = multiple up to `max_select`).
+3. **Tier 2 axes** — For each axis in `tier2_axes`, if the chosen tier1 id is in `shown_for_tier1`, show that axis. Pre-select `defaults_by_tier1[tier1]` when present; hide options in `hidden_options_by_tier1[tier1]` when present. Most axes are `select: "single"`; **`activities`** is `select: "multi"`.
+4. **Tier 3** — For each selected tier2 **option id**, look up `tier3.options_by_parent[optionId]`. If missing, no drill-down. If present:
+   - If `optionId` is in **`tier3.multi_select_parents`** → user may select **multiple** tier3 options (checkbox-style).
+   - Otherwise → **exactly one** tier3 option (radio-style). Only `booked_activity` is multi today.
+
+**Contradictions (multi-select universal flags)**
+
+If `universal_flags.<flag>.contradictions` is present, it is an array of **`[idA, idB]`** pairs. The user must not have both selected. When the user selects option A, **deselect** any option whose id appears in pair with A. (Same rule as the FE wizard.)
+
+**Injected bundles**
+
+If an option includes `injects_bundle: "<name>"`, add every item from `item_generation_bundles.<name>` to the conceptual checklist (items are `{ en, he }`).
+
+**Caching**
+
+- Safe to call once per process or once per day; data changes only on app deploy.
+- Optional: cache by `version`; if `GET` returns a newer `version` than cached, refresh.
+
+**Errors**
+
+- `401` — missing or wrong `x-service-key`.
+- `500` — unexpected server error (should be rare; file missing in container).
 
 #### POST /api/internal/plans (Pending -- BE route not yet implemented)
 

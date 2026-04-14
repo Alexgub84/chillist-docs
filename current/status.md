@@ -263,7 +263,7 @@ Platform-level admin users open **`/admin/plans`** (from the header when signed 
 See [MVP Target](mvp-target.md) for the full breakdown. Key gaps:
 
 - WhatsApp send list — FE UI done, BE `/api/send-list` endpoint implemented; actual Green API delivery integration in progress
-- WhatsApp chatbot — Phase 3 complete + Phase 4 BE: `GET /api/internal/plans`, `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status` implemented; AI layer (Vercel AI SDK, tool definitions) pending
+- WhatsApp chatbot — Phase 3 complete + Phase 4 BE: `GET /api/internal/plans`, `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status`, `GET /api/internal/plan-tags` (taxonomy for create-plan; see [whatsapp-chatbot-spec](../specs/whatsapp-chatbot-spec.md#get-apiinternalplan-tags-implemented)) implemented; AI layer (Vercel AI SDK, tool definitions) pending
 - Error tracking and structured logging (BE + FE)
 - Analytics event collection (BE + FE)
 - Health monitoring and alerts

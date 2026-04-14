@@ -1,7 +1,7 @@
 # Chillist — WhatsApp Integration
 
 > **Purpose:** Single source of truth for all WhatsApp-related features — current state, planned work, architecture, and BE/FE responsibilities.
-> **Last updated:** 2026-04-04
+> **Last updated:** 2026-04-14
 
 ---
 
@@ -201,19 +201,33 @@ Single-recipient calls (`"self"`, `"<participantId>"`) return `results` with one
 - Injected via `buildApp` options: `{ whatsapp: { greenApiClient: fakeGreenApi } }`.
 - Test assertions use `chatId` format (e.g., `972501234567@c.us`) since the fake sits below `phoneToChatId`.
 
-### 4.3 Internal API (chatbot service)
+### 4.3 Internal API (chatbot / WhatsApp service)
 
-All under `/api/internal/*`, `x-service-key` = `CHATBOT_SERVICE_KEY`, plus `x-user-id` for the acting user.
+All under `/api/internal/*`, `x-service-key` = `CHATBOT_SERVICE_KEY`, plus `x-user-id` for the acting user **except** where noted.
 
-| Method | Path | Purpose |
-| ------ | ---- | ------- |
-| `POST` | `/api/internal/auth/identify` | Resolve E.164 phone → `userId` + display name (lookup on **`users.phone`** — see [phone-management.md](./phone-management.md)) |
-| `GET` | `/api/internal/plans` | List user’s plans with summary counts (undated or `startDate` ≥ now UTC; past-dated plans omitted) |
-| `GET` | `/api/internal/plans/:planId` | Full plan: participants and items (chatbot field names; membership required) |
-| `PATCH` | `/api/internal/items/:itemId/status` | Body `{ status: "done" \| "pending" }` — upserts caller’s assignment (`done` maps to `purchased` in DB) |
-| `GET` | `/api/internal/plan-tags` | Full 3-tier tag taxonomy — no `x-user-id` needed (global reference data). Used by chatbot to present plan-type choices. |
+| Method | Path | Headers | Purpose |
+| ------ | ---- | ------- | ------- |
+| `POST` | `/api/internal/auth/identify` | `x-service-key` only | Resolve E.164 phone → `userId` + display name (lookup on **`users.phone`** — see [phone-management.md](./phone-management.md)) |
+| `GET` | `/api/internal/plans` | `x-service-key` + `x-user-id` | List user’s plans with summary counts (undated or `startDate` ≥ now UTC; past-dated plans omitted) |
+| `GET` | `/api/internal/plans/:planId` | `x-service-key` + `x-user-id` | Full plan: participants and items (chatbot field names; membership required) |
+| `PATCH` | `/api/internal/items/:itemId/status` | `x-service-key` + `x-user-id` | Body `{ status: "done" \| "pending" }` — upserts caller’s assignment (`done` maps to `purchased` in DB) |
+| `GET` | `/api/internal/plan-tags` | `x-service-key` only | **Global reference data** — full plan-creation tag taxonomy (same JSON as `GET /plan-tags` for the app). No user context; safe to cache in the WhatsApp service for the process lifetime. |
 
-Contract details: `docs/openapi.json` (tag `internal`).
+**Plan tags (`GET /api/internal/plan-tags`) — how the WhatsApp service should use it**
+
+- **When:** Before guiding the user through “create a plan” (or whenever you need valid tag ids / labels). Fetch once at startup or on first use; re-fetch after deploy if you detect a higher `version` in the payload than you cached.
+- **Auth:** Only `x-service-key`. Do **not** send `x-user-id` (not required and not used).
+- **Payload:** A single JSON document (see `structural_contract` inside the file). **Every user-facing `label` is `{ en, he }`** — pick `en` or `he` from the user’s locale / last message language.
+- **Stable ids:** Persist **`id` strings only** (e.g. `camping`, `food_strategy`, `tent_shared`). Never persist translated label text.
+- **Flow (mirrors the app wizard):** `tier1` (single) → `universal_flags` → each applicable `tier2_axes` axis (filter by `shown_for_tier1`) → optional `tier3` drill-down keyed by the selected tier2 **option id** (`options_by_parent`).
+- **Selection rules (important):**
+  - **Multi-select flags:** `universal_flags.group_character` is multi with `max_select` and **`contradictions`** — pairs of option ids that cannot both be selected; if the user picks one, clear the other in each conflicting pair (same behavior as the app).
+  - **Tier 3:** Default is **single-select** (one drill-down choice). Only parents listed in **`tier3.multi_select_parents`** allow multiple selections (today: `booked_activity`). For any other parent, treat tier3 as exactly one choice.
+- **Bundles:** If an option has `injects_bundle` (e.g. `travel_abroad`), merge items from `item_generation_bundles[bundleName]` into the generated checklist (bilingual objects `{ en, he }`).
+
+Full step-by-step contract, OpenAPI type name `PlanTagsResponse`, and changelog semantics: **[WhatsApp AI Chatbot spec — GET /api/internal/plan-tags](./whatsapp-chatbot-spec.md#get-apiinternalplan-tags-implemented)**. App BE source file: `chillist-be/src/data/plan-creation-tags.json` (version in root `version` field).
+
+Contract details: `chillist-be/docs/openapi.json` (tag `internal`, operation `GET /api/internal/plan-tags`).
 
 ---
 
@@ -265,6 +279,7 @@ After FE migrates to the unified endpoint:
 
 ## 7. Related Docs
 
+- [WhatsApp AI Chatbot spec — internal API & plan tags](./whatsapp-chatbot-spec.md) (full `GET /api/internal/plan-tags` contract)
 - [MVP Target — WhatsApp section](../current/mvp-target.md#2-whatsapp-integration-basic)
 - [Current Status — WhatsApp](../current/status.md)
 - [MVP Spec — Roadmap item #11](mvp-v1.md#5-roadmap-post-mvp)
