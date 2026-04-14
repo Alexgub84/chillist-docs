@@ -3,7 +3,7 @@
 > **Status:** In Progress — Phase 4 core tools shipped (plan list, plan detail, item status); polish/hardening pending
 > **Scope:** This document defines the chatbot as a standalone service that communicates with the existing Chillist app backend via internal HTTP API. No implementation code is included.
 > **Prerequisite:** WhatsApp Integration Phase 1 & 2 (notifications + list sharing via Green API) must be complete before chatbot work begins.
-> **Last updated:** 2026-04-14 — Documented `GET /api/internal/plan-tags` (taxonomy JSON, bilingual labels, tier flow, contradictions, tier3 `multi_select_parents`). Clarified 2026-04-07: `POST /api/internal/auth/identify` resolves phone via `users.phone` (see [phone-management.md](./phone-management.md)), not `participants.contact_phone` alone.
+> **Last updated:** 2026-04-14 — Documented `GET /api/internal/plan-tags` (taxonomy JSON, bilingual labels, tier flow, contradictions, tier3 `multi_select_parents`). Added `selection_by_tier` + tier3 `default_select` (v1.4). Clarified 2026-04-07: `POST /api/internal/auth/identify` resolves phone via `users.phone` (see [phone-management.md](./phone-management.md)), not `participants.contact_phone` alone.
 
 ---
 
@@ -454,14 +454,15 @@ The body is the full taxonomy. Top-level keys (stable contract):
 
 | Key | Role |
 | --- | --- |
-| `version` | Taxonomy version string (e.g. `"1.3"`). Consumers may cache the doc and compare versions after deploy. |
+| `version` | Taxonomy version string (e.g. `"1.4"`). Consumers may cache the doc and compare versions after deploy. |
 | `description` | Human summary of the schema. |
+| `selection_by_tier` | **Single-line summary of single vs multi** for tier1, each universal flag, each tier2 axis, and tier3 defaults — use for radio vs checkbox without scanning nested objects. |
 | `structural_contract` | **Read this first** — guarantees, safe vs breaking changes. |
 | `design_principles` | Product intent (short). |
 | `tier1` | Plan archetype: `select: "single"`, `options[]` with `{ id, label: { en, he }, emoji }`. |
 | `universal_flags` | Flags asked for every plan (e.g. destination, group character). Values are objects with `key`, `select`, `options`, etc. |
 | `tier2_axes` | Named axes (sleep, food_strategy, activities, …) each with `shown_for_tier1`, `defaults_by_tier1`, `hidden_options_by_tier1` where applicable. |
-| `tier3` | `options_by_parent`: map **tier2 option id** → follow-up options; `multi_select_parents` lists parents that allow multi-select in tier3. |
+| `tier3` | `select: "per_parent"`, `default_select: "single"`, `options_by_parent`: map **tier2 option id** → follow-up options; `multi_select_parents` lists parents that allow multi-select in tier3. |
 | `item_generation_bundles` | Named bundles of checklist items (`{ en, he }`) injected when an option references `injects_bundle`. |
 | `changelog` | Per-version notes. |
 
