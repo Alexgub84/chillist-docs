@@ -217,7 +217,7 @@ All under `/api/internal/*`, `x-service-key` = `CHATBOT_SERVICE_KEY`, plus `x-us
 
 - **When:** Before guiding the user through “create a plan” (or whenever you need valid tag ids / labels). Fetch once at startup or on first use; re-fetch after deploy if you detect a higher `version` in the payload than you cached.
 - **Auth:** Only `x-service-key`. Do **not** send `x-user-id` (not required and not used).
-- **Payload:** A single JSON document (see `structural_contract` inside the file). **Every user-facing `label` is `{ en, he }`** — pick `en` or `he` from the user’s locale / last message language.
+- **Payload:** A single JSON document (see `structural_contract` inside the file). **`selection_by_tier`** summarizes single vs multi for tier1, each universal flag, each tier2 axis, and tier3 defaults — use it for radio vs checkbox without scanning every nested `select`. **Every user-facing `label` is `{ en, he }`** — pick `en` or `he` from the user’s locale / last message language.
 - **Stable ids:** Persist **`id` strings only** (e.g. `camping`, `food_strategy`, `tent_shared`). Never persist translated label text.
 - **Flow (mirrors the app wizard):** `tier1` (single) → `universal_flags` → each applicable `tier2_axes` axis (filter by `shown_for_tier1`) → optional `tier3` drill-down keyed by the selected tier2 **option id** (`options_by_parent`).
 - **Selection rules (important):**
