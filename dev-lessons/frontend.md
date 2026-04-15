@@ -70,6 +70,7 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 #### How the generic wizard works
 
 **Data flow:**
+
 1. `usePlanTags()` lazy-fetches `GET /plan-tags` on first wizard open (`staleTime: Infinity`, `retry: false`).
 2. The hook returns `tagData: PlanTagData` (Zod-validated).
 3. `buildSteps(tagData, selections)` is called on every render. It iterates the schema in this fixed order:
@@ -89,11 +90,13 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 | tier3 | check `tier3.multi_select_parents.includes(tier2Id)` — if yes, `multi`; otherwise, `tier3.default_select` (default: `"single"`) |
 
 **Contradiction logic:**
+
 - If a flag has a `contradictions: [string, string][]` array, `buildSteps` calls `computeDisabledIds(currentFlagSelections, contradictions)`.
 - This returns a `Set<string>` of option IDs that must be disabled in the UI.
 - When the conflicting selection is removed, the disabled set recalculates automatically (no explicit re-enable step).
 
 **Auto-advance:**
+
 - Steps with `select: "single"` auto-advance synchronously on click (no Next button needed).
 - Steps with `select: "multi"` show a Next button. The user must explicitly advance.
 
@@ -125,6 +128,7 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 7. Run the full validation suite: `prettier → eslint → tsc → vitest run`.
 
 **Prevention:**
+
 - Never hardcode option IDs, axis names, or tier names in `PlanTagWizard.tsx`. All iteration must read from `tagData`.
 - The `selections` state is a `Record<string, string[]>` — the key is the step's `key` field (e.g., `"tier1"`, `"destination_scope"`, `"sleep"`, `"tier3_tent"`). Add new step types following this convention.
 - Run `tests/unit/data/plan-creation-tags.test.ts` after every mock-data update to catch structural regressions before they reach production.
