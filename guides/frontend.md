@@ -59,19 +59,19 @@ Every external service (analytics, auth, payments, logging, etc.) follows the sa
 
 ### Pattern
 
-| Layer         | File                                    | Rule                                                               |
-| ------------- | --------------------------------------- | ------------------------------------------------------------------ |
-| Init + export | `src/lib/<service>.ts`                  | All config and init lives here. One exported instance.             |
-| App code      | `src/core/<service>.ts` or `src/hooks/` | Imports from `src/lib/<service>`, never from the package directly. |
-| Tests         | `vi.mock('../../../src/lib/<service>')` | Mock the lib boundary, not the third-party package.                |
-| Entry point   | `src/main.tsx`                          | Imports from `src/lib/<service>`. No init logic in `main.tsx`.     |
+| Layer | File | Rule |
+|-------|------|------|
+| Init + export | `src/lib/<service>.ts` | All config and init lives here. One exported instance. |
+| App code | `src/core/<service>.ts` or `src/hooks/` | Imports from `src/lib/<service>`, never from the package directly. |
+| Tests | `vi.mock('../../../src/lib/<service>')` | Mock the lib boundary, not the third-party package. |
+| Entry point | `src/main.tsx` | Imports from `src/lib/<service>`. No init logic in `main.tsx`. |
 
 ### Existing clients
 
-| File                  | Package                 | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| --------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/lib/supabase.ts` | `@supabase/supabase-js` | Real vs. mock controlled by `VITE_AUTH_MOCK=true`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `src/lib/posthog.ts`  | `posthog-js`            | Real init when token is set and not `"token"`. `VITE_POSTHOG_MOCK=true` exports `src/lib/mock-posthog.ts` (no network). Production uses `api_host: '/ingest'` (same-origin proxy via Cloudflare Pages Function); dev uses `VITE_PUBLIC_POSTHOG_HOST`. `ui_host: 'https://us.posthog.com'` (hardcoded US). `disable_compression: true` because the Pages Function proxy corrupts gzip bodies (see dev-lessons). Session replay is **opt-in** via `VITE_PUBLIC_POSTHOG_SESSION_RECORDING=true` (default off — avoids loading `posthog-recorder.js`). |
+| File | Package | Notes |
+|------|---------|-------|
+| `src/lib/supabase.ts` | `@supabase/supabase-js` | Real vs. mock controlled by `VITE_AUTH_MOCK=true` |
+| `src/lib/posthog.ts` | `posthog-js` | Real init when token is set and not `"token"`. `VITE_POSTHOG_MOCK=true` exports `src/lib/mock-posthog.ts` (no network). Production uses `api_host: '/ingest'` (same-origin proxy via Cloudflare Pages Function); dev uses `VITE_PUBLIC_POSTHOG_HOST`. `ui_host: 'https://us.posthog.com'` (hardcoded US). `disable_compression: true` because the Pages Function proxy corrupts gzip bodies (see dev-lessons). Session replay is **opt-in** via `VITE_PUBLIC_POSTHOG_SESSION_RECORDING=true` (default off — avoids loading `posthog-recorder.js`). |
 
 ### PostHog — local dev, staging, and toolbar
 
@@ -91,30 +91,30 @@ Implementation lives in `src/core/analytics.ts` (calls `src/lib/posthog`). **Sup
 
 #### Custom events — currently emitted in the app
 
-| Event name        | Properties                                                                                                      | Wired from                                                    |
-| ----------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| `user_signed_in`  | `method`: `email` \| `google`                                                                                   | `AuthProvider` (Supabase `SIGNED_IN`)                         |
-| `user_signed_out` | —                                                                                                               | `AuthProvider` (`SIGNED_OUT`)                                 |
-| `item_updated`    | `plan_id`, `fields` (sorted keys from the `ItemPatch` the client sent, e.g. `quantity`, `assignmentStatusList`) | `useUpdateItem` (`onSuccess` after a successful `updateItem`) |
+| Event name | Properties | Wired from |
+|------------|------------|------------|
+| `user_signed_in` | `method`: `email` \| `google` | `AuthProvider` (Supabase `SIGNED_IN`) |
+| `user_signed_out` | — | `AuthProvider` (`SIGNED_OUT`) |
+| `item_updated` | `plan_id`, `fields` (sorted keys from the `ItemPatch` the client sent, e.g. `quantity`, `assignmentStatusList`) | `useUpdateItem` (`onSuccess` after a successful `updateItem`) |
 
 #### Custom events — defined in code, not yet called from UI/hooks
 
 These `track*` helpers exist for the taxonomy; wire them when the corresponding feature work lands. Until then they only appear in unit tests. **Tracking issue:** [chillist-fe#207](https://github.com/Alexgub84/chillist-fe/issues/207).
 
-| Event name                 | Properties (summary)                                                                                                     |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `profile_completed`        | —                                                                                                                        |
-| `plan_created`             | `plan_id`, `has_location`, `has_dates`, `tags_count`, `visibility`                                                       |
-| `plan_updated`             | `plan_id`                                                                                                                |
-| `plan_deleted`             | `plan_id`                                                                                                                |
-| `items_added`              | `plan_id`, `count`, `source` (`single` \| `bulk` \| `ai` \| `guest`)                                                     |
-| `item_status_changed`      | `plan_id`, `from`, `to` — not wired; status changes are reflected in `item_updated.fields` (e.g. `assignmentStatusList`) |
-| `ai_suggestions_requested` | `plan_id`                                                                                                                |
-| `ai_suggestions_confirmed` | `plan_id`, `count`                                                                                                       |
-| `invite_link_copied`       | `plan_id`                                                                                                                |
-| `invite_claimed`           | `plan_id`                                                                                                                |
-| `join_request_submitted`   | `plan_id`                                                                                                                |
-| `expense_created`          | `plan_id`, `has_linked_items`                                                                                            |
+| Event name | Properties (summary) |
+|------------|----------------------|
+| `profile_completed` | — |
+| `plan_created` | `plan_id`, `has_location`, `has_dates`, `tags_count`, `visibility` |
+| `plan_updated` | `plan_id` |
+| `plan_deleted` | `plan_id` |
+| `items_added` | `plan_id`, `count`, `source` (`single` \| `bulk` \| `ai` \| `guest`) |
+| `item_status_changed` | `plan_id`, `from`, `to` — not wired; status changes are reflected in `item_updated.fields` (e.g. `assignmentStatusList`) |
+| `ai_suggestions_requested` | `plan_id` |
+| `ai_suggestions_confirmed` | `plan_id`, `count` |
+| `invite_link_copied` | `plan_id` |
+| `invite_claimed` | `plan_id` |
+| `join_request_submitted` | `plan_id` |
+| `expense_created` | `plan_id`, `has_linked_items` |
 
 When you add a new custom event or wire an existing `track*` call, update this table in the same PR.
 
@@ -122,15 +122,15 @@ When you add a new custom event or wire an existing `track*` call, update this t
 
 1. Create `src/lib/<service>.ts`:
    ```typescript
-   import { createClient } from "<package>";
-   const token = import.meta.env.VITE_ < SERVICE > _TOKEN;
+   import { createClient } from '<package>';
+   const token = import.meta.env.VITE_<SERVICE>_TOKEN;
    // init conditionally, or export a no-op when token is absent
    export default token ? createClient(token) : noOpClient;
    ```
 2. Import from `src/lib/<service>` everywhere — never from the package directly.
 3. In tests, mock at the lib boundary:
    ```typescript
-   vi.mock("../../../src/lib/<service>", () => ({
+   vi.mock('../../../src/lib/<service>', () => ({
      default: { method: vi.fn() },
    }));
    ```
@@ -206,7 +206,6 @@ The app gates UI elements based on authentication state and plan ownership. Thes
 A Cloudflare Pages Function (`functions/_middleware.ts`) sets a `chillist-geo-lang` cookie (`he` for Israel, `en` for all others) on every response. `getSavedLanguage()` in `src/i18n/index.ts` reads this cookie as the initial language when no explicit `localStorage['chillist-lang']` is present. Logged-in users always follow `preferences.preferredLang` from the backend; the cookie is never used for authenticated sessions.
 
 **Language precedence (low → high):**
-
 1. Geo cookie (`chillist-geo-lang`) — anonymous first visit only
 2. `localStorage['chillist-lang']` — user's explicit choice (JSON-quoted, via `useLocalStorage`)
 3. `preferences.preferredLang` from `GET /auth/profile` — logged-in users, applied by `ProfileLanguageSync`
@@ -214,22 +213,18 @@ A Cloudflare Pages Function (`functions/_middleware.ts`) sets a `chillist-geo-la
 **Testing the geo feature locally:**
 
 _Client logic only (no Wrangler needed):_
-
 1. Open DevTools → Application → Cookies → add `chillist-geo-lang=he`
 2. Clear `localStorage` item `chillist-lang` (Application → Local Storage)
 3. Hard-reload (`Cmd+Shift+R`) → page should open in Hebrew
 4. Switch language via the toggle → reload → should stay on chosen language (localStorage wins)
 
 _Test the Pages Function with Wrangler:_
-
 ```bash
 npm run build
 npx wrangler pages dev dist --compatibility-date=2024-01-01
 # open http://localhost:8788
 ```
-
 `request.cf.country` is not injected locally, so the function always sets `en`. To simulate Israel, pass the header directly:
-
 ```bash
 curl -v -H "CF-IPCountry: IL" http://localhost:8788/ 2>&1 | grep "Set-Cookie"
 # expect: Set-Cookie: chillist-geo-lang=he; ...
@@ -237,15 +232,15 @@ curl -v -H "CF-IPCountry: IL" http://localhost:8788/ 2>&1 | grep "Set-Cookie"
 
 **Testing on production:**
 
-| Scenario                     | How                                                                                            |
-| ---------------------------- | ---------------------------------------------------------------------------------------------- |
-| Israel → Hebrew              | Visit in incognito from an IL IP (or Israeli mobile data)                                      |
-| Non-Israel → English         | Visit in incognito outside Israel                                                              |
-| Simulate IL from abroad      | Connect VPN to Israel → incognito → should get Hebrew                                          |
-| Simulate non-IL from Israel  | Connect VPN to US/EU → incognito → should get English                                          |
-| Verify cookie was set        | DevTools → Application → Cookies → look for `chillist-geo-lang`                                |
-| Verify localStorage override | Switch language via toggle → reload → stays on chosen language                                 |
-| Logged-in user ignores geo   | Sign in, clear `chillist-lang` from localStorage, reload → follows `preferredLang`, not cookie |
+| Scenario | How |
+|---|---|
+| Israel → Hebrew | Visit in incognito from an IL IP (or Israeli mobile data) |
+| Non-Israel → English | Visit in incognito outside Israel |
+| Simulate IL from abroad | Connect VPN to Israel → incognito → should get Hebrew |
+| Simulate non-IL from Israel | Connect VPN to US/EU → incognito → should get English |
+| Verify cookie was set | DevTools → Application → Cookies → look for `chillist-geo-lang` |
+| Verify localStorage override | Switch language via toggle → reload → stays on chosen language |
+| Logged-in user ignores geo | Sign in, clear `chillist-lang` from localStorage, reload → follows `preferredLang`, not cookie |
 
 ### Plan Tag Wizard (`src/components/PlanTagWizard.tsx`)
 
@@ -262,6 +257,32 @@ Tag options are driven by `src/data/plan-creation-tags.json`. The `onBack` prop 
 - **Legacy tag preservation:** Tags from older plans that no longer exist in the current wizard are silently passed through in the output so they are not lost on edit/save.
 - Tags are passed as `string[]` in the plan creation payload (`tags` field on `PlanCreateWithOwner`)
 - i18n keys under `tagWizard.*` namespace in all locale files. Legacy tag ids are kept in translations for backward compatibility.
+
+### URL Feature Flags (`src/core/feature-flags.ts`)
+
+Lightweight feature flag system using URL query params + `sessionStorage`. Flags are captured from the URL on **any page** at app boot (`captureFeatureFlags()` in `main.tsx`) and stored in `sessionStorage` under `chillist-feature-flags`. They persist across client-side navigation for the tab session and are cleared when the tab is closed.
+
+**Usage:** Append flags as query params to any URL shared with users:
+- `/?noTags=true` — flag captured on home, survives navigation to `/create-plan`
+- `/create-plan?noTags=true` — direct link also works
+
+**Reading flags in components:** Use `useFeatureFlags()` hook from `src/hooks/useFeatureFlags.ts`.
+
+**Current flags:**
+
+| Flag | Default | Effect |
+|------|---------|--------|
+| `noTags` | `false` | Hides the `PlanTagWizard` in step 1 of `CreatePlanWizard` |
+
+**Adding a new flag:**
+1. Add the flag name to the `KNOWN_FLAGS` array in `src/core/feature-flags.ts`
+2. Add its default value (`false`) to the `DEFAULTS` object
+3. Read it via `useFeatureFlags()` in the component that needs it
+
+**Design notes:**
+- Only writes to `sessionStorage` when at least one known flag is present in the URL — navigating to a page without flags does not wipe previously captured ones.
+- Invalid values (e.g. `?noTags=banana`) fall back to `false`.
+- Not a replacement for a full feature flag service — meant for internal dev/testing toggles.
 
 ### Bulk Add Wizard (`src/components/BulkItemAddWizard.tsx`)
 
@@ -283,12 +304,12 @@ Static JSON for autocomplete suggestions.
 
 These are **project conventions**, not one-off hacks. Keep them when touching Playwright config or adding navigations.
 
-| Topic               | Rule                                                                                                                                                                                                                                                                             |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **webServer `env`** | Always set `VITE_AUTH_MOCK=true`, `VITE_E2E=true`, and **`VITE_POSTHOG_MOCK=true`** so the Vite process spawned for E2E does not call real Supabase/PostHog. Do not rely only on a developer’s local `.env`.                                                                     |
-| **`page.goto`**     | Default `waitUntil: 'load'` can **time out** on Vite SPAs under parallel workers or slow chunk loading. For tests that only need the document to start (e.g. auth redirect), use **`waitUntil: 'domcontentloaded'`**. Reserve full `load` when you truly need every subresource. |
-| **Retries**         | `retries: 1` is enabled so transient flakes do not block pushes; fix root causes when a test fails twice.                                                                                                                                                                        |
-| **Stale Vite**      | Before local E2E, kill anything on port **5174** if Playwright reuses a server (`lsof -i :5174 -P -n -t \| xargs kill`). A stale server without `VITE_AUTH_MOCK` causes mass auth failures.                                                                                      |
+| Topic | Rule |
+|-------|------|
+| **webServer `env`** | Always set `VITE_AUTH_MOCK=true`, `VITE_E2E=true`, and **`VITE_POSTHOG_MOCK=true`** so the Vite process spawned for E2E does not call real Supabase/PostHog. Do not rely only on a developer’s local `.env`. |
+| **`page.goto`** | Default `waitUntil: 'load'` can **time out** on Vite SPAs under parallel workers or slow chunk loading. For tests that only need the document to start (e.g. auth redirect), use **`waitUntil: 'domcontentloaded'`**. Reserve full `load` when you truly need every subresource. |
+| **Retries** | `retries: 1` is enabled so transient flakes do not block pushes; fix root causes when a test fails twice. |
+| **Stale Vite** | Before local E2E, kill anything on port **5174** if Playwright reuses a server (`lsof -i :5174 -P -n -t \| xargs kill`). A stale server without `VITE_AUTH_MOCK` causes mass auth failures. |
 
 **Browser session in E2E:** `initSession()` in `main.tsx` runs **once per full page load**. After sign-out, **client-side** navigation to `/` does not run `initSession()` again. To assert a **new** `chillist-session-id` in `localStorage`, use **`page.reload()`** after the post-sign-out URL, or wait for behavior that calls `getSessionId()` (API request with `X-Session-ID`, or debounced activity). See `tests/e2e/session.spec.ts`.
 
@@ -321,21 +342,21 @@ The mock server is a Fastify instance that mirrors the real backend API. It is u
 
 **Required GitHub Secrets/Vars:**
 
-| Name                                    | Type     | Purpose                                                                                                                                                             |
-| --------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CLOUDFLARE_API_TOKEN`                  | Secret   | Cloudflare Pages deploy token                                                                                                                                       |
-| `CLOUDFLARE_ACCOUNT_ID`                 | Variable | Cloudflare account ID                                                                                                                                               |
-| `CLOUDFLARE_PROJECT_NAME`               | Variable | Cloudflare Pages project name                                                                                                                                       |
-| `API_SPEC_TOKEN`                        | Secret   | GitHub PAT to fetch OpenAPI spec from private BE repo                                                                                                               |
-| `VITE_API_URL`                          | Variable | Backend API base URL                                                                                                                                                |
-| `VITE_SUPABASE_URL`                     | Variable | Supabase project URL                                                                                                                                                |
-| `VITE_SUPABASE_ANON_KEY`                | Variable | Supabase anon key                                                                                                                                                   |
-| `VITE_GOOGLE_MAPS_API_KEY`              | Variable | Google Maps API key                                                                                                                                                 |
-| `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN`     | Variable | PostHog project token (public, goes into browser bundle)                                                                                                            |
-| `VITE_PUBLIC_POSTHOG_HOST`              | Variable | **Local/dev only** — direct ingest URL (e.g. `https://us.i.posthog.com`). Production ignores this for `api_host` and uses same-origin `/ingest` (see proxy below).  |
+| Name | Type | Purpose |
+|------|------|---------|
+| `CLOUDFLARE_API_TOKEN` | Secret | Cloudflare Pages deploy token |
+| `CLOUDFLARE_ACCOUNT_ID` | Variable | Cloudflare account ID |
+| `CLOUDFLARE_PROJECT_NAME` | Variable | Cloudflare Pages project name |
+| `API_SPEC_TOKEN` | Secret | GitHub PAT to fetch OpenAPI spec from private BE repo |
+| `VITE_API_URL` | Variable | Backend API base URL |
+| `VITE_SUPABASE_URL` | Variable | Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | Variable | Supabase anon key |
+| `VITE_GOOGLE_MAPS_API_KEY` | Variable | Google Maps API key |
+| `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN` | Variable | PostHog project token (public, goes into browser bundle) |
+| `VITE_PUBLIC_POSTHOG_HOST` | Variable | **Local/dev only** — direct ingest URL (e.g. `https://us.i.posthog.com`). Production ignores this for `api_host` and uses same-origin `/ingest` (see proxy below). |
 | `VITE_PUBLIC_POSTHOG_SESSION_RECORDING` | Variable | Optional. Set `true` only if you want PostHog session replay (loads `posthog-recorder.js`; often blocked by extensions). Omit or leave unset/false for events-only. |
-| `VITE_POSTHOG_MOCK`                     | Variable | Set `true` to use in-memory fake PostHog (tests / local E2E server — no events sent)                                                                                |
-| `VITE_PUBLIC_POSTHOG_DEBUG`             | Variable | Optional. Set `true` only for local debugging (verbose console logs). Omit or `false` in production                                                                 |
+| `VITE_POSTHOG_MOCK` | Variable | Set `true` to use in-memory fake PostHog (tests / local E2E server — no events sent) |
+| `VITE_PUBLIC_POSTHOG_DEBUG` | Variable | Optional. Set `true` only for local debugging (verbose console logs). Omit or `false` in production |
 
 #### PostHog reverse proxy (Cloudflare Pages Function)
 
