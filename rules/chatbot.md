@@ -178,6 +178,7 @@ Single source of truth for what `prompt-quality.test.ts` and `prompt-quality-he.
 | 18 | Item already done | EN+HE | "Show items" / "mark Charcoal done" (already done) | Bot handles gracefully, no error in reply |
 | 19 | Number selection (EN) | EN | "Tell me about the camping trip" / "1" | Same as #9 but in English; getPlanDetails called |
 | 20 | Bulk items (EN) | EN | "I bought Tent and Sleeping Bag, mark them done" | Same as #10 but in English; updateItemStatus called twice |
+| 21 | Single-plan update items | EN+HE | "update items" / "עדכן פריטים" (user has only 1 plan) | Bot auto-selects the only plan, lists items, no "which plan?" disambiguation |
 
 ### Planned (not yet implemented)
 

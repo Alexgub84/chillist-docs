@@ -4,6 +4,15 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [Arch] FE client-side AI cost estimation when BE returns null estimatedCost
+
+**Date:** 2026-04-15
+**Problem:** Production AI usage logs showed `—` for all cost columns because the backend `estimatedCost` field was null (BE pricing config not set).
+**Solution:** Added `src/core/ai-pricing.ts` with a `MODEL_PRICES` lookup table (keyed by model ID prefix) and `computeEstimatedCost()`. The `AiUsageLogs` component uses the BE value when present, otherwise falls back to FE computation from `inputTokens`/`outputTokens`. Summary totals mix BE and FE costs per-log. `formatUsdCost()` formats all costs consistently as `$X.XXXXXX`.
+**Prevention:** When the BE owns a computed field but may not populate it, the FE should have a deterministic fallback with a known price table. Keep the price table dated and update when models change.
+
+---
+
 ### [Infra] PostHog production events silently dropped — gzip compression through Pages Function proxy
 
 **Date:** 2026-04-14
