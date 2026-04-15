@@ -140,6 +140,12 @@ Never close a task without answering all four questions.
 
 ---
 
+## 10) AI SDK Rules
+
+Follow all rules in [`rules/ai-sdk.md`](ai-sdk.md) for any AI SDK usage — tool design, model configuration, observability, agentic loops, and client abstraction. Read it before implementing or modifying AI features.
+
+---
+
 ## 9) Quality Test Scenario Catalog
 
 Single source of truth for what `prompt-quality.test.ts` and `prompt-quality-he.test.ts` must cover. Every scenario here must have a corresponding `it()` block, and every `it()` block must appear here.

@@ -15,7 +15,7 @@ Setup, development, and deployment guide for `chillist-whatsapp-bot`.
 | WhatsApp API    | Green API (shared instance with app BE)    | ✅ Implemented |
 | Validation      | Zod (env config + webhook payload schemas) | ✅ Implemented |
 | Testing         | Vitest (unit, integration, E2E)            | ✅ Implemented |
-| AI SDK          | Vercel AI SDK (`ai` package v5)            | ✅ Implemented |
+| AI SDK          | Vercel AI SDK (`ai` package v6)            | ✅ Implemented |
 | LLM Provider    | Anthropic or OpenAI (via `@ai-sdk/*`)      | ✅ Implemented |
 | Database        | PostgreSQL (`postgres` package)            | ✅ Implemented |
 | Session storage | Direct DB connection (`chatbot_sessions`)  | ✅ Implemented |
@@ -44,6 +44,7 @@ See `.env.example` in the repo for full annotated config. Summary:
 | `DATABASE_URL_PUBLIC`      | — (optional; enables quality-test DB logging when set)     | Supabase **direct** connection (port 5432)                          | for migrations   |
 | `SESSION_IDLE_TTL_MINUTES` | `15`                                                       | `15`                                                                | no (default 15)  |
 | `AI_PROVIDER`              | `fake` (noop client)                                       | `anthropic` or `openai`                                             | yes              |
+| `AI_MODEL_ID`              | — (optional; uses provider default)                        | model ID string (e.g. `claude-sonnet-4-20250514`, `gpt-4o`)        | no (has default) |
 | `ANTHROPIC_API_KEY`        | — (optional in dev)                                        | from Anthropic dashboard                                            | when `anthropic` |
 | `OPENAI_API_KEY`           | — (optional in dev)                                        | from OpenAI dashboard                                               | when `openai`    |
 
@@ -228,6 +229,8 @@ Group and DM messages run the same unified `handleSessionAndPlansFlow()` functio
 **Why:** In production, the model hallucinated UUIDs when `getPlanDetails` accepted `planId: z.string().uuid()`. Plan names exist in conversation text but plan IDs do not (system prompt says "never paste UUIDs to the user"). By accepting human-readable names and resolving IDs inside `execute`, hallucination is architecturally impossible.
 
 ### AI layer structure (Phase 4 — implemented)
+
+> **AI SDK best practices** (tool design, model config, observability, agentic loops): see [`rules/ai-sdk.md`](../rules/ai-sdk.md).
 
 Three new service modules follow the same interface/real/fake/plugin pattern as green-api and session:
 
