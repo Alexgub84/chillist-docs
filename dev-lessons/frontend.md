@@ -4,6 +4,15 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [UX] Delayed auto-advance on single-select wizard steps
+
+**Date:** 2026-04-15
+**Problem:** In the PlanTagWizard, single-select steps (tier1, single-select axes) called `setStepIndex` synchronously inside `handleSelect`. The user clicked an option, the blue selected state rendered for a single frame, and the step switched instantly — making it feel like the option "disappeared" with no feedback.
+**Solution:** Replaced the synchronous `setStepIndex` with a 300ms `setTimeout` (stored in a ref, cleared on re-click and unmount). Added a CSS `animate-step-enter` keyframe (fade + slide) on the step wrapper keyed by `stepIndex` so each new step animates in. Tests use `vi.useFakeTimers({ shouldAdvanceTime: true })` with a shared `advanceAutoSelect()` helper that calls `act(() => vi.advanceTimersByTime(300))`.
+**Prevention:** For any single-select auto-advance UX, always add a brief delay (200-400ms) so the user sees their selection before the screen changes. Use `shouldAdvanceTime: true` when mixing `vi.useFakeTimers` with `userEvent` to avoid test hangs.
+
+---
+
 ### [Arch] FE client-side AI cost estimation when BE returns null estimatedCost
 
 **Date:** 2026-04-15

@@ -303,6 +303,27 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 2. `tier3.multi_select_parents` — array of tier2 option ids whose tier3 groups allow multi-select. All other tier3 groups default to single-select (radio). Currently only `booked_activity` is multi (its options are additive, not exclusive).
 **Prevention:** When designing any multi-select group, explicitly decide whether its options are additive facts or mutually exclusive alternatives. Encode that decision in the schema so every consumer (FE, chatbot, future APIs) benefits automatically — don't leave it to convention.
 
+### [AI] Gate real-API tests behind explicit opt-in env var, not just key presence
+
+**Date:** 2026-04-15
+**Problem:** AI E2E prod tests used `describe.skipIf(!hasRealApiKey)` — they'd run whenever `.env` had an `ANTHROPIC_API_KEY`, including during `npm run test` and `git push` pre-push hooks. This caused CI failures (real AI responses vary: `partial` vs `success`), cost tokens on every push, and took 2+ minutes.
+**Solution:** Added `RUN_AI_E2E=true` opt-in gate (same pattern as `RUN_PROMPT_QUALITY=true` for prompt quality tests). The npm scripts (`test:ai-suggestions-e2e`, `test:ai-suggestions-stream-e2e`) set the flag. Normal test runs skip these suites entirely.
+**Prevention:** Any test that calls a real external API must require an explicit opt-in env var — never rely solely on the presence of an API key in `.env`, because developers always have keys configured locally.
+
+### [AI] Per-category AI calls need post-generation category filtering
+
+**Date:** 2026-04-15
+**Problem:** When the streaming endpoint called `generateItemSuggestions` with `categories: { food: [] }`, the AI sometimes returned items with `group_equipment` category (cross-category bleed). The non-streaming endpoint already had a post-generation filter but the streaming route was missing it.
+**Solution:** Added `result.suggestions.filter(s => s.category === category)` before persisting and sending SSE events in the streaming route.
+**Prevention:** When the AI is told to generate for a specific category, always filter the output server-side. Never trust the AI to perfectly respect category constraints.
+
+### [AI] Per-category prompts need scaled item count caps
+
+**Date:** 2026-04-15
+**Problem:** The closing instruction said "Return between 15 and 40 items" regardless of how many categories were requested. When the streaming endpoint ran 3 single-category calls, each generated ~40 items (120+ total) instead of the expected ~50, tripling output token cost.
+**Solution:** Made `getClosingInstruction(categoryCount)` scale the range: 3 categories → 15-40, 2 → 10-25, 1 → 5-15. Output tokens dropped from ~11k to ~4-5k for streaming requests.
+**Prevention:** When splitting a single AI call into multiple focused calls, review all prompt instructions that reference quantities or counts — they likely assume the full scope and need scaling.
+
 ### [Architecture] Static JSON file is the right choice for read-only reference data
 
 **Date:** 2026-04-12
