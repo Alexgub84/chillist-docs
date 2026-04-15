@@ -507,3 +507,10 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 **Decision:** Split every quality-test assertion into two tiers. Hard assertions (`expect`) cover user-visible correctness: non-empty reply, no error phrases, no UUID leaks, write-tool mutations (`updateItemStatus`) with correct `itemId`/`status`. Soft assertions (`softAssert` from `report-helpers.ts`) cover model reasoning path: read-tool calls, no-tool expectations, keyword matches, planId correctness. Soft failures are logged as warnings in the Markdown report but never fail the test.
 **Reason:** The suite conflated behavioral correctness (must pass) with implementation verification (nice to track). Splitting the two gives stable CI while preserving full visibility into model behavior via reports.
 **Reuse tip:** In any LLM-backed test suite, separate "did the user get the right outcome" from "did the model take the expected path." Only fail the test on the first category.
+
+### [Bug] Bot asks "which plan?" when user has only one plan
+
+**Date:** 2026-04-15
+**Problem:** When a user with a single plan said "update items," the bot called `getMyPlans`, showed the plan summary, and asked "which items would you like to update?" without calling `getPlanDetails` to actually list the items. The expected behavior is to auto-select the only plan and show items immediately.
+**Solution:** Added a system prompt rule: "If the user has only one plan and asks to see or update items without specifying a plan name, auto-select that plan — call getPlanDetails immediately instead of asking which plan they mean."
+**Prevention:** When adding disambiguation rules (e.g. "if multiple plans match, ask which one"), always add the inverse single-match rule too. Add quality tests for both the single and multi-match paths.
