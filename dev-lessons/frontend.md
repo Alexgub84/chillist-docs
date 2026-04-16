@@ -4,6 +4,15 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [Logic] Quantity estimation always defaulted to 1 — three stacking bugs
+
+**Date:** 2026-04-16
+**Problem:** All suggested item quantities in production showed 1 regardless of group size. Three independent bugs compounded: (1) `PlanProvider` computed `planPoints` from participant-reported counts only, ignoring `plan.estimatedAdults`/`estimatedKids` — a plan for 50 people with only the owner as participant yielded `planPoints=1`; (2) `CreatePlanWizard` step 5 never passed `planPoints` to `BulkItemAddWizard`, so during plan creation all quantities defaulted to 1; (3) `common-items.he.json` had ~85 food items with `unit: "g"` or `"ml"` and `quantityPerPoint: 0.15` — a value designed for kg/l, producing absurd results like 2 grams of tofu for 10 people.
+**Solution:** (1) `PlanProvider` now uses `Math.max(reportedCount, estimatedCount)` for both adults and kids; (2) `CreatePlanWizard` computes `planPoints` from `estimationData` + `step1Data` dates and passes it to `BulkItemAddWizard`; (3) all `g` items converted to `kg` or `pcs` with realistic `quantityPerPoint`, all `ml` items converted to `pcs`, spices have no `quantityPerPoint` (default 1 container). Added a sanity test for 5 adults + 3 kids camping scenario.
+**Prevention:** When a computed value (`planPoints`) flows through multiple layers (context → wizard → child component), trace the full propagation path. Add a sanity test that exercises the real data with realistic inputs — unit-testing the formula alone doesn't catch bad data or missing prop wiring.
+
+---
+
 ### [i18n] Hebrew common-items list used dictionary Hebrew instead of Israeli terms
 
 **Date:** 2026-04-16
@@ -125,7 +134,6 @@ Trade-off: `$pageleave` events become slightly less reliable (sendBeacon fires d
 #### How the generic wizard works
 
 **Data flow:**
-
 1. `usePlanTags()` lazy-fetches `GET /plan-tags` on first wizard open (`staleTime: Infinity`, `retry: false`).
 2. The hook returns `tagData: PlanTagData` (Zod-validated).
 3. `buildSteps(tagData, selections)` is called on every render. It iterates the schema in this fixed order:
@@ -145,13 +153,11 @@ Trade-off: `$pageleave` events become slightly less reliable (sendBeacon fires d
 | tier3 | check `tier3.multi_select_parents.includes(tier2Id)` — if yes, `multi`; otherwise, `tier3.default_select` (default: `"single"`) |
 
 **Contradiction logic:**
-
 - If a flag has a `contradictions: [string, string][]` array, `buildSteps` calls `computeDisabledIds(currentFlagSelections, contradictions)`.
 - This returns a `Set<string>` of option IDs that must be disabled in the UI.
 - When the conflicting selection is removed, the disabled set recalculates automatically (no explicit re-enable step).
 
 **Auto-advance:**
-
 - Steps with `select: "single"` auto-advance synchronously on click (no Next button needed).
 - Steps with `select: "multi"` show a Next button. The user must explicitly advance.
 
@@ -183,7 +189,6 @@ Trade-off: `$pageleave` events become slightly less reliable (sendBeacon fires d
 7. Run the full validation suite: `prettier → eslint → tsc → vitest run`.
 
 **Prevention:**
-
 - Never hardcode option IDs, axis names, or tier names in `PlanTagWizard.tsx`. All iteration must read from `tagData`.
 - The `selections` state is a `Record<string, string[]>` — the key is the step's `key` field (e.g., `"tier1"`, `"destination_scope"`, `"sleep"`, `"tier3_tent"`). Add new step types following this convention.
 - Run `tests/unit/data/plan-creation-tags.test.ts` after every mock-data update to catch structural regressions before they reach production.
