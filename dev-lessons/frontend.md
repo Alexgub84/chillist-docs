@@ -125,6 +125,7 @@ Trade-off: `$pageleave` events become slightly less reliable (sendBeacon fires d
 #### How the generic wizard works
 
 **Data flow:**
+
 1. `usePlanTags()` lazy-fetches `GET /plan-tags` on first wizard open (`staleTime: Infinity`, `retry: false`).
 2. The hook returns `tagData: PlanTagData` (Zod-validated).
 3. `buildSteps(tagData, selections)` is called on every render. It iterates the schema in this fixed order:
@@ -144,11 +145,13 @@ Trade-off: `$pageleave` events become slightly less reliable (sendBeacon fires d
 | tier3 | check `tier3.multi_select_parents.includes(tier2Id)` — if yes, `multi`; otherwise, `tier3.default_select` (default: `"single"`) |
 
 **Contradiction logic:**
+
 - If a flag has a `contradictions: [string, string][]` array, `buildSteps` calls `computeDisabledIds(currentFlagSelections, contradictions)`.
 - This returns a `Set<string>` of option IDs that must be disabled in the UI.
 - When the conflicting selection is removed, the disabled set recalculates automatically (no explicit re-enable step).
 
 **Auto-advance:**
+
 - Steps with `select: "single"` auto-advance synchronously on click (no Next button needed).
 - Steps with `select: "multi"` show a Next button. The user must explicitly advance.
 
@@ -180,6 +183,7 @@ Trade-off: `$pageleave` events become slightly less reliable (sendBeacon fires d
 7. Run the full validation suite: `prettier → eslint → tsc → vitest run`.
 
 **Prevention:**
+
 - Never hardcode option IDs, axis names, or tier names in `PlanTagWizard.tsx`. All iteration must read from `tagData`.
 - The `selections` state is a `Record<string, string[]>` — the key is the step's `key` field (e.g., `"tier1"`, `"destination_scope"`, `"sleep"`, `"tier3_tent"`). Add new step types following this convention.
 - Run `tests/unit/data/plan-creation-tags.test.ts` after every mock-data update to catch structural regressions before they reach production.
@@ -1755,3 +1759,15 @@ Route file dropped from ~600 to ~460 lines, with each extracted module independe
 **Solution:** (1) Enhanced `mockPosthog` to accumulate captured events in an in-memory array, `console.debug` them in dev mode, and expose `getCapturedEvents()` / `clearCapturedEvents()` helpers for test assertions. (2) Added 4 new tracking functions: `trackParticipantAdded`, `trackParticipantLeft`, `trackOwnershipTransferred`, `trackJoinRequestModerated`. (3) Wired all 8 events into their respective call sites (invite.ts, api.ts, RequestToJoinPage, complete-profile, manage-participants, useLeaveParticipant, usePlanActions). (4) Updated `useLeaveParticipant` mutation signature from `string` to `{ participantId, planId }` to pass `planId` for tracking. (5) Added analytics assertions to all affected test files.
 
 **Lesson:** When changing a mutation hook's parameter shape (e.g., from a plain string to an object), all callers and their tests must be updated in the same change. Mock clients should be designed for observability from the start — accumulating events costs nothing and prevents the need for `vi.spyOn` gymnastics in every test file.
+
+### [Test] E2E calendar date selection must navigate months — `DateField` opens to current month
+
+**Date:** 2026-04-16
+
+**Problem:** All 12 E2E tests that used the custom `DateField` component failed. After clicking the trigger button, Playwright could not find `getByRole('button', { name: /July 15/ })` — the test timed out waiting for a day button that didn't exist on the visible calendar page.
+
+**Root Cause:** `DateField` initializes its `month` state to `new Date()` (the current month). When the E2E tests opened the calendar, it showed April 2026, not July. The old native `<input type="date">` accepted `.fill('2026-07-15')` to set any date directly; the custom `react-day-picker` calendar requires navigating to the correct month first. Initially misdiagnosed as a Headless UI `PopoverPanel` rendering/portal issue — the `anchor` prop and render function pattern were both red herrings.
+
+**Solution:** Added a `selectCalendarDate(page, testId, day, monthsForward)` helper to `tests/e2e/fixtures.ts` that: (1) clicks the trigger by `data-testid`, (2) waits for the panel to be visible, (3) clicks the "next month" nav button N times, (4) clicks the day button by its numeric text content (`td button` filtered by `^${day}$`). Using text content for the day number is locale-independent. Removed the two `plan-tags.spec.ts` date interactions entirely (those tests were scoped to only test the tag wizard, not plan creation).
+
+**Lesson:** When replacing native HTML inputs with custom picker components, E2E tests cannot use `.fill()` — they must interact with the picker UI. Calendar components open to the current month by default; E2E tests must navigate to the target month before clicking a day. Use locale-independent selectors (day number text content) rather than locale-specific aria-labels (e.g., "July 15") that break under i18n changes.
