@@ -125,7 +125,8 @@ migrations/
 ├── 002_chatbot_sessions_chat_id.sql  # ADD COLUMN chat_id; updated index on (phone_number, chat_id, expires_at)
 ├── 003_chatbot_messages.sql          # CREATE TABLE chatbot_messages (conversation history for AI context)
 ├── 004_chatbot_ai_usage.sql          # CREATE TABLE chatbot_ai_usage (AI cost/token/tool tracking)
-└── 005_fix_tool_calls_jsonb.sql      # Fix double-serialized tool_calls JSONB strings → arrays
+├── 005_fix_tool_calls_jsonb.sql      # Fix double-serialized tool_calls JSONB strings → arrays
+└── 006_add_source_and_fix_session_id.sql  # ALTER session_id UUID→TEXT; ADD source column with index
 ```
 
 ---
@@ -459,6 +460,7 @@ Migration files:
 - `003_chatbot_messages.sql` — creates `chatbot_messages` table (conversation history for AI context)
 - `004_chatbot_ai_usage.sql` — creates `chatbot_ai_usage` table (AI cost/token/tool tracking per message)
 - `005_fix_tool_calls_jsonb.sql` — fixes double-serialized `tool_calls` JSONB strings back to arrays
+- `006_add_source_and_fix_session_id.sql` — changes `session_id` from UUID to TEXT (supports `qt-*` test IDs); adds `source` column (`'production'` default) with index for filtering
 
 The `chatbot_sessions` table stores one row per active conversation session:
 
@@ -489,7 +491,7 @@ The `chatbot_ai_usage` table tracks AI cost, tokens, and tool calls per AI invoc
 | Column            | Type          | Notes                                                                  |
 | ----------------- | ------------- | ---------------------------------------------------------------------- |
 | `id`              | UUID PK       | Auto-generated                                                         |
-| `session_id`      | UUID          | Which conversation session                                             |
+| `session_id`      | TEXT          | Which conversation session (UUID in prod, `qt-*` in quality tests)     |
 | `user_id`         | UUID          | Nullable — Supabase user UUID                                          |
 | `plan_id`         | UUID          | Nullable — plan in focus during this AI call                           |
 | `provider`        | TEXT          | `'anthropic'` or `'openai'`                                           |
@@ -503,8 +505,9 @@ The `chatbot_ai_usage` table tracks AI cost, tokens, and tool calls per AI invoc
 | `input_tokens`    | INT           | Nullable                                                               |
 | `output_tokens`   | INT           | Nullable                                                               |
 | `total_tokens`    | INT           | Nullable                                                               |
-| `estimated_cost`  | NUMERIC(10,6) | Nullable — computed from tokens x model pricing                        |
+| `estimated_cost`  | NUMERIC(10,6) | Nullable — reserved for future cost logging (currently NULL)           |
 | `duration_ms`     | INT           | Wall-clock time of AI call                                             |
+| `source`          | TEXT          | `'production'` (default), `'quality-test'`, or `'e2e-test'`           |
 | `status`          | TEXT          | `'success'` or `'error'`                                               |
 | `error_message`   | TEXT          | Nullable — error details if status is error                            |
 | `created_at`      | TIMESTAMPTZ   | Immutable                                                              |
@@ -602,19 +605,19 @@ npm run test:conversation-quality
 
 Requires `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) in `.env`. The script sets `RUN_CONVERSATION_QUALITY=true`; without that flag, the quality suites do not run (even if a key is present). Reports are written to `tests/conversation-quality-reports/report-<timestamp>.md` (gitignored). The script uses Vitest’s `verbose` reporter so the terminal does not spam hundreds of identical “running” lines: the default reporter redraws the live tree, and long real-API turns (minutes per test) cause integrated terminals to log each redraw as a new line.
 
-All quality test session IDs are prefixed with `qt-` (e.g. `qt-mark-done`). When `DATABASE_URL_PUBLIC` is set in `.env`, token usage is also written to the real `chatbot_ai_usage` table so you can track quality-test spending over time. When it is not set, a fake in-memory logger is used and nothing is persisted.
+All quality test session IDs are prefixed with `qt-` (e.g. `qt-mark-done`). When `DATABASE_URL_PUBLIC` is set in `.env`, token usage is also written to the real `chatbot_ai_usage` table with `source='quality-test'` so you can track quality-test spending over time. When it is not set, a fake in-memory logger is used and nothing is persisted.
 
-Filter quality-test entries in the DB:
+Filter entries by source in the DB:
 
 ```sql
 -- Quality-test entries only
 SELECT session_id, model_id, total_tokens, estimated_cost, created_at
 FROM chatbot_ai_usage
-WHERE session_id LIKE 'qt-%'
+WHERE source = 'quality-test'
 ORDER BY created_at DESC;
 
 -- Production entries only (exclude test runs)
-SELECT * FROM chatbot_ai_usage WHERE session_id NOT LIKE 'qt-%';
+SELECT * FROM chatbot_ai_usage WHERE source = 'production';
 ```
 
 The active filter mode (`DB logging: enabled/disabled`) is printed in the report header under each run.
@@ -718,4 +721,4 @@ const t1 = await runTurn(deps, sessionId, USER_ALEX, "Alex", "camping", usageLog
 
 ### Ops: chatbot Postgres migrations
 
-For each Railway/staging/prod environment that uses the chatbot with `DATABASE_URL` (message store + usage logger), ensure migrations **`003_chatbot_messages.sql`** and **`004_chatbot_ai_usage.sql`** have been applied (`npx tsx scripts/migrate.ts` or equivalent). If migrations were already applied before this doc update, no action.
+For each Railway/staging/prod environment that uses the chatbot with `DATABASE_URL` (message store + usage logger), ensure migrations up to **`006_add_source_and_fix_session_id.sql`** have been applied (`npx tsx scripts/migrate.ts` or equivalent). If migrations were already applied before this doc update, no action.
