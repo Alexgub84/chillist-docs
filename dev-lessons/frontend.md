@@ -4,6 +4,33 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [i18n] Hebrew common-items list used dictionary Hebrew instead of Israeli terms
+
+**Date:** 2026-04-16
+**Problem:** `common-items.he.json` was a literal translation of the English list. Terms like גריל, כירת קמפינג, כלי רב שימושי are correct Hebrew but not what Israelis actually say. The list also included American-specific items (bear spray, s'mores, Graham crackers, cornhole, horseshoes, maple syrup, English muffins, string cheese) and pork items (bacon, pork ribs, pulled pork, smoked ham) that are irrelevant to Israeli culture. Israeli staples like מטקות, סחוג, עמבה, ביסלי, במבה, ערק, מרגז were missing entirely.
+**Solution:** Scripted bulk update: (1) renamed 13 items to Israeli colloquial terms (גריל→מנגל, כירת קמפינג→גזייה, לחם פיתה→פיתה, כלי רב שימושי→לדרמן, etc.), (2) removed 34 irrelevant items, (3) replaced 4 pork items with Israeli equivalents (בייקון→פסטרמה, צלעות חזיר→שישליק, חזיר מפורק→קבב, חזיר מעושן→שניצל), (4) added 15 Israeli staples (food: סחוג, עמבה, זעתר, סומק, בהרט, ביסלי, במבה, שוקו, ערק, נענע, מרגז; equipment: מטקות), (5) fixed 23 wrong subcategory assignments (e.g. בננות was "Other" not "Fresh Fruit", דגני בוקר was "Fish and Seafood" not "Breakfast Staples", טחינה was "Cheese" not "Sauces, Condiments").
+**Prevention:** Localized item lists should be reviewed by a native speaker for colloquial accuracy, not just translated word-for-word. Check that cultural context fits the target audience (food, games, climate-specific gear).
+
+---
+
+### [UX] Native date/time inputs replaced with custom pickers (iOS Safari RTL fix)
+
+**Date:** 2026-04-16
+**Problem:** On iPhone Safari and Chrome (iOS WebKit) with the app in Hebrew (`html[dir=rtl]`), native `<input type="date">` and `<input type="time">` rendered as broken/empty boxes. CSS overrides (`appearance: auto`, `direction: ltr`, `unicode-bidi: isolate`) and programmatic `showPicker()` worked on desktop emulation but **not on real iPhone hardware**. The root cause is that iOS WebKit renders native date/time inputs via internal components that ignore most CSS overrides, especially under RTL.
+**Solution:** Replaced all native date/time inputs with custom `DateField` (Headless UI `Popover` + `react-day-picker` v9 calendar) and `TimeField` (Headless UI `Popover` + scrollable time-slot list) components in `CreatePlanWizard`, `PlanForm`, and `EditPlanForm`. Form values still use ISO strings (`YYYY-MM-DD`, `HH:MM`) via React Hook Form `watch`/`setValue` — no schema or API changes needed. Removed all `showPicker()`, ref-chaining, and picker-opening workaround code.
+**Prevention:** Never rely on native `<input type="date|time">` for cross-browser consistency, especially under RTL. Desktop mobile emulation does not reproduce real iOS WebKit rendering bugs. Use custom picker components with explicit RTL/locale support instead.
+
+---
+
+### [UX] Header logo should open plans for signed-in users
+
+**Date:** 2026-04-15
+**Problem:** Clicking the Chillist logo in the header always routed to `/`, even for authenticated users who expected to return directly to the plans list.
+**Solution:** Made the logo link auth-aware in `Header`: use `/plans` when `user` exists and `/` for unauthenticated sessions. Added unit tests to assert both link targets.
+**Prevention:** For global navigation entry points (brand logo, primary CTA), define route targets per auth state and lock them with dedicated unit assertions.
+
+---
+
 ### [UX] Delayed auto-advance on single-select wizard steps
 
 **Date:** 2026-04-15
@@ -22,13 +49,23 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
-### [Infra] PostHog production events silently dropped — gzip compression through Pages Function proxy
+### [Infra] PostHog production events silently dropped — proxy + sendBeacon + compression
 
-**Date:** 2026-04-14
+**Date:** 2026-04-14 / 2026-04-16
 **Problem:** Zero production events appeared in PostHog despite the proxy returning `{"status":"Ok"}` for every request. All 1,231 events over 30 days were from localhost only.
-**Root cause:** The PostHog JS SDK uses `compression=gzip-js` by default, sending gzip-compressed request bodies. The Cloudflare Pages Function proxy (with `_middleware.ts` calling `next()` in the chain) corrupts binary gzip bodies during forwarding. PostHog's `/e/` endpoint returns `{"status":"Ok"}` regardless of payload validity but silently drops events it cannot decompress. Uncompressed events through the same proxy arrive fine. The official PostHog docs show this pattern for standalone Cloudflare Workers — not Pages Functions with middleware.
-**Solution:** Added `disable_compression: true` to `posthogJs.init()` in `src/lib/posthog.ts`. The SDK now sends plain JSON bodies which the proxy forwards correctly.
-**Prevention:** When using a Cloudflare Pages Function as a reverse proxy for a third-party service, test with both compressed and uncompressed payloads. Pages Functions with middleware may not preserve binary request bodies. If gzip is needed long-term, consider migrating to a standalone Cloudflare Worker on a subdomain (matching the official PostHog proxy docs) or skipping middleware for `/ingest/*` paths.
+**Root cause (two layers):**
+
+1. The Cloudflare Pages Function proxy (with `_middleware.ts` calling `next()`) corrupts or mishandles gzip-compressed binary request bodies. PostHog's `/e/` endpoint returns `{"status":"Ok"}` regardless of payload validity but silently drops events it cannot decompress. Manually-posted uncompressed events through the same proxy arrive fine.
+2. Even after adding `disable_compression: true`, the PostHog SDK (v1.364.3) continued sending some events via `sendBeacon` transport with `compression=gzip-js` in the URL — the `disable_compression` flag does not fully control the sendBeacon code path. These compressed sendBeacon requests were silently dropped by the proxy.
+
+**Solution:** Two config options in `posthogJs.init()` in `src/lib/posthog.ts`:
+
+- `disable_compression: true` — sends plain JSON bodies instead of gzip
+- `__preview_disable_beacon: true` — prevents the SDK from using `navigator.sendBeacon` (which ignores `disable_compression`), forcing all requests through `fetch()`
+
+Trade-off: `$pageleave` events become slightly less reliable (sendBeacon fires during page unload; fetch may not). Acceptable for analytics purposes.
+
+**Prevention:** When using a Cloudflare Pages Function as a reverse proxy, test with both compressed and uncompressed payloads AND both fetch and sendBeacon transports. The official PostHog proxy docs target standalone Cloudflare Workers (no middleware chain) — Pages Functions with middleware may not preserve binary request bodies. If gzip/sendBeacon is needed long-term, migrate to a standalone Cloudflare Worker on a subdomain or skip middleware for `/ingest/*` paths.
 
 ---
 
@@ -88,7 +125,6 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 #### How the generic wizard works
 
 **Data flow:**
-
 1. `usePlanTags()` lazy-fetches `GET /plan-tags` on first wizard open (`staleTime: Infinity`, `retry: false`).
 2. The hook returns `tagData: PlanTagData` (Zod-validated).
 3. `buildSteps(tagData, selections)` is called on every render. It iterates the schema in this fixed order:
@@ -108,13 +144,11 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 | tier3 | check `tier3.multi_select_parents.includes(tier2Id)` — if yes, `multi`; otherwise, `tier3.default_select` (default: `"single"`) |
 
 **Contradiction logic:**
-
 - If a flag has a `contradictions: [string, string][]` array, `buildSteps` calls `computeDisabledIds(currentFlagSelections, contradictions)`.
 - This returns a `Set<string>` of option IDs that must be disabled in the UI.
 - When the conflicting selection is removed, the disabled set recalculates automatically (no explicit re-enable step).
 
 **Auto-advance:**
-
 - Steps with `select: "single"` auto-advance synchronously on click (no Next button needed).
 - Steps with `select: "multi"` show a Next button. The user must explicitly advance.
 
@@ -146,7 +180,6 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 7. Run the full validation suite: `prettier → eslint → tsc → vitest run`.
 
 **Prevention:**
-
 - Never hardcode option IDs, axis names, or tier names in `PlanTagWizard.tsx`. All iteration must read from `tagData`.
 - The `selections` state is a `Record<string, string[]>` — the key is the step's `key` field (e.g., `"tier1"`, `"destination_scope"`, `"sleep"`, `"tier3_tent"`). Add new step types following this convention.
 - Run `tests/unit/data/plan-creation-tags.test.ts` after every mock-data update to catch structural regressions before they reach production.
@@ -1710,3 +1743,15 @@ Route file dropped from ~600 to ~460 lines, with each extracted module independe
 **Solution:** (1) Added `subcategory` and `isAllParticipants` to `addGuestItem` type. (2) Typed `updateGuestItem` with a proper `GuestItemUpdate` interface. (3) Added `bulkCreateItems` and `bulkCreateGuestItems` API functions calling `POST /plans/:planId/items/bulk`. (4) Created `useBulkCreateItems` mutation hook with query invalidation. (5) Extracted `processBulkCreateResult` helper in `utils-plan-items.ts` for shared toast/error handling. (6) Replaced all three `Promise.allSettled` patterns with the bulk endpoint. (7) Updated mock server to auto-fill `assignmentStatusList` for `personal_equipment` items and added bulk create endpoints for both JWT and invite paths.
 
 **Lesson:** When the BE consolidates multiple individual endpoints into a bulk endpoint, the FE should adopt it immediately — not accumulate parallel `Promise.allSettled` wrappers. Always keep mock server behavior in sync with real BE defaults (especially auto-populated fields like `assignmentStatusList`), otherwise tests pass locally but fail in production. Guest API functions should accept the same field set as authenticated ones — omitting optional fields like `subcategory` silently drops data.
+
+### [Feature] PostHog participant action tracking + mock client enhancement
+
+**Date:** 2026-04-16
+
+**Problem:** The PostHog mock client (`mock-posthog.ts`) was a dead no-op — all methods were empty functions. This made it impossible to verify analytics calls in tests or inspect events during local development. Additionally, 8 participant-related events were either defined but unwired or not defined at all.
+
+**Root Cause:** The mock was created as a minimal type-safe stub to satisfy imports but was never designed for observability. Participant actions (add, leave, transfer ownership, moderate join requests) and invite/profile events had `track*` functions defined in `analytics.ts` but no call sites in application code.
+
+**Solution:** (1) Enhanced `mockPosthog` to accumulate captured events in an in-memory array, `console.debug` them in dev mode, and expose `getCapturedEvents()` / `clearCapturedEvents()` helpers for test assertions. (2) Added 4 new tracking functions: `trackParticipantAdded`, `trackParticipantLeft`, `trackOwnershipTransferred`, `trackJoinRequestModerated`. (3) Wired all 8 events into their respective call sites (invite.ts, api.ts, RequestToJoinPage, complete-profile, manage-participants, useLeaveParticipant, usePlanActions). (4) Updated `useLeaveParticipant` mutation signature from `string` to `{ participantId, planId }` to pass `planId` for tracking. (5) Added analytics assertions to all affected test files.
+
+**Lesson:** When changing a mutation hook's parameter shape (e.g., from a plain string to an object), all callers and their tests must be updated in the same change. Mock clients should be designed for observability from the start — accumulating events costs nothing and prevents the need for `vi.spyOn` gymnastics in every test file.
