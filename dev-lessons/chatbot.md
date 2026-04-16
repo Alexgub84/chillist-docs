@@ -14,22 +14,6 @@ Architecture, config, and integration choices made during development — the "w
 
 <!-- Add new Decision entries at the top of this section -->
 
-### [Decision] Add `source` column + TEXT session_id to chatbot_ai_usage; defer cost estimation
-
-**Date:** 2026-04-16
-**Context:** Quality tests use `qt-*` session IDs but the `session_id` column was UUID, silently rejecting inserts. Production and test rows were indistinguishable. The bot's `estimated_cost` is always NULL because there's no `MODEL_PRICING` in the bot repo.
-**Decision:** (1) Migration 006 changes `session_id` from UUID to TEXT and adds `source TEXT NOT NULL DEFAULT 'production'` with an index. (2) The tee logger tags quality-test rows with `source='quality-test'`. (3) Cost estimation is deferred — `estimated_cost` stays NULL. Cost can be derived at query time from `model_id + input_tokens + output_tokens` or backfilled later. No need to duplicate `MODEL_PRICING` across repos. (4) BE Drizzle mirror sync deferred until the admin dashboard needs `source` filtering.
-**Reason:** Tokens are the hard data to capture at runtime; cost is a derived metric that can always be computed later. Keeping `estimated_cost` as a column preserves the option to log cost-at-time-of-call when model pricing is added, which captures historical pricing accurately.
-**Reuse tip:** For any analytics table, always log the raw inputs (tokens, model ID) at write time. Derived metrics (cost) can be computed at read time or backfilled. Don't duplicate pricing dictionaries across services unless there's a strong latency reason.
-
-### [Decision] Pass planId from planContextStore to usage logger
-
-**Date:** 2026-04-16
-**Context:** The `chatbot_ai_usage` table has a `plan_id` column but the engine always passed NULL. The plan context store already tracks the active plan during tool calls, making the data available.
-**Decision:** Read `planContextStore.getActivePlan(sessionId)?.id` before the AI call and pass it to `usageLogger.log()` on both success and error paths. If no plan is in context (e.g. the user just listed plans or chatted), `planId` is NULL — acceptable.
-**Reason:** Enables per-plan cost analysis without any schema changes. The data was already available; it just wasn't being passed through.
-**Reuse tip:** When a context store already tracks state for tool calls, reuse it for analytics logging in the same request.
-
 ### [Decision] Resolve bilingual labels in the tool layer, not in the AI prompt
 
 **Date:** 2026-04-14
@@ -246,20 +230,6 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 ## Bugs
 
 <!-- Add new Bug entries at the top of this section -->
-
-### [Bug] Quality test tee logger silently failed — session_id UUID column rejected qt-* strings
-
-**Date:** 2026-04-16
-**Problem:** `createQualityLoggerSetup()` tees usage data to both a fake logger and the real `chatbot_ai_usage` table. Quality tests use session IDs like `"qt-list"` and `"qt-mark-done"`, but the DB column was `session_id UUID NOT NULL`. Every INSERT silently failed because non-UUID strings are rejected. The error was swallowed by `engine.ts`'s `try/catch` around `usageLogger.log()`, and the fake logger still worked for assertion reads — so all tests passed green while zero rows reached the DB.
-**Solution:** Migration 006 changes `session_id` from UUID to TEXT. Added `source TEXT NOT NULL DEFAULT 'production'` column so test and production rows are distinguishable. Tee logger tags entries with `source: 'quality-test'`.
-**Prevention:** Five-link failure chain to watch for: (a) TypeScript `string` doesn't enforce UUID format at compile time — add E2E tests that use the same ID patterns as actual callers; (b) fire-and-forget logging swallows errors by design — add a dedicated test for the tee path; (c) documented queries must be tested against the real schema; (d) any analytics table that receives data from tests should have a `source` column from day one; (e) when the E2E test uses `randomUUID()` but the real caller uses `"qt-*"` strings, the E2E test is not testing the real path.
-
-### [Bug] engine.ts never passed planId to usage logger despite column existing
-
-**Date:** 2026-04-16
-**Problem:** The `chatbot_ai_usage` table has a `plan_id UUID` column and `CreateUsageData` has `planId?: string`, but `engine.ts` never set the field. All rows had `plan_id = NULL`, making per-plan cost analysis impossible.
-**Solution:** Read `planContextStore.getActivePlan(sessionId)?.id` before the AI call and pass it as `planId` to both the success and error logging paths.
-**Prevention:** When adding a column to an analytics table, grep all write paths to ensure the new column is populated. A column that exists but is never written is worse than no column — it gives the false impression of "no data" vs "not tracked."
 
 ### [Bug] Anthropic 529 "Overloaded" exhausted default 3 retries — user had to manually retry
 
