@@ -211,7 +211,10 @@ All under `/api/internal/*`, `x-service-key` = `CHATBOT_SERVICE_KEY`, plus `x-us
 | `GET` | `/api/internal/plans` | `x-service-key` + `x-user-id` | List user’s plans with summary counts (undated or `startDate` ≥ now UTC; past-dated plans omitted) |
 | `GET` | `/api/internal/plans/:planId` | `x-service-key` + `x-user-id` | Full plan: participants and items (chatbot field names; membership required) |
 | `PATCH` | `/api/internal/items/:itemId/status` | `x-service-key` + `x-user-id` | Body `{ status: "done" \| "pending" }` — upserts caller’s assignment (`done` maps to `purchased` in DB) |
+| `POST` | `/api/internal/plans/:planId/expenses` | `x-service-key` + `x-user-id` | Body `{ amount, description?, itemIds? }` — creates expense for caller's participant. Linked items auto-advance from `pending` to `purchased`. |
 | `GET` | `/api/internal/plan-tags` | `x-service-key` only | **Global reference data** — full bundled taxonomy JSON (same document as public `GET /plan-tags`). No user context; safe to cache for the process lifetime. |
+
+**Expenses — linking items after logging amount only:** There is no internal `PATCH` for expenses. If the user first logs an expense without `itemIds` and later wants to attach checklist items, the **app REST API** `PATCH /api/expenses/:expenseId` (JWT auth; body `itemIds` replaces the full list) validates plan membership and advances only newly added items from `pending` to `purchased`. The chatbot would need a user session path or a future internal update endpoint to do the same without JWT.
 
 **Plan tags (`GET /api/internal/plan-tags`) — how the WhatsApp service should use it**
 
