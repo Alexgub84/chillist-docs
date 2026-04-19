@@ -87,6 +87,10 @@ When removing an env var: reverse all 6 steps.
 
 ## Git Workflow
 
+> **APPROVAL GATE:** The steps below describe the mechanics of HOW to commit and push. NEVER execute `git commit` or `git push` until the user has explicitly approved. Finish your work, run validation, say "ready for review", and WAIT for the user to say "commit", "push", "looks good", or similar.
+
+**Commit vs push (assistants / automation):** Asking to **commit** never authorizes **push**. Only run `git push` when the user clearly asks to update the remote (e.g. "push", "push to origin", or they paste the exact `git push` command). If a message mixes tasks or is ambiguous, commit locally and stop — tell the user commits are on the branch and they can push when ready.
+
 ### New branch (first commit)
 
 1. Stash current changes
