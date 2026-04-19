@@ -30,22 +30,25 @@ Strict, minimal rules for `chillist-fe`. Use alongside [common rules](common.md)
 **Why:** init logic in `main.tsx` cannot be swapped in tests. Mocking a third-party package couples tests to implementation details. The lib boundary gives a single injectable seam.
 
 **Existing examples:**
+
 - `src/lib/supabase.ts` — Supabase client (real vs. mock auth controlled by `VITE_AUTH_MOCK`)
 - `src/lib/posthog.ts` — PostHog analytics (real init when token is set; `VITE_POSTHOG_MOCK` → fake client; optional `VITE_PUBLIC_POSTHOG_DEBUG` for console logs)
 - `src/lib/logger.ts` — App logging: in dev, messages go to `console`; in production, they go through `setProdLogSink` (default no-op). Wire a third-party reporter from `src/lib/<vendor>.ts` by registering a sink there—feature code imports `logger` only, never the vendor SDK. Vitest can assert the prod path via `setLoggerForceProdSinkForTests(true)` after `vi.resetModules()`.
 
 **Template for a new client:**
+
 ```typescript
 // src/lib/<service>.ts
-import { createClient } from '<package>';
+import { createClient } from "<package>";
 
-const token = import.meta.env.VITE_<SERVICE>_TOKEN;
+const token = import.meta.env.VITE_ < SERVICE > _TOKEN;
 
 // conditional init or always-safe no-op when token missing
 export const serviceClient = token ? createClient(token) : noOpClient;
 ```
 
 **Template for test mock:**
+
 ```typescript
 vi.mock('../../../src/lib/<service>', () => ({
   default: { method: vi.fn(), ... },
@@ -80,6 +83,7 @@ vi.mock('../../../src/lib/<service>', () => ({
 - **Always use `data-testid` for testable elements.** It is the best way to target elements in E2E and unit tests. Add `data-testid` (or a `testId` prop on shared components like Modal) on: buttons, links, dialogs, forms, and any element tests need to interact with or assert on. Prefer `getByTestId` over `getByRole`, `getByText`, or `getByLabel` — test IDs are stable across i18n changes, layout shifts, and Headless UI transitions.
 - For auth-gated UI changes, cover owner, non-owner authenticated, and unauthenticated states.
 - **AI item suggestions** on the plan page, Manage Items route, and plan creation wizard are **admin-only** in the UI (inline button + floating menu). Non-admin users (including plan owners) do not see AI suggestion buttons.
+- **Item list tabs:** Default tab is **Buying** (not “All”): `ItemsView` / invite preview use `useState('buying')`; plan route uses `planListSearchToFilter` + `listFilterToPlanListSearch` so missing `list` in the URL means buying and `list=all` selects the All tab. **Canceled items are hidden from every status tab** (Buying, Packing, and All) — `filterItemsByStatusTab` filters out `getItemStatus(i, participantId) === 'canceled'` on the All branch; the Buying / Packing branches already exclude canceled via their explicit status whitelist. The **Buying** tab filter must also include **unassigned** items (no `pending` status yet), not only `getItemStatus === 'pending'`, or the default view hides normal new lines. **Cancel item** (status → canceled) is available on **every** editable, non-canceled row — including unassigned lines. `buildStatusUpdate(item, 'canceled', viewerParticipantId)` appends a new canceled entry for the viewer when `assignmentStatusList` is empty, so an unassigned row becomes canceled-for-viewer without a prior assignment step. `handleBulkCancel` must NOT skip unassigned ids. **Canceled = deleted on the FE:** any lookup representing "what's already in the plan" must exclude canceled-for-viewer items via `filterOutCanceledForViewer(items, viewerId)` — this covers the `existingItems` map passed to `BulkItemAddWizard`, the `existingItemNames` set, and the subcategory map fed to `AiSuggestionsModal` / `ItemSuggestionsModal`. When a bulk-add payload name matches a canceled-for-viewer item, **reactivate** that item with `buildReactivatePatch(item, viewerId)` instead of creating a duplicate row (route via `getCanceledItemsByName` + `onUpdateItem` in the parent `handleBulkAdd`). `buildReactivatePatch` is viewer-scoped (sets the viewer's entry to `pending` or appends a new pending entry if absent); do **not** reuse `buildStatusUpdate` for this because its length-1 fallback would overwrite another participant's entry.
 - All user-facing strings must use `t()` from `useTranslation()`. Add keys to both `en.json` and `he.json`.
 - **Form validation messages must use `t()`.** Never hardcode English strings in Zod schemas used by forms. Convert static schemas to factory functions: `function buildXxxSchema(t: (key: string) => string)` and call `buildXxxSchema(t)` inside the component. Use `validation.*` i18n keys. Type inference: `z.infer<ReturnType<typeof buildXxxSchema>>`.
 - API enum values must be translated at display time (`t('namespace.${value}')`), not stored translated.
@@ -93,7 +97,7 @@ vi.mock('../../../src/lib/<service>', () => ({
 - **Playwright E2E webServer:** `playwright.config.ts` `webServer.env` must include `VITE_AUTH_MOCK=true`, `VITE_E2E=true`, and `VITE_POSTHOG_MOCK=true` so E2E does not depend on a developer’s `.env` for mock clients. Full table: [guides/frontend.md § Playwright E2E](../guides/frontend.md).
 - **`page.goto` on Vite SPA:** Prefer `waitUntil: 'domcontentloaded'` when full `load` is not required — default `load` can time out under parallel workers. See [guides/frontend.md § Playwright E2E](../guides/frontend.md).
 - **E2E browser session assertions:** After sign-out, client-side navigation alone may not repopulate `chillist-session-id` until a full load or `getSessionId()` runs — use `page.reload()` or align assertions with app behavior. See [guides/frontend.md § Playwright E2E](../guides/frontend.md).
-- **E2E click on WebKit mobile:** If a Playwright `click()` or `click({ force: true })` silently fails on Mobile Safari (URL doesn't change, handler doesn't fire), use `locator.evaluate((el: HTMLElement) => el.click())` instead. This fires a native DOM click event, bypassing Playwright's touch-event simulation which can silently fail on WebKit after async re-renders. See dev-lesson: *Mobile Safari click + SPA navigation*.
+- **E2E click on WebKit mobile:** If a Playwright `click()` or `click({ force: true })` silently fails on Mobile Safari (URL doesn't change, handler doesn't fire), use `locator.evaluate((el: HTMLElement) => el.click())` instead. This fires a native DOM click event, bypassing Playwright's touch-event simulation which can silently fail on WebKit after async re-renders. See dev-lesson: _Mobile Safari click + SPA navigation_.
 - **E2E SPA navigation assertions:** Use `expect(page).toHaveURL(...)` to assert URL changes after in-app navigation. **NEVER** use `page.waitForURL` — it waits for a browser navigation event that `history.pushState` does not fire. **NEVER** use `toPass` to retry-click a mutation/navigation button — each retry re-triggers the side effect.
 - Cross-boundary flow change (route + context + API + UI) requires integration or E2E coverage, not only unit tests.
 - **Computed values that flow across component boundaries require integration or E2E tests.** When a value is computed in one component/context (e.g., `planPoints` in `PlanProvider`) and consumed by a distant child (e.g., `BulkItemAddWizard`), unit-testing each in isolation is not sufficient — the prop wiring and input selection are untested. Add at least one integration test that mounts the provider/parent, supplies realistic inputs, and asserts the final consumer output. Features that require this pattern include: plan-points-based quantity estimation, participant count aggregation, duration multiplier computation, and any future "compute in context, display in leaf" chains.

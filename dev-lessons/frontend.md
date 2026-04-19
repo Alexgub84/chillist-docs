@@ -4,6 +4,59 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [UX] Canceled items leaked into bulk-add as already-selected, blocking re-add
+
+**Date:** 2026-04-18
+**Problem:** After hiding canceled items from every status tab (previous lesson), opening the bulk-add wizard and drilling into a subcategory still showed a canceled item checked as "already in plan". Unchecking it fired `onCancel` (a no-op since it was already canceled), and there was no way to add the same item again without a duplicate row, which broke the "canceled = deleted on the FE" mental model.
+**Solution:** Canceled-for-viewer items are now filtered out of every FE lookup that represents "what's already in the plan":
+
+- `existingItems` map in `ItemsView` (used by `BulkItemAddWizard.existingItems`).
+- `bulkAddExistingItems`, `existingItemNames`, and the subcategory `existingItems` object on `plan.$planId.lazy.tsx`.
+- `existingItemNames` / `existingItems` on `items.$planId.lazy.tsx` (feeds `AiSuggestionsModal` / `ItemSuggestionsModal` so AI can re-suggest canceled items).
+
+All three computed maps derive from a shared `filterOutCanceledForViewer(items, viewerId)` helper. Re-adding a canceled item via the wizard no longer creates a duplicate: `handleBulkAdd` (both in `ItemsView` and on the plan route) partitions the selected payloads using `getCanceledItemsByName`, reactivating name-matched canceled items via `buildReactivatePatch(item, viewerId)` (sets the viewer's entry back to `pending`, or appends a new pending entry if the viewer had no entry) and `onUpdateItem`, while the remaining payloads go through the normal `onBulkCreate` path. The success toast reports the combined count (created + reactivated).
+**Prevention:** Any "appears-as-existing" UI that consumes `items` must go through the same "canceled = gone" predicate used for list rendering — otherwise a row hidden from the main list re-surfaces in wizards/suggestions. Keep that predicate in a single helper (`filterOutCanceledForViewer`) and use it everywhere. When adding a reactivation helper, keep it distinct from `buildStatusUpdate` (which has a length-1 fallback that would overwrite another participant's entry); always append a new entry if the viewer has none, so reactivation is strictly viewer-scoped.
+
+---
+
+### [UX] Default item tab showed “All” including canceled; cancel on unassigned was a no-op
+
+**Date:** 2026-04-18
+**Problem:** The plan page, manage-items, and invite preview defaulted to the **All** list tab, so canceled lines were visible immediately. The per-item **Cancel** action on unassigned rows could try `buildStatusUpdate` with no assignment entry, yielding an empty patch. Bulk-add “uncheck existing” had the same issue.
+**Solution:** Default list selection is **Buying** (local state: `useState('buying')`; plan URL: `planListSearchToFilter` maps missing `list` to buying, `list=all` for the All tab, `listFilterToPlanListSearch` omits `list` when buying). Canceled items are filtered out of **every** status tab (Buying, Packing, All) via `filterItemsByStatusTab` — the All branch excludes `getItemStatus === 'canceled'`; the Buying / Packing branches already exclude canceled via their explicit status whitelist. The **All** tab badge uses the same non-canceled count. `ItemCard` shows the Cancel (×) button on every editable, non-canceled row — including unassigned lines; `buildStatusUpdate` adds a new `{participantId, status: 'canceled'}` entry for the viewer when `assignmentStatusList` is empty, so canceling an unassigned row yields a valid patch. `handleBulkCancel` no longer skips unassigned ids.
+**Prevention:** When a product copy/UX ask is "filter X by default", verify the new default covers every view, not just the one initially observed. Hiding on a tab-by-tab basis is easy to under-apply — filter at the predicate in `filterItemsByStatusTab` so all tabs share the rule. For a "cancel" action on rows with no assignment, don't gate the UI — fix the data helper (`buildStatusUpdate`) so an empty `assignmentStatusList` produces a valid patch rather than `{}`.
+
+**Follow-up (same area):** The default **Buying** tab used `getItemStatus === 'pending'` only, so **unassigned** rows (`assignmentStatusList: []`) disappeared on first load — empty list with items still in the plan. **Buying** must include unassigned lines (still to be acquired/claimed); `countItemsByListTab` buying counts should match.
+
+---
+
+### [Data] English common-items had bad beverage qpp, wrong units on ice/ice-cream, pets scaling with humans, single-serve eggs under-counted
+
+**Date:** 2026-04-17
+**Problem:** After the Hebrew pass, ran the same audit against `common-items.json` (EN). The EN file was in much better shape than HE — 0 `g`/`ml` legacy units, 0 food items marked personal, 0 non-spice foods missing `quantityPerPoint` — but still had four real classes of bug: (1) every non-water beverage at `qpp: 0.5`, so Juice/Soda/Iced Tea/Kombucha etc. produced 1.5 L/person/day; (2) `Ice` and `Ice Cream` sold in bags/tubs were `kg`/`l` respectively; (3) `Dog Food`, `Cat Food`, `Protein Powder`, `Watermelon`, `Pineapple` scaled with human headcount (e.g. 3 watermelons for a 12-person overnight); (4) `Eggs` at `qpp: 0.15` yielded **3 eggs for 8 people overnight** — while the HE counterpart correctly used `0.5` (≈1 egg per person per meal). `Lemons`/`Limes`/`Vinegar` were also silently too high.
+**Solution:** Added `scripts/audit-en-item-quantities.ts` (EN mirror of the HE audit with English token patterns — NOTE: use `\b` word boundaries around `tea`/`ice`/`cocoa` to avoid matching `Steak`/`Pineapple`/`Cocoa Butter`) and `scripts/fix-en-quantities.ts` (patches keyed by `id`, editing raw JSON text to preserve formatting that `JSON.stringify` would destroy). Patched **30 items**: 11 non-water beverages to `qpp: 0.25`, 6 milk-family items to `0.3` (coffee/cereal/cooking, not standalone drink), cocktail mixer to `0.15`, `Ice` → `pack`/`0.3`, `Ice Cream` → `pcs`/`0.1`, `Watermelon` → `pcs`/`0.05`, `Pineapple` → `pcs`/`0.1`, `Dog Food`/`Cat Food` → `pack`/`0.02` (doesn't scale), `Protein Powder` → `0.02`, `Eggs` → `0.5`, `Lemons`/`Limes` → `0.1`, `Vinegar`/`Apple Cider Vinegar` → `0.05`. Extended `tests/unit/data/common-items-quantities.test.ts` with a parallel EN `describe` block: 46 canonical unit/qpp mappings + 10 camping-scenario quantity bands + structural checks (no legacy units, no personal food, every non-spice food has qpp).
+**Prevention:** Run `npx tsx scripts/audit-en-item-quantities.ts` after batch edits to the English items file. For quick cross-language sanity, diff items that share a HE alias and flag `pcs` items whose `qpp` differs by ≥2× between EN and HE — that's how `Eggs` 0.15 vs 0.5 was caught. When adding new beverages, default non-water drinks to `qpp: 0.25` and plain milk to `0.3`; only `Water`/`Sparkling Water` get `0.5`. Any `unit: kg` on a food item whose real-world packaging is a bag/bottle/jar/tub/pack is a bug — the audit script's token regex catches most but not all (`tea`/`ice` need word boundaries). Single-serving staples like eggs should have `qpp` ≈ `servings_per_meal` (0.5 ≈ 1 per person); don't set them the same as ingredient items.
+
+---
+
+### [Data] Hebrew common-items over-used kg where pack/pcs is correct
+
+**Date:** 2026-04-17
+**Problem:** `common-items.he.json` had 103 food items with `unit: "kg"` vs only 34 in the EN file. Many items that are sold in bottles, tubs, bags, or packs in Israel (yogurt, cream cheese, almonds, raisins, granola, cereal, smoked salmon, ice, chocolate, dried meat, salami, turkey slices, dried fruit, mixed nuts) were marked `kg` with low `quantityPerPoint` values (0.02–0.06). This produced technically correct but meaningless quantities like "1 kg of yogurt" or "1 kg of almonds" when the user expects "2 tubs" or "3 packs".
+**Solution:** Created `scripts/audit-he-item-quantities.ts` — a one-off audit script that evaluates `calculateSuggestedQuantity` across 4 scenarios (S/M/L/XL), flags suspicious unit/qpp combos via heuristics (kg on bottle/bag-style items, missing qpp, extreme ratios, `kg`-tiny/heavy per-person-day, `l`-heavy non-water beverages, dead-qpp, outlier qpp vs subcategory peers), and emits a markdown report to `scripts/reports/`. Applied fixes in 3 batches totaling **47 items**: (1) obvious `kg`→`pack`/`pcs` on bottles/tubs/bags (yogurt, mayo, ice, salmon slices, granola…), (2) another 18 jarred/bagged items (olives, pistachios, dates, chia seeds, kimchi, sauerkraut, overnight oat mix…) plus 7 non-water beverages at `qpp` 0.5 → 0.25 (sodas/juice/kombucha), and (3) sanity outliers (protein powder `pcs` 0.1 → 0.02, vegan cheese `kg` → `pack`, watermelon `pcs` 0.2 → 0.05, pineapple 0.2 → 0.1, ice cream `l` → `pcs`, pet food no longer scales with humans). Added 1 missing `quantityPerPoint` (ספירולינה). Extended `common-items-quantities.test.ts` with 61 canonical unit/qpp assertions to pin known-good mappings and prevent regression.
+**Prevention:** Run `npx tsx scripts/audit-he-item-quantities.ts` after any batch edit to the Hebrew items file. The script flags items that look wrong; the test file pins items that are known-correct. When adding new localized item lists, start from the EN file's unit assignments (which use `pack`/`pcs` more correctly) and adjust for local products, rather than independently curating units. For per-subcategory sanity, compute `qpp` medians per `(subcategory, unit)` group — outliers >50% off median are usually real bugs.
+
+---
+
+### [Logic] Duration multiplier capped at 3 for any event > 12h — multi-day plans got 1-day food
+
+**Date:** 2026-04-16
+**Problem:** `getDurationMultiplier` returned a hard-coded `LONG_EVENT_MULTIPLIER = 3` for anything over 12 hours. A 3-day camping trip for 4 people got the exact same multiplier as a 13-hour beach day, so `planPoints` never scaled past the 1-night baseline. Result: the "week-long camping for 6 people" flow suggested 3 loaves of bread (≈0.09 per person per day). The previous "quantity defaults to 1" fix masked this because it only validated the overnight (≤24h) case.
+**Solution:** `getDurationMultiplier` now scales linearly past 24h: `days = ceil(hours / 24); multiplier = days * 3`. Added a 4th bracket (`[24, 3]`) so the existing overnight case is explicit. Also introduced a dedicated **prod quantity evaluation test** (`tests/prod-quantity-eval/evaluate-he-quantities.test.ts`) that runs isolated from `npm run test` via `vitest.quantity-eval.config.ts` and `npm run test:quantity-eval`. It iterates every food item in `common-items.he.json` across 7 scenarios (4 mirrored from the BE AI-quality suite, 3 frontend edge cases), prints a per-person-per-day matrix for eyeballing, and asserts coarse sanity bounds per unit family (kg ≤ 0.6/person/day, l ≤ 2.5, pcs ≤ 3, pack ≤ 1.5).
+**Prevention:** Constant-time multipliers are a tempting shortcut but silently break at the boundary of the brackets. For any duration-scaled computation, write a test with at least one "well beyond the last bracket" case (here: 7-day camping). Keep the prod-scale evaluation test out of the CI unit run so it can include realistic data without slowing development, but run it as part of quantity-related work.
+
+---
+
 ### [Logic] Quantity estimation always defaulted to 1 — three stacking bugs
 
 **Date:** 2026-04-16
@@ -134,6 +187,7 @@ Trade-off: `$pageleave` events become slightly less reliable (sendBeacon fires d
 #### How the generic wizard works
 
 **Data flow:**
+
 1. `usePlanTags()` lazy-fetches `GET /plan-tags` on first wizard open (`staleTime: Infinity`, `retry: false`).
 2. The hook returns `tagData: PlanTagData` (Zod-validated).
 3. `buildSteps(tagData, selections)` is called on every render. It iterates the schema in this fixed order:
@@ -153,11 +207,13 @@ Trade-off: `$pageleave` events become slightly less reliable (sendBeacon fires d
 | tier3 | check `tier3.multi_select_parents.includes(tier2Id)` — if yes, `multi`; otherwise, `tier3.default_select` (default: `"single"`) |
 
 **Contradiction logic:**
+
 - If a flag has a `contradictions: [string, string][]` array, `buildSteps` calls `computeDisabledIds(currentFlagSelections, contradictions)`.
 - This returns a `Set<string>` of option IDs that must be disabled in the UI.
 - When the conflicting selection is removed, the disabled set recalculates automatically (no explicit re-enable step).
 
 **Auto-advance:**
+
 - Steps with `select: "single"` auto-advance synchronously on click (no Next button needed).
 - Steps with `select: "multi"` show a Next button. The user must explicitly advance.
 
@@ -189,6 +245,7 @@ Trade-off: `$pageleave` events become slightly less reliable (sendBeacon fires d
 7. Run the full validation suite: `prettier → eslint → tsc → vitest run`.
 
 **Prevention:**
+
 - Never hardcode option IDs, axis names, or tier names in `PlanTagWizard.tsx`. All iteration must read from `tagData`.
 - The `selections` state is a `Record<string, string[]>` — the key is the step's `key` field (e.g., `"tier1"`, `"destination_scope"`, `"sleep"`, `"tier3_tent"`). Add new step types following this convention.
 - Run `tests/unit/data/plan-creation-tags.test.ts` after every mock-data update to catch structural regressions before they reach production.
