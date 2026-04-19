@@ -2,7 +2,7 @@
 
 A three-section log for `chillist-whatsapp-bot`: **wins** (strategies that worked), **bugs** (problems fixed), and **decisions** (architecture, config, and integration choices). Read all sections before starting any chatbot task.
 
-> **Goal:** This file is the primary knowledge asset for building the *next* WhatsApp bot. Every non-obvious choice made during development should be recorded here so the next project starts with the full context of this one.
+> **Goal:** This file is the primary knowledge asset for building the _next_ WhatsApp bot. Every non-obvious choice made during development should be recorded here so the next project starts with the full context of this one.
 
 _(Seeded with relevant lessons from `dev-lessons/backend.md`. Only add NEW lessons here.)_
 
@@ -13,6 +13,14 @@ _(Seeded with relevant lessons from `dev-lessons/backend.md`. Only add NEW lesso
 Architecture, config, and integration choices made during development — the "why we built it this way" record. Add a `[Decision]` entry whenever you make a non-obvious design choice, pick one approach over another, or discover an important integration constraint.
 
 <!-- Add new Decision entries at the top of this section -->
+
+### [Decision] Expense context stored in IPlanContextStore — same "model never handles UUIDs" pattern
+
+**Date:** 2026-04-16
+**Context:** The new `createExpense` and `updateExpense` tools need to resolve plan names to plan IDs and item names to item IDs (same as existing tools). Additionally, `updateExpense` needs to identify which expense to update — but passing `expenseId` to the model would repeat the UUID hallucination problem solved for plans and items.
+**Decision:** Extended `IPlanContextStore` with `addExpense(sessionId, expense)` and `getExpenses(sessionId)` storing `ExpenseContextEntry { id, amount, description, itemNames }`. The `createExpense` tool stores each created expense in context. The `updateExpense` tool accepts an `expenseHint` string (description or amount) and matches it against stored expenses — auto-selecting when only one exists, substring-matching when multiple exist. Rejected alternatives: (a) passing `expenseId` directly — breaks the "no UUIDs" principle; (b) adding a `getExpenses` read tool — unnecessary complexity for v1 since expenses are created in the same session.
+**Reason:** Follows the exact same pattern as plan name → planId and item name → itemId resolution. The model works with human-readable identifiers (description, amount); the tool resolves to the real ID deterministically.
+**Reuse tip:** Any write tool that operates on a recently-created entity should store the entity in session context after creation and resolve it by human-readable attributes on update. This eliminates the need for a separate "list" tool.
 
 ### [Decision] Resolve bilingual labels in the tool layer, not in the AI prompt
 
@@ -262,7 +270,7 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 ### [Bug] getPlanDetails UUID hallucination — model fabricated plan IDs in follow-up turns
 
 **Date:** 2026-04-09
-**Problem:** In production, the model called `getPlanDetails` with hallucinated UUIDs (3 different fake IDs in one session, all returning 404). This happened because `getPlanDetails` accepted `planId: z.string().uuid()` — the model had plan *names* from conversation history but no plan *IDs* (system prompt says "never paste UUIDs to the user"). It fabricated valid-format UUIDs to satisfy the schema. Quality tests didn't catch this because `FakeInternalApiClient` was pre-seeded with exact UUIDs from `getMyPlans` within a single turn.
+**Problem:** In production, the model called `getPlanDetails` with hallucinated UUIDs (3 different fake IDs in one session, all returning 404). This happened because `getPlanDetails` accepted `planId: z.string().uuid()` — the model had plan _names_ from conversation history but no plan _IDs_ (system prompt says "never paste UUIDs to the user"). It fabricated valid-format UUIDs to satisfy the schema. Quality tests didn't catch this because `FakeInternalApiClient` was pre-seeded with exact UUIDs from `getMyPlans` within a single turn.
 **Solution:** Changed `getPlanDetails` input from `planId: z.string().uuid()` to `planName: z.string()`. The tool now resolves name → ID from `IPlanContextStore.getPlanList()` (populated by `getMyPlans`). If the plan list isn't cached yet, the tool auto-fetches it. Also added `try/catch` to `getMyPlans` (the only tool without error handling) and a defensive `Array.isArray` guard in `postgres-usage-logger` for `toolCalls` data. Added quality test scenarios that replicate the exact production failure: T1 lists plans, T2 requests details by name — asserts the internal API call uses a real plan ID.
 **Prevention:** Never let any tool accept a UUID as direct model input. Both `getPlanDetails` and `updateItemStatus` now accept human-readable names. The model never sees or handles UUIDs in tool arguments. The plan context store resolves all name → ID mappings deterministically inside tool `execute` functions.
 
@@ -489,7 +497,7 @@ Strategies, patterns, and decisions that worked well. Add a `[Win]` entry whenev
 ### [Bug] Bot mentioned "sync issue" when getMyPlans and getPlanDetails item counts differed
 
 **Date:** 2026-04-07
-**Problem:** `getMyPlans` returns plan-wide item totals (all participants' items), while `getPlanDetails` returns only items visible to the requesting user. When the bot saw "10 items" from `getMyPlans` but only 1 item in `getPlanDetails`, it told the user: *"there might be a sync issue."* This undermines trust in the app.
+**Problem:** `getMyPlans` returns plan-wide item totals (all participants' items), while `getPlanDetails` returns only items visible to the requesting user. When the bot saw "10 items" from `getMyPlans` but only 1 item in `getPlanDetails`, it told the user: _"there might be a sync issue."_ This undermines trust in the app.
 **Solution:** Added an explicit rule to `system-prompt.ts`: "getMyPlans returns plan-wide item totals (all participants); getPlanDetails returns only items visible to the requesting user — this discrepancy is expected and normal, never comment on it or suggest a sync issue."
 **Prevention:** Any time `getMyPlans` and `getPlanDetails` return different item counts, the bot must stay silent on the discrepancy. Add a quality test scenario that verifies this.
 

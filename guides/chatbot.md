@@ -44,7 +44,7 @@ See `.env.example` in the repo for full annotated config. Summary:
 | `DATABASE_URL_PUBLIC`      | — (optional; enables quality-test DB logging when set)     | Supabase **direct** connection (port 5432)                          | for migrations   |
 | `SESSION_IDLE_TTL_MINUTES` | `15`                                                       | `15`                                                                | no (default 15)  |
 | `AI_PROVIDER`              | `fake` (noop client)                                       | `anthropic` or `openai`                                             | yes              |
-| `AI_MODEL_ID`              | — (optional; uses provider default)                        | model ID string (e.g. `claude-sonnet-4-20250514`, `gpt-4o`)        | no (has default) |
+| `AI_MODEL_ID`              | — (optional; uses provider default)                        | model ID string (e.g. `claude-sonnet-4-20250514`, `gpt-4o`)         | no (has default) |
 | `ANTHROPIC_API_KEY`        | — (optional in dev)                                        | from Anthropic dashboard                                            | when `anthropic` |
 | `OPENAI_API_KEY`           | — (optional in dev)                                        | from OpenAI dashboard                                               | when `openai`    |
 
@@ -98,9 +98,9 @@ src/
     │   ├── noop-green-api.client.ts  # createNoopGreenApiClient (dev mode)
     │   └── fake-green-api.client.ts  # createFakeGreenApiClient (tests) + getSentButtons()
     ├── internal-api/
-    │   ├── types.ts          # IInternalApiClient, IdentifyResult, PlanSummary, PlansResult, PlanTagsResponse
+    │   ├── types.ts          # IInternalApiClient, IdentifyResult, PlanSummary, PlansResult, PlanTagsResponse, CreateExpenseInput, UpdateExpenseInput, ExpenseResult
     │   ├── internal-api.client.ts       # createHttpInternalApiClient (real HTTP)
-    │   └── fake-internal-api.client.ts  # createFakeInternalApiClient (tests) + setPlans(), setPlanTags()
+    │   └── fake-internal-api.client.ts  # createFakeInternalApiClient (tests) + setPlans(), setPlanTags(), setCreateExpenseResult(), setUpdateExpenseResult()
     ├── message-store/
     │   ├── types.ts          # IMessageStore, ChatbotMessage, CreateMessageData
     │   ├── postgres-message-store.ts  # createPostgresMessageStore (real DB)
@@ -112,9 +112,9 @@ src/
     │   ├── fake-session-store.ts      # createFakeSessionStore (tests)
     │   └── index.ts          # re-exports all session types and factories
     ├── plan-context/
-    │   ├── types.ts          # IPlanContextStore, ActivePlan, PlanListEntry
+    │   ├── types.ts          # IPlanContextStore, ActivePlan, PlanListEntry, ExpenseContextEntry
     │   ├── in-memory-plan-context-store.ts  # createInMemoryPlanContextStore (production — in-memory Map)
-    │   └── fake-plan-context-store.ts       # createFakePlanContextStore (tests) + getStoredPlan(), getStoredPlanList()
+    │   └── fake-plan-context-store.ts       # createFakePlanContextStore (tests) + getStoredPlan(), getStoredPlanList(), getStoredExpenses()
     └── usage-logger/
         ├── types.ts          # IUsageLogger, AiUsageEntry, CreateUsageData
         ├── postgres-usage-logger.ts   # createPostgresUsageLogger (real DB)
@@ -211,20 +211,23 @@ Group and DM messages run the same unified `handleSessionAndPlansFlow()` functio
 
 `IPlanContextStore` (`src/services/plan-context/types.ts`) is an in-memory store that enables tools to resolve human-readable names to internal IDs. The model never sees or passes UUIDs in tool arguments.
 
-**Two storage levels:**
+**Three storage levels:**
 
-| Method | What it stores | Populated by |
-|---|---|---|
-| `setPlanList(sessionId, plans)` / `getPlanList(sessionId)` | `PlanListEntry[]` (id + name) for all user's plans | `getMyPlans` tool after fetching from internal API |
-| `setActivePlan(sessionId, plan)` / `getActivePlan(sessionId)` | `ActivePlan` (id, name, items) for the selected plan | `getPlanDetails` tool after fetching plan detail |
+| Method                                                        | What it stores                                               | Populated by                                       |
+| ------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------- |
+| `setPlanList(sessionId, plans)` / `getPlanList(sessionId)`    | `PlanListEntry[]` (id + name) for all user's plans           | `getMyPlans` tool after fetching from internal API |
+| `setActivePlan(sessionId, plan)` / `getActivePlan(sessionId)` | `ActivePlan` (id, name, items) for the selected plan         | `getPlanDetails` tool after fetching plan detail   |
+| `addExpense(sessionId, expense)` / `getExpenses(sessionId)`   | `ExpenseContextEntry[]` (id, amount, description, itemNames) | `createExpense` tool after successful API call     |
 
 **Tool input signatures (no UUIDs):**
 
-| Tool | Input | Resolves via |
-|---|---|---|
-| `getMyPlans` | `{}` | Fetches from internal API, stores plan list in context |
-| `getPlanDetails` | `{ planName: string }` | Looks up `planName` in `getPlanList()` → resolves to real `planId`. Auto-fetches plan list if not cached. |
-| `updateItemStatus` | `{ itemName: string, status: "done" \| "pending" }` | Looks up `itemName` in `getActivePlan()` → resolves to real `itemId` |
+| Tool               | Input                                                  | Resolves via                                                                                                   |
+| ------------------ | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `getMyPlans`       | `{}`                                                   | Fetches from internal API, stores plan list in context                                                         |
+| `getPlanDetails`   | `{ planName: string }`                                 | Looks up `planName` in `getPlanList()` → resolves to real `planId`. Auto-fetches plan list if not cached.      |
+| `updateItemStatus` | `{ itemName: string, status: "done" \| "pending" }`    | Looks up `itemName` in `getActivePlan()` → resolves to real `itemId`                                           |
+| `createExpense`    | `{ planName, amount, description?, itemNames[]? }`     | Resolves `planName` via `getPlanList()`, `itemNames` via `getActivePlan()`. Stores result in expense context.  |
+| `updateExpense`    | `{ expenseHint, amount?, description?, itemNames[]? }` | Resolves expense from `getExpenses()` by description/amount match. Resolves `itemNames` via `getActivePlan()`. |
 
 **Why:** In production, the model hallucinated UUIDs when `getPlanDetails` accepted `planId: z.string().uuid()`. Plan names exist in conversation text but plan IDs do not (system prompt says "never paste UUIDs to the user"). By accepting human-readable names and resolving IDs inside `execute`, hallucination is architecturally impossible.
 
@@ -391,19 +394,19 @@ The Docker E2E health check validates the full boot chain: config parsing, all 7
 
 ### Test Layers
 
-| Layer           | Files                                          | What it tests                                                                                                   |
-| --------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Unit            | `tests/unit/*.test.ts`                         | Zod schemas, message templates, client factories, handlers, session store                                       |
-| Unit            | `tests/unit/ai-client.test.ts`                 | AI client factory, fake helpers (setNextResponse, getCallHistory), noop return value, env guard for AI_PROVIDER |
-| Unit            | `tests/unit/message-store.test.ts`             | Fake message store: addMessage, getRecentMessages ordering + limit, deleteBySession, seed/clear helpers         |
-| Unit            | `tests/unit/usage-logger.test.ts`              | Fake usage logger: log entries, getEntries, clear, toolCallCount computed from toolCalls array                  |
-| Integration     | `tests/integration/webhook.test.ts`            | Full webhook flow incl. session scenarios (all fakes injected via buildApp)                                     |
-| E2E             | `tests/e2e/webhook-e2e.test.ts`                | Real HTTP to mock BE server + fake Green API + fake session store                                               |
-| E2E Session DB  | `tests/e2e/session-postgres.e2e.test.ts`       | Real postgres session store — create/touch/expire sessions                                                      |
-| E2E Message DB  | `tests/e2e/message-store-postgres.e2e.test.ts` | Real postgres: insert messages, query by session with limit, delete by session, concurrent sessions isolated    |
-| E2E Usage DB    | `tests/e2e/usage-logger-postgres.e2e.test.ts`  | Real postgres: log usage entry, query by session/user/date range, verify JSONB tool_calls                       |
-| E2E Docker      | `tests/e2e/docker-e2e.test.ts`                 | Real Docker containers, real HTTP between services — health check validates all plugins boot                    |
-| E2E Prod        | `tests/e2e/green-api.e2e.test.ts`              | Real Green API with real creds (`skipIf` no creds)                                                              |
+| Layer          | Files                                          | What it tests                                                                                                   |
+| -------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Unit           | `tests/unit/*.test.ts`                         | Zod schemas, message templates, client factories, handlers, session store                                       |
+| Unit           | `tests/unit/ai-client.test.ts`                 | AI client factory, fake helpers (setNextResponse, getCallHistory), noop return value, env guard for AI_PROVIDER |
+| Unit           | `tests/unit/message-store.test.ts`             | Fake message store: addMessage, getRecentMessages ordering + limit, deleteBySession, seed/clear helpers         |
+| Unit           | `tests/unit/usage-logger.test.ts`              | Fake usage logger: log entries, getEntries, clear, toolCallCount computed from toolCalls array                  |
+| Integration    | `tests/integration/webhook.test.ts`            | Full webhook flow incl. session scenarios (all fakes injected via buildApp)                                     |
+| E2E            | `tests/e2e/webhook-e2e.test.ts`                | Real HTTP to mock BE server + fake Green API + fake session store                                               |
+| E2E Session DB | `tests/e2e/session-postgres.e2e.test.ts`       | Real postgres session store — create/touch/expire sessions                                                      |
+| E2E Message DB | `tests/e2e/message-store-postgres.e2e.test.ts` | Real postgres: insert messages, query by session with limit, delete by session, concurrent sessions isolated    |
+| E2E Usage DB   | `tests/e2e/usage-logger-postgres.e2e.test.ts`  | Real postgres: log usage entry, query by session/user/date range, verify JSONB tool_calls                       |
+| E2E Docker     | `tests/e2e/docker-e2e.test.ts`                 | Real Docker containers, real HTTP between services — health check validates all plugins boot                    |
+| E2E Prod       | `tests/e2e/green-api.e2e.test.ts`              | Real Green API with real creds (`skipIf` no creds)                                                              |
 
 ### When to use which test layer
 
@@ -486,28 +489,28 @@ The `chatbot_messages` table stores conversation history per session (AI context
 
 The `chatbot_ai_usage` table tracks AI cost, tokens, and tool calls per AI invocation:
 
-| Column            | Type          | Notes                                                                  |
-| ----------------- | ------------- | ---------------------------------------------------------------------- |
-| `id`              | UUID PK       | Auto-generated                                                         |
-| `session_id`      | UUID          | Which conversation session                                             |
-| `user_id`         | UUID          | Nullable — Supabase user UUID                                          |
-| `plan_id`         | UUID          | Nullable — plan in focus during this AI call                           |
-| `provider`        | TEXT          | `'anthropic'` or `'openai'`                                           |
-| `model_id`        | TEXT          | Specific model used (e.g. `claude-haiku-4-5`)                          |
-| `lang`            | TEXT          | Nullable — detected language                                           |
-| `chat_type`       | TEXT          | `'dm'` or `'group'`                                                    |
-| `message_index`   | INT           | Turn number in the conversation (for drop-off analysis)                |
-| `step_count`      | INT           | Number of AI steps (multi-step tool use)                               |
-| `tool_calls`      | JSONB         | Array of tool names called (e.g. `["getMyPlans", "getPlanDetails"]`)   |
-| `tool_call_count` | INT           | `tool_calls.length` — denormalized for fast aggregation                |
-| `input_tokens`    | INT           | Nullable                                                               |
-| `output_tokens`   | INT           | Nullable                                                               |
-| `total_tokens`    | INT           | Nullable                                                               |
-| `estimated_cost`  | NUMERIC(10,6) | Nullable — computed from tokens x model pricing                        |
-| `duration_ms`     | INT           | Wall-clock time of AI call                                             |
-| `status`          | TEXT          | `'success'` or `'error'`                                               |
-| `error_message`   | TEXT          | Nullable — error details if status is error                            |
-| `created_at`      | TIMESTAMPTZ   | Immutable                                                              |
+| Column            | Type          | Notes                                                                |
+| ----------------- | ------------- | -------------------------------------------------------------------- |
+| `id`              | UUID PK       | Auto-generated                                                       |
+| `session_id`      | UUID          | Which conversation session                                           |
+| `user_id`         | UUID          | Nullable — Supabase user UUID                                        |
+| `plan_id`         | UUID          | Nullable — plan in focus during this AI call                         |
+| `provider`        | TEXT          | `'anthropic'` or `'openai'`                                          |
+| `model_id`        | TEXT          | Specific model used (e.g. `claude-haiku-4-5`)                        |
+| `lang`            | TEXT          | Nullable — detected language                                         |
+| `chat_type`       | TEXT          | `'dm'` or `'group'`                                                  |
+| `message_index`   | INT           | Turn number in the conversation (for drop-off analysis)              |
+| `step_count`      | INT           | Number of AI steps (multi-step tool use)                             |
+| `tool_calls`      | JSONB         | Array of tool names called (e.g. `["getMyPlans", "getPlanDetails"]`) |
+| `tool_call_count` | INT           | `tool_calls.length` — denormalized for fast aggregation              |
+| `input_tokens`    | INT           | Nullable                                                             |
+| `output_tokens`   | INT           | Nullable                                                             |
+| `total_tokens`    | INT           | Nullable                                                             |
+| `estimated_cost`  | NUMERIC(10,6) | Nullable — computed from tokens x model pricing                      |
+| `duration_ms`     | INT           | Wall-clock time of AI call                                           |
+| `status`          | TEXT          | `'success'` or `'error'`                                             |
+| `error_message`   | TEXT          | Nullable — error details if status is error                          |
+| `created_at`      | TIMESTAMPTZ   | Immutable                                                            |
 
 ### Railway Networking Pattern
 
@@ -636,6 +639,7 @@ Every report opens with a **Tool Usage Summary** table:
 - **⚠️** — one or more flags fired; the issue is described inline
 
 Auto-detected flags:
+
 - `T2: redundant getMyPlans` — `getMyPlans` called in T2+ after plans were already fetched
 - `T2: updateItemStatus without getPlanDetails` — item ID likely wrong
 
@@ -648,6 +652,7 @@ When a bug involving conversation flow is fixed, add a scenario to `prompt-quali
    - Bad: `"mark item done flow"`
 
 2. **Add the regression comment header**:
+
    ```ts
    it(
      // Regression: [Bug] Bot re-calls getMyPlans redundantly — 2026-04-07
@@ -671,13 +676,13 @@ When a bug involving conversation flow is fixed, add a scenario to `prompt-quali
 
 All report helpers live in `tests/unit/conversation/report-helpers.ts`:
 
-| Helper | Purpose |
-|---|---|
-| `createQualityLoggerSetup()` | Returns `{ fakeLogger, usageLogger, cleanup }` — tee to DB when `DATABASE_URL_PUBLIC` is set, fake-only otherwise. Call `cleanup()` in `afterAll` to close the DB connection. |
-| `runTurn(deps, sessionId, userId, displayName, text, fakeLogger?)` | Run one conversation turn, return `TurnResult`. Pass `fakeLogger` explicitly when `deps.usageLogger` is a tee so assertion reads still hit the in-memory fake. |
-| `formatTurnBlock(index, userText, turn)` | Format a turn as a markdown block |
-| `analyzeScenario(name, turns)` | Check tool call pattern for known anti-patterns |
-| `formatSummaryTable(rows)` | Build the `## Tool Usage Summary` markdown table |
+| Helper                                                             | Purpose                                                                                                                                                                       |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createQualityLoggerSetup()`                                       | Returns `{ fakeLogger, usageLogger, cleanup }` — tee to DB when `DATABASE_URL_PUBLIC` is set, fake-only otherwise. Call `cleanup()` in `afterAll` to close the DB connection. |
+| `runTurn(deps, sessionId, userId, displayName, text, fakeLogger?)` | Run one conversation turn, return `TurnResult`. Pass `fakeLogger` explicitly when `deps.usageLogger` is a tee so assertion reads still hit the in-memory fake.                |
+| `formatTurnBlock(index, userText, turn)`                           | Format a turn as a markdown block                                                                                                                                             |
+| `analyzeScenario(name, turns)`                                     | Check tool call pattern for known anti-patterns                                                                                                                               |
+| `formatSummaryTable(rows)`                                         | Build the `## Tool Usage Summary` markdown table                                                                                                                              |
 
 **Using `createQualityLoggerSetup` in a test suite:**
 
@@ -711,8 +716,8 @@ const t1 = await runTurn(deps, sessionId, USER_ALEX, "Alex", "camping", usageLog
 - [x] AI service structure — `IAiClient`, `createVercelAiClient`, `createFakeAiClient`, `createNoopAiClient`, plugin + DI
 - [x] `chatbot_messages` table — conversation history for AI context window (`IMessageStore` + postgres + fake)
 - [x] `chatbot_ai_usage` table — per-message AI cost, token, and tool tracking (`IUsageLogger` + postgres + fake)
-- [x] AI conversation tools — `getMyPlans`, `getPlanDetails(planName)`, `updateItemStatus(itemName)`, `createPlan`, `getPlanTags` in `src/conversation/tools.ts`; all tools accept human-readable names (no UUIDs); `IPlanContextStore` resolves name→ID internally; system prompt in `src/conversation/system-prompt.ts`; `IInternalApiClient` implements app BE internal routes
-- [x] Internal API data routes — `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status`, `GET /api/internal/plan-tags` (app BE)
+- [x] AI conversation tools — `getMyPlans`, `getPlanDetails(planName)`, `updateItemStatus(itemName)`, `createPlan`, `getPlanTags`, `createExpense`, `updateExpense` in `src/conversation/tools.ts`; all tools accept human-readable names (no UUIDs); `IPlanContextStore` resolves name→ID internally; system prompt in `src/conversation/system-prompt.ts`; `IInternalApiClient` implements app BE internal routes
+- [x] Internal API data routes — `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status`, `GET /api/internal/plan-tags`, `POST /api/internal/plans/:planId/expenses`, `PATCH /api/internal/expenses/:expenseId` (app BE)
 - [x] `getPlanTags` tool — fetches full plan-creation taxonomy from `GET /api/internal/plan-tags` and resolves all bilingual `{ en, he }` labels to the user's language before returning to the model; no `x-user-id` required (global reference data)
 - [ ] Group sessions (linked plan, shared message history) — Phase 7
 

@@ -9,15 +9,15 @@
 
 ## Implementation Phases
 
-| Phase | Name                          | Status  | What it delivers                                                                                                                                                                                     |
-| ----- | ----------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1** | Project Scaffold              | ✅ Done | Fastify server + health endpoint, TypeScript, ESLint, Prettier, Husky, Vitest, Dockerfile, GitHub Actions CI/CD, Railway setup guide                                                                 |
-| **2** | Green API Webhook             | ✅ Done | Receive incoming WhatsApp messages, parse them, identify user, reply with welcome/signup (no AI)                                                                                                     |
-| **3** | User Identification           | ✅ Done | Phone → user identity lookup via internal API + session creation in PostgreSQL (`chatbot_sessions`); 15-min idle TTL; sessions scoped by `(phone_number, chat_id)` for independent DM/group contexts |
-| **4** | AI Layer + Tools              | In Progress | `IAiClient`, `IMessageStore`, `IUsageLogger` + tools: `getMyPlans`, `getPlanDetails`, `updateItemStatus`; system prompt in `src/conversation/system-prompt.ts`. Further polish (rate limits, guest headers) pending                     |
-| **5** | Session & Conversation Memory | In Progress | `chatbot_messages` table + `IMessageStore` done (postgres-backed, 20-message AI context window). Redis cache deferred — postgres is sufficient for v1                                                |
-| **6** | Polish & Hardening            | Pending | Rate limiting, error handling, logging analysis, security review, production env var validation                                                                                                      |
-| **7** | Group Chat (v1.5)             | Pending | Mention/prefix triggers, linkPlan, group sessions (per Section 13)                                                                                                                                   |
+| Phase | Name                          | Status      | What it delivers                                                                                                                                                                                                    |
+| ----- | ----------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1** | Project Scaffold              | ✅ Done     | Fastify server + health endpoint, TypeScript, ESLint, Prettier, Husky, Vitest, Dockerfile, GitHub Actions CI/CD, Railway setup guide                                                                                |
+| **2** | Green API Webhook             | ✅ Done     | Receive incoming WhatsApp messages, parse them, identify user, reply with welcome/signup (no AI)                                                                                                                    |
+| **3** | User Identification           | ✅ Done     | Phone → user identity lookup via internal API + session creation in PostgreSQL (`chatbot_sessions`); 15-min idle TTL; sessions scoped by `(phone_number, chat_id)` for independent DM/group contexts                |
+| **4** | AI Layer + Tools              | In Progress | `IAiClient`, `IMessageStore`, `IUsageLogger` + tools: `getMyPlans`, `getPlanDetails`, `updateItemStatus`; system prompt in `src/conversation/system-prompt.ts`. Further polish (rate limits, guest headers) pending |
+| **5** | Session & Conversation Memory | In Progress | `chatbot_messages` table + `IMessageStore` done (postgres-backed, 20-message AI context window). Redis cache deferred — postgres is sufficient for v1                                                               |
+| **6** | Polish & Hardening            | Pending     | Rate limiting, error handling, logging analysis, security review, production env var validation                                                                                                                     |
+| **7** | Group Chat (v1.5)             | Pending     | Mention/prefix triggers, linkPlan, group sessions (per Section 13)                                                                                                                                                  |
 
 > Phases 2–5 each require corresponding **app BE** work (internal routes, internal-auth plugin). Those BE changes will be called out in each phase's plan.
 > Phase 3 app BE work is complete: `POST /api/internal/auth/identify` implemented with registered + guest user support.
@@ -37,12 +37,14 @@ Many Chillist users coordinate via WhatsApp group chats. The chatbot meets them 
 
 ### v1 Feature Scope
 
-| Feature            | Type  | Example user message             |
-| ------------------ | ----- | -------------------------------- |
-| Get my plans       | Read  | "What plans do I have?"          |
-| Get plan details   | Read  | "Show me the camping trip items" |
-| Update item status | Write | "Mark the tent as done"          |
-| Create a plan      | Write | "Create a camping trip for next Friday" |
+| Feature            | Type  | Example user message                            |
+| ------------------ | ----- | ----------------------------------------------- |
+| Get my plans       | Read  | "What plans do I have?"                         |
+| Get plan details   | Read  | "Show me the camping trip items"                |
+| Update item status | Write | "Mark the tent as done"                         |
+| Create a plan      | Write | "Create a camping trip for next Friday"         |
+| Log an expense     | Write | "I spent 150 on groceries for the camping trip" |
+| Update an expense  | Write | "Actually it was 180, not 150"                  |
 
 ### Explicitly out of scope (v1)
 
@@ -452,19 +454,19 @@ Request:
 
 The body is the full taxonomy. Top-level keys (stable contract):
 
-| Key | Role |
-| --- | --- |
-| `version` | Taxonomy version string (e.g. `"1.4"`). Consumers may cache the doc and compare versions after deploy. |
-| `description` | Human summary of the schema. |
-| `selection_by_tier` | **Single-line summary of single vs multi** for tier1, each universal flag, each tier2 axis, and tier3 defaults — use for radio vs checkbox without scanning nested objects. |
-| `structural_contract` | **Read this first** — guarantees, safe vs breaking changes. |
-| `design_principles` | Product intent (short). |
-| `tier1` | Plan archetype: `select: "single"`, `options[]` with `{ id, label: { en, he }, emoji }`. |
-| `universal_flags` | Flags asked for every plan (e.g. destination, group character). Values are objects with `key`, `select`, `options`, etc. |
-| `tier2_axes` | Named axes (sleep, food_strategy, activities, …) each with `shown_for_tier1`, `defaults_by_tier1`, `hidden_options_by_tier1` where applicable. |
-| `tier3` | `select: "per_parent"`, `default_select: "single"`, `options_by_parent`: map **tier2 option id** → follow-up options; `multi_select_parents` lists parents that allow multi-select in tier3. |
-| `item_generation_bundles` | Named bundles of checklist items (`{ en, he }`) injected when an option references `injects_bundle`. |
-| `changelog` | Per-version notes. |
+| Key                       | Role                                                                                                                                                                                         |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`                 | Taxonomy version string (e.g. `"1.4"`). Consumers may cache the doc and compare versions after deploy.                                                                                       |
+| `description`             | Human summary of the schema.                                                                                                                                                                 |
+| `selection_by_tier`       | **Single-line summary of single vs multi** for tier1, each universal flag, each tier2 axis, and tier3 defaults — use for radio vs checkbox without scanning nested objects.                  |
+| `structural_contract`     | **Read this first** — guarantees, safe vs breaking changes.                                                                                                                                  |
+| `design_principles`       | Product intent (short).                                                                                                                                                                      |
+| `tier1`                   | Plan archetype: `select: "single"`, `options[]` with `{ id, label: { en, he }, emoji }`.                                                                                                     |
+| `universal_flags`         | Flags asked for every plan (e.g. destination, group character). Values are objects with `key`, `select`, `options`, etc.                                                                     |
+| `tier2_axes`              | Named axes (sleep, food_strategy, activities, …) each with `shown_for_tier1`, `defaults_by_tier1`, `hidden_options_by_tier1` where applicable.                                               |
+| `tier3`                   | `select: "per_parent"`, `default_select: "single"`, `options_by_parent`: map **tier2 option id** → follow-up options; `multi_select_parents` lists parents that allow multi-select in tier3. |
+| `item_generation_bundles` | Named bundles of checklist items (`{ en, he }`) injected when an option references `injects_bundle`.                                                                                         |
+| `changelog`               | Per-version notes.                                                                                                                                                                           |
 
 **Bilingual labels**
 
@@ -540,9 +542,88 @@ Response 401:
 
 Only `title` is required. All other fields are optional (nullable).
 
+#### POST /api/internal/plans/:planId/expenses
+
+Creates an expense for a plan. The user must be a participant. Linked items auto-advance to `purchased` status.
+
+```
+Request:
+  Header: x-service-key: <CHATBOT_SERVICE_KEY>
+  Header: x-user-id: <supabase-user-id>
+  Body:
+  {
+    "amount": 150,
+    "description": "Groceries",
+    "itemIds": ["item-uuid-1", "item-uuid-2"]
+  }
+
+Response 201:
+  {
+    "expenseId": "expense-uuid",
+    "participantId": "participant-uuid",
+    "planId": "plan-uuid",
+    "amount": "150.00",
+    "description": "Groceries",
+    "itemIds": ["item-uuid-1", "item-uuid-2"],
+    "createdAt": "2026-04-16T00:00:00Z",
+    "updatedAt": "2026-04-16T00:00:00Z"
+  }
+
+Response 400:
+  { "message": "amount must be positive" }
+
+Response 403:
+  { "message": "Access denied" }   (user is not a participant)
+
+Response 404:
+  { "message": "Plan not found" }
+```
+
+Only `amount` is required. `description` and `itemIds` are optional. `amount` is a positive number in the request but returned as a decimal string (e.g. `"150.00"`).
+
+#### PATCH /api/internal/expenses/:expenseId
+
+Updates an existing expense. Only the expense creator can update it. Pass only the fields to change.
+
+```
+Request:
+  Header: x-service-key: <CHATBOT_SERVICE_KEY>
+  Header: x-user-id: <supabase-user-id>
+  Body:
+  {
+    "amount": 180,
+    "description": "Updated description",
+    "itemIds": ["item-uuid-1"]
+  }
+
+Response 200:
+  {
+    "expenseId": "expense-uuid",
+    "participantId": "participant-uuid",
+    "planId": "plan-uuid",
+    "amount": "180.00",
+    "description": "Updated description",
+    "itemIds": ["item-uuid-1"],
+    "createdAt": "2026-04-16T00:00:00Z",
+    "updatedAt": "2026-04-16T01:00:00Z"
+  }
+
+Response 400:
+  { "message": "empty body" }
+
+Response 403:
+  { "message": "Access denied" }   (user is not the expense owner)
+
+Response 404:
+  { "message": "Expense not found" }
+```
+
+`itemIds` replaces the full list (not append). Pass `[]` to unlink all items. `description` can be set to `null` to clear it.
+
 **Owner resolution (BE responsibility):**
 
 The internal create-plan route receives `x-user-id` (Supabase UUID). The BE must resolve the owner participant data from this userId:
+
 1. Look up the user's `users.phone` for contact phone
 2. Look up name from Supabase `user_metadata` or most recent `participants` row for `name`, `lastName`
 3. Create the owner participant row with `role: 'owner'`, `userId: x-user-id`, and an `inviteToken`
@@ -667,6 +748,18 @@ The AI model receives a system prompt and a set of tools. When the user sends a 
 - **Description:** Mark an item as done or pending
 - **Parameters:** `itemId` (string), `status` ("done" | "pending")
 - **Returns:** Updated item confirmation
+
+#### Tool: createExpense
+
+- **Description:** Log an expense the user made for a plan
+- **Parameters:** `planName` (string), `amount` (number, positive), `description` (string, optional), `itemNames` (string[], optional — item names from getPlanDetails to link)
+- **Returns:** Created expense with expenseId, amount (decimal string), linked itemIds
+
+#### Tool: updateExpense
+
+- **Description:** Update an existing expense (correct amount, change description, attach/detach items)
+- **Parameters:** `expenseHint` (string — description or amount to identify the expense), `amount` (number, optional), `description` (string | null, optional), `itemNames` (string[], optional — replaces full list)
+- **Returns:** Updated expense
 
 ### System prompt (conceptual — not final)
 
