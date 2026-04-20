@@ -4,6 +4,114 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
+### [UX] Bulk-add wizard could not add items not in the common-items catalog
+
+**Date:** 2026-04-20
+**Problem:** On the Items step of `BulkItemAddWizard`, the search placeholder said "Search or add items…" and the docs claimed typing a non-matching term would surface an "Add [name]" row — but the affordance wasn't rendered. Typing an unknown item (e.g. `"Flux Capacitor"`) just showed `bulkAddNoneSelected` ("בחרו פריטים להוספה"), so the user was stuck.
+**Root cause:** Groundwork existed — i18n keys `bulkAddAddCustom` / `bulkAddCustomPlaceholder` / `bulkAddCustomAdd` in all three locales, `SelectedItem.isCustom?: boolean`, and the custom branch of `selectedCountBySubcategory` — but the UI that would set `isCustom: true` and inject the card into the grid was never wired.
+**Solution:** In `ItemsStep`, derive `canAddCustom` from `search.trim()` + absence of exact match in `categoryItems` / selected customs / `existingItems`. When true, render a dashed blue "Add \"{search}\"" button (`data-testid="bulk-add-custom"`) above the grid, and also trigger it when the user presses Enter in `bulk-search-input`. Parent `BulkItemAddWizard` owns `handleAddCustom(name)`: it builds a `SelectedItem` with `isCustom: true`, `unit: category === 'food' ? 'kg' : 'pcs'`, `quantity: 1`, and `subcategory = subcategory ?? subcategories[0]?.name ?? ''` (so a custom item inherits the drilled-into subcategory), pushes it into `selected`, and clears the search so the new card appears inline. To render custom cards without branching `renderItemCard(item: CommonItemBase)`, selected custom entries for the current category are projected into a synthetic `CommonItemBase[]` and merged into both `itemsBySubcategory` (prepended to the right bucket) and `searchResults`. `handleSubmit` already maps `selected.values()` into `ItemCreate`s through `translateSubcategoryForStorage`, so custom items persist with no changes.
+**Prevention:** When i18n keys + state-shape fields + doc copy all describe a feature but the UI is missing, the feature is dead code — grep for the i18n key usage count as part of any "is this wired?" audit. Also: keep `renderItemCard` focused on a single shape (`CommonItemBase`) and push the "where does a selected-but-not-in-catalog entry render?" decision into the data merge (itemsBySubcategory / searchResults), not into the card component.
+
+---
+
+### [UX] Plans list ownership badges ignored time filter
+
+**Date:** 2026-04-19
+**Problem:** On the plans list, the All / My plans / Invited tab badges showed totals from the full plan list (`myPlans`) while the default view was **Upcoming** — so the badges could say “3” while only one upcoming plan was visible.
+**Solution:** `membershipCounts` in `PlansList` now derives from `timeFilteredMyPlans` (same time filter as the list). Unit tests cover alignment between badges and visible cards for upcoming / past / all time.
+**Prevention:** When two filter dimensions (here membership + time) both show numeric badges, compute each badge from the same intersection the user sees — or explicitly label “3 total” vs “3 upcoming” to avoid mismatch.
+
+---
+
+### [UX] Canceled items leaked into bulk-add as already-selected, blocking re-add
+
+**Date:** 2026-04-18
+**Problem:** After hiding canceled items from every status tab (previous lesson), opening the bulk-add wizard and drilling into a subcategory still showed a canceled item checked as "already in plan". Unchecking it fired `onCancel` (a no-op since it was already canceled), and there was no way to add the same item again without a duplicate row, which broke the "canceled = deleted on the FE" mental model.
+**Solution:** Canceled-for-viewer items are now filtered out of every FE lookup that represents "what's already in the plan":
+
+- `existingItems` map in `ItemsView` (used by `BulkItemAddWizard.existingItems`).
+- `bulkAddExistingItems`, `existingItemNames`, and the subcategory `existingItems` object on `plan.$planId.lazy.tsx`.
+- `existingItemNames` / `existingItems` on `items.$planId.lazy.tsx` (feeds `AiSuggestionsModal` / `ItemSuggestionsModal` so AI can re-suggest canceled items).
+
+All three computed maps derive from a shared `filterOutCanceledForViewer(items, viewerId)` helper. Re-adding a canceled item via the wizard no longer creates a duplicate: `handleBulkAdd` (both in `ItemsView` and on the plan route) partitions the selected payloads using `getCanceledItemsByName`, reactivating name-matched canceled items via `buildReactivatePatch(item, viewerId)` (sets the viewer's entry back to `pending`, or appends a new pending entry if the viewer had no entry) and `onUpdateItem`, while the remaining payloads go through the normal `onBulkCreate` path. The success toast reports the combined count (created + reactivated).
+**Prevention:** Any "appears-as-existing" UI that consumes `items` must go through the same "canceled = gone" predicate used for list rendering — otherwise a row hidden from the main list re-surfaces in wizards/suggestions. Keep that predicate in a single helper (`filterOutCanceledForViewer`) and use it everywhere. When adding a reactivation helper, keep it distinct from `buildStatusUpdate` (which has a length-1 fallback that would overwrite another participant's entry); always append a new entry if the viewer has none, so reactivation is strictly viewer-scoped.
+
+---
+
+### [UX] Default item tab showed “All” including canceled; cancel on unassigned was a no-op
+
+**Date:** 2026-04-18
+**Problem:** The plan page, manage-items, and invite preview defaulted to the **All** list tab, so canceled lines were visible immediately. The per-item **Cancel** action on unassigned rows could try `buildStatusUpdate` with no assignment entry, yielding an empty patch. Bulk-add “uncheck existing” had the same issue.
+**Solution:** Default list selection is **Buying** (local state: `useState('buying')`; plan URL: `planListSearchToFilter` maps missing `list` to buying, `list=all` for the All tab, `listFilterToPlanListSearch` omits `list` when buying). Canceled items are filtered out of **every** status tab (Buying, Packing, All) via `filterItemsByStatusTab` — the All branch excludes `getItemStatus === 'canceled'`; the Buying / Packing branches already exclude canceled via their explicit status whitelist. The **All** tab badge uses the same non-canceled count. `ItemCard` shows the Cancel (×) button on every editable, non-canceled row — including unassigned lines; `buildStatusUpdate` adds a new `{participantId, status: 'canceled'}` entry for the viewer when `assignmentStatusList` is empty, so canceling an unassigned row yields a valid patch. `handleBulkCancel` no longer skips unassigned ids.
+**Prevention:** When a product copy/UX ask is "filter X by default", verify the new default covers every view, not just the one initially observed. Hiding on a tab-by-tab basis is easy to under-apply — filter at the predicate in `filterItemsByStatusTab` so all tabs share the rule. For a "cancel" action on rows with no assignment, don't gate the UI — fix the data helper (`buildStatusUpdate`) so an empty `assignmentStatusList` produces a valid patch rather than `{}`.
+
+**Follow-up (same area):** The default **Buying** tab used `getItemStatus === 'pending'` only, so **unassigned** rows (`assignmentStatusList: []`) disappeared on first load — empty list with items still in the plan. **Buying** must include unassigned lines (still to be acquired/claimed); `countItemsByListTab` buying counts should match.
+
+---
+
+### [Data] English common-items had bad beverage qpp, wrong units on ice/ice-cream, pets scaling with humans, single-serve eggs under-counted
+
+**Date:** 2026-04-17
+**Problem:** After the Hebrew pass, ran the same audit against `common-items.json` (EN). The EN file was in much better shape than HE — 0 `g`/`ml` legacy units, 0 food items marked personal, 0 non-spice foods missing `quantityPerPoint` — but still had four real classes of bug: (1) every non-water beverage at `qpp: 0.5`, so Juice/Soda/Iced Tea/Kombucha etc. produced 1.5 L/person/day; (2) `Ice` and `Ice Cream` sold in bags/tubs were `kg`/`l` respectively; (3) `Dog Food`, `Cat Food`, `Protein Powder`, `Watermelon`, `Pineapple` scaled with human headcount (e.g. 3 watermelons for a 12-person overnight); (4) `Eggs` at `qpp: 0.15` yielded **3 eggs for 8 people overnight** — while the HE counterpart correctly used `0.5` (≈1 egg per person per meal). `Lemons`/`Limes`/`Vinegar` were also silently too high.
+**Solution:** Added `scripts/audit-en-item-quantities.ts` (EN mirror of the HE audit with English token patterns — NOTE: use `\b` word boundaries around `tea`/`ice`/`cocoa` to avoid matching `Steak`/`Pineapple`/`Cocoa Butter`) and `scripts/fix-en-quantities.ts` (patches keyed by `id`, editing raw JSON text to preserve formatting that `JSON.stringify` would destroy). Patched **30 items**: 11 non-water beverages to `qpp: 0.25`, 6 milk-family items to `0.3` (coffee/cereal/cooking, not standalone drink), cocktail mixer to `0.15`, `Ice` → `pack`/`0.3`, `Ice Cream` → `pcs`/`0.1`, `Watermelon` → `pcs`/`0.05`, `Pineapple` → `pcs`/`0.1`, `Dog Food`/`Cat Food` → `pack`/`0.02` (doesn't scale), `Protein Powder` → `0.02`, `Eggs` → `0.5`, `Lemons`/`Limes` → `0.1`, `Vinegar`/`Apple Cider Vinegar` → `0.05`. Extended `tests/unit/data/common-items-quantities.test.ts` with a parallel EN `describe` block: 46 canonical unit/qpp mappings + 10 camping-scenario quantity bands + structural checks (no legacy units, no personal food, every non-spice food has qpp).
+**Prevention:** Run `npx tsx scripts/audit-en-item-quantities.ts` after batch edits to the English items file. For quick cross-language sanity, diff items that share a HE alias and flag `pcs` items whose `qpp` differs by ≥2× between EN and HE — that's how `Eggs` 0.15 vs 0.5 was caught. When adding new beverages, default non-water drinks to `qpp: 0.25` and plain milk to `0.3`; only `Water`/`Sparkling Water` get `0.5`. Any `unit: kg` on a food item whose real-world packaging is a bag/bottle/jar/tub/pack is a bug — the audit script's token regex catches most but not all (`tea`/`ice` need word boundaries). Single-serving staples like eggs should have `qpp` ≈ `servings_per_meal` (0.5 ≈ 1 per person); don't set them the same as ingredient items.
+
+---
+
+### [Data] Hebrew common-items over-used kg where pack/pcs is correct
+
+**Date:** 2026-04-17
+**Problem:** `common-items.he.json` had 103 food items with `unit: "kg"` vs only 34 in the EN file. Many items that are sold in bottles, tubs, bags, or packs in Israel (yogurt, cream cheese, almonds, raisins, granola, cereal, smoked salmon, ice, chocolate, dried meat, salami, turkey slices, dried fruit, mixed nuts) were marked `kg` with low `quantityPerPoint` values (0.02–0.06). This produced technically correct but meaningless quantities like "1 kg of yogurt" or "1 kg of almonds" when the user expects "2 tubs" or "3 packs".
+**Solution:** Created `scripts/audit-he-item-quantities.ts` — a one-off audit script that evaluates `calculateSuggestedQuantity` across 4 scenarios (S/M/L/XL), flags suspicious unit/qpp combos via heuristics (kg on bottle/bag-style items, missing qpp, extreme ratios, `kg`-tiny/heavy per-person-day, `l`-heavy non-water beverages, dead-qpp, outlier qpp vs subcategory peers), and emits a markdown report to `scripts/reports/`. Applied fixes in 3 batches totaling **47 items**: (1) obvious `kg`→`pack`/`pcs` on bottles/tubs/bags (yogurt, mayo, ice, salmon slices, granola…), (2) another 18 jarred/bagged items (olives, pistachios, dates, chia seeds, kimchi, sauerkraut, overnight oat mix…) plus 7 non-water beverages at `qpp` 0.5 → 0.25 (sodas/juice/kombucha), and (3) sanity outliers (protein powder `pcs` 0.1 → 0.02, vegan cheese `kg` → `pack`, watermelon `pcs` 0.2 → 0.05, pineapple 0.2 → 0.1, ice cream `l` → `pcs`, pet food no longer scales with humans). Added 1 missing `quantityPerPoint` (ספירולינה). Extended `common-items-quantities.test.ts` with 61 canonical unit/qpp assertions to pin known-good mappings and prevent regression.
+**Prevention:** Run `npx tsx scripts/audit-he-item-quantities.ts` after any batch edit to the Hebrew items file. The script flags items that look wrong; the test file pins items that are known-correct. When adding new localized item lists, start from the EN file's unit assignments (which use `pack`/`pcs` more correctly) and adjust for local products, rather than independently curating units. For per-subcategory sanity, compute `qpp` medians per `(subcategory, unit)` group — outliers >50% off median are usually real bugs.
+
+---
+
+### [Logic] Duration multiplier capped at 3 for any event > 12h — multi-day plans got 1-day food
+
+**Date:** 2026-04-16
+**Problem:** `getDurationMultiplier` returned a hard-coded `LONG_EVENT_MULTIPLIER = 3` for anything over 12 hours. A 3-day camping trip for 4 people got the exact same multiplier as a 13-hour beach day, so `planPoints` never scaled past the 1-night baseline. Result: the "week-long camping for 6 people" flow suggested 3 loaves of bread (≈0.09 per person per day). The previous "quantity defaults to 1" fix masked this because it only validated the overnight (≤24h) case.
+**Solution:** `getDurationMultiplier` now scales linearly past 24h: `days = ceil(hours / 24); multiplier = days * 3`. Added a 4th bracket (`[24, 3]`) so the existing overnight case is explicit. Also introduced a dedicated **prod quantity evaluation test** (`tests/prod-quantity-eval/evaluate-he-quantities.test.ts`) that runs isolated from `npm run test` via `vitest.quantity-eval.config.ts` and `npm run test:quantity-eval`. It iterates every food item in `common-items.he.json` across 7 scenarios (4 mirrored from the BE AI-quality suite, 3 frontend edge cases), prints a per-person-per-day matrix for eyeballing, and asserts coarse sanity bounds per unit family (kg ≤ 0.6/person/day, l ≤ 2.5, pcs ≤ 3, pack ≤ 1.5).
+**Prevention:** Constant-time multipliers are a tempting shortcut but silently break at the boundary of the brackets. For any duration-scaled computation, write a test with at least one "well beyond the last bracket" case (here: 7-day camping). Keep the prod-scale evaluation test out of the CI unit run so it can include realistic data without slowing development, but run it as part of quantity-related work.
+
+---
+
+### [Logic] Quantity estimation always defaulted to 1 — three stacking bugs
+
+**Date:** 2026-04-16
+**Problem:** All suggested item quantities in production showed 1 regardless of group size. Three independent bugs compounded: (1) `PlanProvider` computed `planPoints` from participant-reported counts only, ignoring `plan.estimatedAdults`/`estimatedKids` — a plan for 50 people with only the owner as participant yielded `planPoints=1`; (2) `CreatePlanWizard` step 5 never passed `planPoints` to `BulkItemAddWizard`, so during plan creation all quantities defaulted to 1; (3) `common-items.he.json` had ~85 food items with `unit: "g"` or `"ml"` and `quantityPerPoint: 0.15` — a value designed for kg/l, producing absurd results like 2 grams of tofu for 10 people.
+**Solution:** (1) `PlanProvider` now uses `Math.max(reportedCount, estimatedCount)` for both adults and kids; (2) `CreatePlanWizard` computes `planPoints` from `estimationData` + `step1Data` dates and passes it to `BulkItemAddWizard`; (3) all `g` items converted to `kg` or `pcs` with realistic `quantityPerPoint`, all `ml` items converted to `pcs`, spices have no `quantityPerPoint` (default 1 container). Added a sanity test for 5 adults + 3 kids camping scenario.
+**Prevention:** When a computed value (`planPoints`) flows through multiple layers (context → wizard → child component), trace the full propagation path. Add a sanity test that exercises the real data with realistic inputs — unit-testing the formula alone doesn't catch bad data or missing prop wiring.
+
+---
+
+### [i18n] Hebrew common-items list used dictionary Hebrew instead of Israeli terms
+
+**Date:** 2026-04-16
+**Problem:** `common-items.he.json` was a literal translation of the English list. Terms like גריל, כירת קמפינג, כלי רב שימושי are correct Hebrew but not what Israelis actually say. The list also included American-specific items (bear spray, s'mores, Graham crackers, cornhole, horseshoes, maple syrup, English muffins, string cheese) and pork items (bacon, pork ribs, pulled pork, smoked ham) that are irrelevant to Israeli culture. Israeli staples like מטקות, סחוג, עמבה, ביסלי, במבה, ערק, מרגז were missing entirely.
+**Solution:** Scripted bulk update: (1) renamed 13 items to Israeli colloquial terms (גריל→מנגל, כירת קמפינג→גזייה, לחם פיתה→פיתה, כלי רב שימושי→לדרמן, etc.), (2) removed 34 irrelevant items, (3) replaced 4 pork items with Israeli equivalents (בייקון→פסטרמה, צלעות חזיר→שישליק, חזיר מפורק→קבב, חזיר מעושן→שניצל), (4) added 15 Israeli staples (food: סחוג, עמבה, זעתר, סומק, בהרט, ביסלי, במבה, שוקו, ערק, נענע, מרגז; equipment: מטקות), (5) fixed 23 wrong subcategory assignments (e.g. בננות was "Other" not "Fresh Fruit", דגני בוקר was "Fish and Seafood" not "Breakfast Staples", טחינה was "Cheese" not "Sauces, Condiments").
+**Prevention:** Localized item lists should be reviewed by a native speaker for colloquial accuracy, not just translated word-for-word. Check that cultural context fits the target audience (food, games, climate-specific gear).
+
+---
+
+### [UX] Native date/time inputs replaced with custom pickers (iOS Safari RTL fix)
+
+**Date:** 2026-04-16
+**Problem:** On iPhone Safari and Chrome (iOS WebKit) with the app in Hebrew (`html[dir=rtl]`), native `<input type="date">` and `<input type="time">` rendered as broken/empty boxes. CSS overrides (`appearance: auto`, `direction: ltr`, `unicode-bidi: isolate`) and programmatic `showPicker()` worked on desktop emulation but **not on real iPhone hardware**. The root cause is that iOS WebKit renders native date/time inputs via internal components that ignore most CSS overrides, especially under RTL.
+**Solution:** Replaced all native date/time inputs with custom `DateField` (Headless UI `Popover` + `react-day-picker` v9 calendar) and `TimeField` (Headless UI `Popover` + scrollable time-slot list) components in `CreatePlanWizard`, `PlanForm`, and `EditPlanForm`. Form values still use ISO strings (`YYYY-MM-DD`, `HH:MM`) via React Hook Form `watch`/`setValue` — no schema or API changes needed. Removed all `showPicker()`, ref-chaining, and picker-opening workaround code.
+**Prevention:** Never rely on native `<input type="date|time">` for cross-browser consistency, especially under RTL. Desktop mobile emulation does not reproduce real iOS WebKit rendering bugs. Use custom picker components with explicit RTL/locale support instead.
+
+---
+
+### [UX] Header logo should open plans for signed-in users
+
+**Date:** 2026-04-15
+**Problem:** Clicking the Chillist logo in the header always routed to `/`, even for authenticated users who expected to return directly to the plans list.
+**Solution:** Made the logo link auth-aware in `Header`: use `/plans` when `user` exists and `/` for unauthenticated sessions. Added unit tests to assert both link targets.
+**Prevention:** For global navigation entry points (brand logo, primary CTA), define route targets per auth state and lock them with dedicated unit assertions.
+
+---
+
 ### [UX] Delayed auto-advance on single-select wizard steps
 
 **Date:** 2026-04-15
@@ -22,13 +130,23 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 
 ---
 
-### [Infra] PostHog production events silently dropped — gzip compression through Pages Function proxy
+### [Infra] PostHog production events silently dropped — proxy + sendBeacon + compression
 
-**Date:** 2026-04-14
+**Date:** 2026-04-14 / 2026-04-16
 **Problem:** Zero production events appeared in PostHog despite the proxy returning `{"status":"Ok"}` for every request. All 1,231 events over 30 days were from localhost only.
-**Root cause:** The PostHog JS SDK uses `compression=gzip-js` by default, sending gzip-compressed request bodies. The Cloudflare Pages Function proxy (with `_middleware.ts` calling `next()` in the chain) corrupts binary gzip bodies during forwarding. PostHog's `/e/` endpoint returns `{"status":"Ok"}` regardless of payload validity but silently drops events it cannot decompress. Uncompressed events through the same proxy arrive fine. The official PostHog docs show this pattern for standalone Cloudflare Workers — not Pages Functions with middleware.
-**Solution:** Added `disable_compression: true` to `posthogJs.init()` in `src/lib/posthog.ts`. The SDK now sends plain JSON bodies which the proxy forwards correctly.
-**Prevention:** When using a Cloudflare Pages Function as a reverse proxy for a third-party service, test with both compressed and uncompressed payloads. Pages Functions with middleware may not preserve binary request bodies. If gzip is needed long-term, consider migrating to a standalone Cloudflare Worker on a subdomain (matching the official PostHog proxy docs) or skipping middleware for `/ingest/*` paths.
+**Root cause (two layers):**
+
+1. The Cloudflare Pages Function proxy (with `_middleware.ts` calling `next()`) corrupts or mishandles gzip-compressed binary request bodies. PostHog's `/e/` endpoint returns `{"status":"Ok"}` regardless of payload validity but silently drops events it cannot decompress. Manually-posted uncompressed events through the same proxy arrive fine.
+2. Even after adding `disable_compression: true`, the PostHog SDK (v1.364.3) continued sending some events via `sendBeacon` transport with `compression=gzip-js` in the URL — the `disable_compression` flag does not fully control the sendBeacon code path. These compressed sendBeacon requests were silently dropped by the proxy.
+
+**Solution:** Two config options in `posthogJs.init()` in `src/lib/posthog.ts`:
+
+- `disable_compression: true` — sends plain JSON bodies instead of gzip
+- `__preview_disable_beacon: true` — prevents the SDK from using `navigator.sendBeacon` (which ignores `disable_compression`), forcing all requests through `fetch()`
+
+Trade-off: `$pageleave` events become slightly less reliable (sendBeacon fires during page unload; fetch may not). Acceptable for analytics purposes.
+
+**Prevention:** When using a Cloudflare Pages Function as a reverse proxy, test with both compressed and uncompressed payloads AND both fetch and sendBeacon transports. The official PostHog proxy docs target standalone Cloudflare Workers (no middleware chain) — Pages Functions with middleware may not preserve binary request bodies. If gzip/sendBeacon is needed long-term, migrate to a standalone Cloudflare Worker on a subdomain or skip middleware for `/ingest/*` paths.
 
 ---
 
@@ -1710,3 +1828,27 @@ Route file dropped from ~600 to ~460 lines, with each extracted module independe
 **Solution:** (1) Added `subcategory` and `isAllParticipants` to `addGuestItem` type. (2) Typed `updateGuestItem` with a proper `GuestItemUpdate` interface. (3) Added `bulkCreateItems` and `bulkCreateGuestItems` API functions calling `POST /plans/:planId/items/bulk`. (4) Created `useBulkCreateItems` mutation hook with query invalidation. (5) Extracted `processBulkCreateResult` helper in `utils-plan-items.ts` for shared toast/error handling. (6) Replaced all three `Promise.allSettled` patterns with the bulk endpoint. (7) Updated mock server to auto-fill `assignmentStatusList` for `personal_equipment` items and added bulk create endpoints for both JWT and invite paths.
 
 **Lesson:** When the BE consolidates multiple individual endpoints into a bulk endpoint, the FE should adopt it immediately — not accumulate parallel `Promise.allSettled` wrappers. Always keep mock server behavior in sync with real BE defaults (especially auto-populated fields like `assignmentStatusList`), otherwise tests pass locally but fail in production. Guest API functions should accept the same field set as authenticated ones — omitting optional fields like `subcategory` silently drops data.
+
+### [Feature] PostHog participant action tracking + mock client enhancement
+
+**Date:** 2026-04-16
+
+**Problem:** The PostHog mock client (`mock-posthog.ts`) was a dead no-op — all methods were empty functions. This made it impossible to verify analytics calls in tests or inspect events during local development. Additionally, 8 participant-related events were either defined but unwired or not defined at all.
+
+**Root Cause:** The mock was created as a minimal type-safe stub to satisfy imports but was never designed for observability. Participant actions (add, leave, transfer ownership, moderate join requests) and invite/profile events had `track*` functions defined in `analytics.ts` but no call sites in application code.
+
+**Solution:** (1) Enhanced `mockPosthog` to accumulate captured events in an in-memory array, `console.debug` them in dev mode, and expose `getCapturedEvents()` / `clearCapturedEvents()` helpers for test assertions. (2) Added 4 new tracking functions: `trackParticipantAdded`, `trackParticipantLeft`, `trackOwnershipTransferred`, `trackJoinRequestModerated`. (3) Wired all 8 events into their respective call sites (invite.ts, api.ts, RequestToJoinPage, complete-profile, manage-participants, useLeaveParticipant, usePlanActions). (4) Updated `useLeaveParticipant` mutation signature from `string` to `{ participantId, planId }` to pass `planId` for tracking. (5) Added analytics assertions to all affected test files.
+
+**Lesson:** When changing a mutation hook's parameter shape (e.g., from a plain string to an object), all callers and their tests must be updated in the same change. Mock clients should be designed for observability from the start — accumulating events costs nothing and prevents the need for `vi.spyOn` gymnastics in every test file.
+
+### [Test] E2E calendar date selection must navigate months — `DateField` opens to current month
+
+**Date:** 2026-04-16
+
+**Problem:** All 12 E2E tests that used the custom `DateField` component failed. After clicking the trigger button, Playwright could not find `getByRole('button', { name: /July 15/ })` — the test timed out waiting for a day button that didn't exist on the visible calendar page.
+
+**Root Cause:** `DateField` initializes its `month` state to `new Date()` (the current month). When the E2E tests opened the calendar, it showed April 2026, not July. The old native `<input type="date">` accepted `.fill('2026-07-15')` to set any date directly; the custom `react-day-picker` calendar requires navigating to the correct month first. Initially misdiagnosed as a Headless UI `PopoverPanel` rendering/portal issue — the `anchor` prop and render function pattern were both red herrings.
+
+**Solution:** Added a `selectCalendarDate(page, testId, day, monthsForward)` helper to `tests/e2e/fixtures.ts` that: (1) clicks the trigger by `data-testid`, (2) waits for the panel to be visible, (3) clicks the "next month" nav button N times, (4) clicks the day button by its numeric text content (`td button` filtered by `^${day}$`). Using text content for the day number is locale-independent. Removed the two `plan-tags.spec.ts` date interactions entirely (those tests were scoped to only test the tag wizard, not plan creation).
+
+**Lesson:** When replacing native HTML inputs with custom picker components, E2E tests cannot use `.fill()` — they must interact with the picker UI. Calendar components open to the current month by default; E2E tests must navigate to the target month before clicking a day. Use locale-independent selectors (day number text content) rather than locale-specific aria-labels (e.g., "July 15") that break under i18n changes.

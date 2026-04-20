@@ -263,8 +263,8 @@ Tag options are driven by `src/data/plan-creation-tags.json`. The `onBack` prop 
 Lightweight feature flag system using URL query params + `sessionStorage`. Flags are captured from the URL on **any page** at app boot (`captureFeatureFlags()` in `main.tsx`) and stored in `sessionStorage` under `chillist-feature-flags`. They persist across client-side navigation for the tab session and are cleared when the tab is closed.
 
 **Usage:** Append flags as query params to any URL shared with users:
-- `/?noTags=true` — flag captured on home, survives navigation to `/create-plan`
-- `/create-plan?noTags=true` — direct link also works
+- `/?addTags=true` — flag captured on home, survives navigation to `/create-plan`
+- `/create-plan?addTags=true` — direct link also works
 
 **Reading flags in components:** Use `useFeatureFlags()` hook from `src/hooks/useFeatureFlags.ts`.
 
@@ -272,7 +272,7 @@ Lightweight feature flag system using URL query params + `sessionStorage`. Flags
 
 | Flag | Default | Effect |
 |------|---------|--------|
-| `noTags` | `false` | Hides the `PlanTagWizard` in step 1 of `CreatePlanWizard` |
+| `addTags` | `false` | Shows the `PlanTagWizard` in step 1 of `CreatePlanWizard` (hidden by default) |
 
 **Adding a new flag:**
 1. Add the flag name to the `KNOWN_FLAGS` array in `src/core/feature-flags.ts`
@@ -281,7 +281,7 @@ Lightweight feature flag system using URL query params + `sessionStorage`. Flags
 
 **Design notes:**
 - Only writes to `sessionStorage` when at least one known flag is present in the URL — navigating to a page without flags does not wipe previously captured ones.
-- Invalid values (e.g. `?noTags=banana`) fall back to `false`.
+- Invalid values (e.g. `?addTags=banana`) fall back to `false`.
 - Not a replacement for a full feature flag service — meant for internal dev/testing toggles.
 
 ### Bulk Add Wizard (`src/components/BulkItemAddWizard.tsx`)
