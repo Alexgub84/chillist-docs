@@ -103,6 +103,11 @@ When implementing Phase 4 (AI SDK):
 
 ## 7) Testing Rules
 
+**Two tracks — document and preserve this split:**
+
+- **Default suite (`npm test` / `npm run test:run`):** No Chillist production backend, no production WhatsApp (Green API). AI is faked. E2E uses mock BE + fake Green API and/or local Docker postgres. Conversation-quality files must stay gated (`RUN_CONVERSATION_QUALITY` + API key) so they do not run here.
+- **Conversation quality (`npm run test:conversation-quality`):** Real LLM provider calls (prompt/tool regression testing). Still **no** Green API and **no** real internal Chillist BE — use `FakeInternalApiClient`. Purpose is response quality, not prod integration.
+
 - **Fakes are injected only via `buildApp()` options** — never via env vars or module mocks in integration/E2E tests.
 - **Unit tests need no HTTP server** — test handler functions directly by calling them with fake deps. No `supertest`, no `buildApp()`.
 - **Integration tests use fake session store + fake Green API + fake internal API** — only the network boundary (Green API webhook POST) is real HTTP.
@@ -160,7 +165,7 @@ Single source of truth for what `prompt-quality.test.ts` and `prompt-quality-he.
 | 1 | List my plans | EN+HE | "What plans do I have?" | getMyPlans called, plan names in reply, no UUIDs |
 | 2 | Plan details + follow-up | EN+HE | "What items on my Camping Trip?" / "Which food items are pending?" | getPlanDetails, T2 answers from context or re-fetches |
 | 3 | Mark item done (warm) | EN+HE | "Show items" / "I packed the Tent — mark it done" | T1 loads plan, T2 calls updateItemStatus with correct ID |
-| 4 | Empty plans | EN+HE | "What are my plans?" (user has none) | Encouraging message, no error, includes site link |
+| 4 | Empty plans | EN+HE | "What are my plans?" (user has none) | Encouraging message, no error, includes `/create-plan` link (see system prompt) |
 | 5 | Disambiguation | EN | "Tell me about the camping trip" (2 matches) / "The 2025 one" | Bot asks which one, T2 resolves selection |
 | 6 | Cold-start mark done | EN+HE | "Mark the Tent as done on my Camping Trip" | All 3 tools chained in one turn |
 | 7 | Context follow-up | EN+HE | "What items?" / "Which are still pending?" | T2 answers from prior turn text, no tool call |
@@ -180,10 +185,20 @@ Single source of truth for what `prompt-quality.test.ts` and `prompt-quality-he.
 | 19 | Number selection (EN) | EN | "Tell me about the camping trip" / "1" | Same as #9 but in English; getPlanDetails called |
 | 20 | Bulk items (EN) | EN | "I bought Tent and Sleeping Bag, mark them done" | Same as #10 but in English; updateItemStatus called twice |
 | 21 | Single-plan update items | EN+HE | "update items" / "עדכן פריטים" (user has only 1 plan) | Bot auto-selects the only plan, lists items, no "which plan?" disambiguation |
+| 22 | Create plan all-in-one | EN+HE | One message: title + date + location | `createPlan` once; no `getPlanTags`; reply includes `/plan/` |
+| 23 | Create plan two-turn | EN+HE | T1 title intent only / T2 date + location | Final `createPlan` has ISO dates + location; no `getPlanTags` |
+| 24 | Create plan skip optional | EN+HE | T1 title / T2 skip date and location | `createPlan` with title only (no dates/location) |
+| 25 | Create plan terse | EN | "bbq party June 12 2026 Dana backyard" | Single-turn or minimal turns; ISO date; no `getPlanTags` |
+| 26 | Create plan date range | EN | "June 1 to June 3 2026" | `startDate` + `endDate` set |
+| 27 | Create plan correction | EN | T1 date A / T2 "actually date B" | Final `createPlan` uses corrected date |
+| 28 | Create plan noisy | EN | Filler + full facts in one message | One `createPlan`; no extra clarify loop |
+| 29 | Create plan API error | EN+HE | Normal create message; fake API throws | Reply directs to `/create-plan`; no fake plan UUID in text |
+
+**Note:** Hebrew file implements **22–24** and **29** for create-plan; scenarios **25–28** are English-only until mirrored.
 
 ### Planned (not yet implemented)
 
-All catalog scenarios are now implemented. Add new scenarios here before implementing.
+- Mirror create-plan scenarios **25–28** in `prompt-quality-he.test.ts` (optional).
 
 ### Excluded (with reason)
 

@@ -344,14 +344,28 @@ error { err, chatId, sender, idMessage }      → "Unexpected error during group
 
 ## Testing
 
+### Two tracks (default CI vs conversation quality)
+
+These are intentionally separate. Do not conflate them.
+
+| Track | Command | Uses production Chillist BE? | Uses Green API (WhatsApp)? | Uses real LLM provider? |
+| ----- | ------- | ---------------------------- | --------------------------- | ----------------------- |
+| **Default suite** | `npm test` / `npm run test:run` (also runs on pre-push) | **No** — mock or fake internal API, local Docker postgres only where a test needs a DB | **No** — `FakeGreenApiClient` (or noop); optional `green-api.e2e.test.ts` is `skipIf` without creds | **No** — `FakeAiClient` / noop; conversation-quality files are `describe.skip` unless env flag is set |
+| **Conversation quality** | `npm run test:conversation-quality` | **No** — `FakeInternalApiClient` with seeded plans/items | **No** — never touches WhatsApp; exercises `runConversationEngine` only | **Yes** — real Anthropic or OpenAI API (`createVercelAiClient`), same SDK path as production; requires API key and `RUN_CONVERSATION_QUALITY=true` |
+
+**Why conversation quality exists:** it checks **reply quality and tool-use behavior** against a real model (prompt regressions, tool chains, Hebrew/English). It is **not** a test of deployed Chillist backend or Green API. Run it manually or in a dedicated job when you change prompts/tools — not as part of the default `npm test` loop.
+
+**Optional:** with `DATABASE_URL_PUBLIC` set, quality runs can also tee token usage into `chatbot_ai_usage` for cost tracking; that DB is not “Chillist app prod” logic — it is observability for quality-test spend.
+
 ### Commands
 
 ```bash
-npm run test:run            # typecheck + lint + all tests
+npm run test:run            # typecheck + lint + all tests (default track only; quality suite skipped)
 npm run test:unit           # unit tests only
 npm run test:e2e            # E2E tests (in-process mock BE + fake Green API)
 npm run test:e2e:docker     # Docker E2E (builds containers, runs tests, tears down)
 npm run test:e2e:session    # Session + message store + usage logger DB E2E
+npm run test:conversation-quality   # real LLM + fakes; see "Two tracks" above
 ```
 
 **DB E2E tests locally:**
@@ -699,6 +713,21 @@ afterAll(async () => {
 // Pass fakeLogger so runTurn reads from the in-memory fake, not the tee:
 const t1 = await runTurn(deps, sessionId, USER_ALEX, "Alex", "camping", usageLogger);
 ```
+
+---
+
+## Conversational plan creation (WhatsApp)
+
+The bot can create plans in chat via the **`createPlan`** tool (`src/conversation/tools.ts`). The system prompt (`src/conversation/system-prompt.ts`) instructs the model to:
+
+- Collect **title** (required before calling the tool), **when** (optional `startDate` / `endDate` as `YYYY-MM-DD`), and **location** (optional `locationName`), extracting what the user already said and asking only for missing pieces.
+- **Not** call **`getPlanTags`** and **not** run the tag wizard in this flow (tags may be inferred from text later).
+- On success, share **`{feBaseUrl}/plan/<id>`** using the id returned by the tool (never invent a UUID).
+- On **empty `getMyPlans`**, point users to **`{feBaseUrl}/create-plan`** (same for `createPlan` failures / cannot finish in chat).
+
+**Backend dependency:** the internal route **`POST /api/internal/plans`** must exist on the app BE for production; see [specs/whatsapp-chatbot-spec.md](../specs/whatsapp-chatbot-spec.md). Tracking: [chillist-be#199](https://github.com/Alexgub84/chillist-be/issues/199) — spec copy in [chatbot-internal-create-plan-issue.md](../specs/chatbot-internal-create-plan-issue.md).
+
+**Regression tests:** conversation-quality scenarios **22–29** (EN) and **22–24 + 29** (HE) in `prompt-quality*.test.ts`; catalog in [rules/chatbot.md](../rules/chatbot.md) § Quality Test Scenario Catalog.
 
 ---
 

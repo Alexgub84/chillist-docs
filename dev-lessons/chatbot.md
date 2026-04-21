@@ -14,6 +14,22 @@ Architecture, config, and integration choices made during development — the "w
 
 <!-- Add new Decision entries at the top of this section -->
 
+### [Decision] Conversational create-plan: title, date, location only — no tag wizard in chat
+
+**Date:** 2026-04-21
+**Context:** Users can create plans from WhatsApp; the web wizard has a heavy tag taxonomy. Asking for tags in chat duplicates UX and confuses the model.
+**Decision:** System prompt + `createPlan` tool description require collecting only title, optional dates, and optional location. Do not call `getPlanTags` in the default create-plan flow. Tags may be derived from free text later. Participants are out of scope for the same iteration.
+**Reason:** Smaller surface area, fewer tool calls, clearer success criteria; matches MVP chat flow.
+**Reuse tip:** When adding new write tools, pair prompt rules with tool descriptions and add conversation-quality rows in the same commit.
+
+### [Decision] Document two test tracks: default CI vs conversation quality
+
+**Date:** 2026-04-21
+**Context:** Developers conflated `npm test` (fakes, no prod services) with `npm run test:conversation-quality` (real LLM, still no Chillist prod BE and no WhatsApp). That led to confusion about "prod" and Green API.
+**Decision:** In `guides/chatbot.md`, `rules/chatbot.md`, bot `README.md`, and the quality test file headers, state explicitly: default suite never uses production backend or WhatsApp; conversation quality uses the real LLM provider only to judge prompts/tools, with `FakeInternalApiClient` and no Green API.
+**Reason:** The quality suite is a prompt regression harness, not an integration test against deployed infrastructure.
+**Reuse tip:** Any new opt-in suite that calls paid APIs should get the same two-column table: what touches prod vs what stays fake.
+
 ### [Decision] Resolve bilingual labels in the tool layer, not in the AI prompt
 
 **Date:** 2026-04-14
