@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [Arch] Streaming (SSE/NDJSON) was the wrong tool for three short AI category calls
+
+**Date:** 2026-04-20
+**Problem:** A single streaming endpoint (SSE, then NDJSON) was used to return three category results as they completed. That added complexity (stream orchestration, buffering, client parsers) and **SSE + `reply.hijack()` bypassed Fastify’s CORS plugin**, so browser `fetch` from the dev frontend saw missing `Access-Control-Allow-Origin` on the stream response even when OPTIONS succeeded.
+**Solution:** Replaced with **three plain REST POSTs**: `POST /plans/:planId/ai-suggestions/:category`. The frontend fires them in parallel with a shared `X-Generation-Id` header for analytics correlation; each response is normal JSON. CORS works without special cases; React Query / `Promise.all` patterns are natural.
+**Lesson:** Prefer **N parallel HTTP requests** over one multiplexed stream when N is small and fixed (here, 3 categories). Reserve streaming for true incremental delivery of a single large or unbounded payload.
+
 ### [DB] `migrate.ts` must load `.env.local` — standalone `db:migrate` fails without it
 
 **Date:** 2026-04-12

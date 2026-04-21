@@ -1,7 +1,15 @@
 # Chillist — AI Item Generation
 
 > **Purpose:** Single source of truth for the AI-powered item suggestion feature — architecture, API contract, test strategy, decisions, and implementation phases.
-> **Last updated:** 2026-03-28
+> **Last updated:** 2026-04-21
+
+---
+
+## HTTP API (current)
+
+**Per-category REST (2026-04):** The live contract is **`POST /plans/:planId/ai-suggestions/:category`** (`food` \| `group_equipment` \| `personal_equipment`), optional body `{ "subcategories"?: string[] }`, optional header **`X-Generation-Id`** (UUID) shared across three parallel FE calls, response `{ suggestions, aiUsageLogId, generationId }`. See **[fe-ai-suggestions-per-category-migration.md](fe-ai-suggestions-per-category-migration.md)** for the frontend integration checklist.
+
+The sections below that still describe a single `POST /plans/:planId/ai-suggestions` without `:category` are **legacy** and will be aligned in a later doc pass; behavior of prompts, enums, and `generateItemSuggestions` remains valid.
 
 ---
 
@@ -9,7 +17,7 @@
 
 After creating a plan, users can trigger AI to generate a suggested packing/food item list based on the plan's context: trip duration, location, activity tags, and participant count. The AI returns structured item suggestions that match the existing item schema (category, unit, subcategory). Users preview the suggestions, select which ones to keep, and bulk-add them to the plan.
 
-**Stack:** Vercel AI SDK (`ai` package v5) with configurable provider (Anthropic or OpenAI). Uses `LanguageModelV2` interface, `generateObject` for structured output, `createProviderRegistry` for multi-provider support, and `MockLanguageModelV2` for testing. Backend-only — the FE calls a single REST endpoint.
+**Stack:** Vercel AI SDK (`ai` package v5) with configurable provider (Anthropic or OpenAI). Uses `LanguageModelV2` interface, `generateObject` for structured output, `createProviderRegistry` for multi-provider support, and `MockLanguageModelV2` for testing. Backend-only — the FE calls **three** REST endpoints in parallel (one per category), not one combined response.
 
 ---
 

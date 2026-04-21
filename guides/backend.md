@@ -161,6 +161,7 @@ All routes that require JWT will return 401. Guest invite routes (`/plans/:planI
 | `npm run test:integration` | Integration tests only (requires Docker)                     |
 | `npm run test:e2e`         | E2E tests only (requires Docker)                             |
 | `npm run test:ai-prompt-quality` | Real AI API — item-suggestion prompt quality (optional; costs tokens; needs `AI_PROVIDER` + key in `.env`) |
+| `npm run test:ai-suggestions-e2e` | Real AI API — **per-category REST** contract: 3 parallel HTTP calls, timings + report under `logs/` (sets `RUN_AI_E2E=true`; uses `vitest.ai-quality.config.ts`; requires Docker + `.env` keys) |
 | `npm run db:generate`          | Generate Drizzle migration files                             |
 | `npm run db:migrate:local`     | Run pending migrations on local DB (loads `.env.local`)      |
 | `npm run db:migrate:prod`      | Run pending migrations on production (reads `DATABASE_URL_PUBLIC` from `.env`) |

@@ -10,7 +10,7 @@ Instructions for refactoring how the app handles **item subcategories** so it wo
 
 - **`items.subcategory` is free text** (`varchar(255)`), not an enum. It is stored exactly as sent from the client or returned from AI.
 - **Plan language** comes from **`plans.defaultLang`** (`en` | `he` | `es`; missing/unknown is treated as English for AI).
-- **AI item suggestions** (`POST /plans/:planId/ai-suggestions`): `name`, `subcategory`, and `reason` are generated in the **plan’s language**. `category` and `unit` stay **English** API enums (`group_equipment`, `pcs`, etc.).
+- **AI item suggestions** (`POST /plans/:planId/ai-suggestions/:category`): `name`, `subcategory`, and `reason` are generated in the **plan’s language**. `category` and `unit` stay **English** API enums (`group_equipment`, `pcs`, etc.). The app calls this once per category (typically three parallel requests).
 - The backend maintains **English example lists** only for **prompting** the model (inspiration, not a closed set). The model may **invent** subcategory labels that fit the trip (e.g. fishing, ski, beach).
 - There is **no separate “subcategory ID” or canonical English key** in the API. Grouping and display use the **string value** on each item.
 
