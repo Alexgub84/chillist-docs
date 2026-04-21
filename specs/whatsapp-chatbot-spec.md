@@ -501,7 +501,7 @@ If an option includes `injects_bundle: "<name>"`, add every item from `item_gene
 - `401` — missing or wrong `x-service-key`.
 - `500` — unexpected server error (should be rare; file missing in container).
 
-#### POST /api/internal/plans (Pending -- BE route not yet implemented)
+#### POST /api/internal/plans (implemented)
 
 Creates a new plan. The chatbot sends only `title` (required) and optional metadata. The BE resolves the owner from `x-user-id`. The chatbot never sends owner details in the request body. The BE looks up the user's profile (name, phone) to create the owner participant row automatically.
 
@@ -532,13 +532,13 @@ Response 201:
   }
 
 Response 400:
-  { "message": "title is required" }
+  { "message": "<validation | invalid dates | cannot resolve owner phone | …>" }
 
 Response 401:
   { "message": "Unauthorized" }
 ```
 
-Only `title` is required. All other fields are optional (nullable).
+Only `title` is required. All other fields are optional (nullable). Optional `currency` (ISO 4217) is supported like the public create API. OpenAPI: `InternalCreatePlanBody`, `InternalCreatePlanResponse`.
 
 **Owner resolution (BE responsibility):**
 
@@ -552,7 +552,7 @@ The chatbot never collects or sends owner PII (name, phone, email). This keeps t
 
 ### Access control
 
-Data routes require `x-user-id` to match a **participants** row for the target plan (`GET /plans`, `GET /plans/:planId`) or for the item’s plan (`PATCH /items/:itemId/status`). This matches who receives plan rows from `GET /api/internal/plans`. `POST /plans` creates a new plan owned by the `x-user-id` user. Public-plan visibility alone does not grant access without membership.
+Data routes require `x-user-id` to match a **participants** row for the target plan (`GET /plans`, `GET /plans/:planId`) or for the item’s plan (`PATCH /items/:itemId/status`). This matches who receives plan rows from `GET /api/internal/plans`. `POST /api/internal/plans` creates a new plan owned by the `x-user-id` user. Public-plan visibility alone does not grant access without membership.
 
 ### Shared type definitions (chatbot API client reference)
 

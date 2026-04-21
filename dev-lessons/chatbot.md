@@ -14,6 +14,14 @@ Architecture, config, and integration choices made during development — the "w
 
 <!-- Add new Decision entries at the top of this section -->
 
+### [Decision] Stabilize create-plan replies: sanitize bare UUIDs + force createPlan on completion turn
+
+**Date:** 2026-04-21
+**Context:** Conversation-quality runs intermittently failed: the model pasted raw plan UUIDs outside the `/plan/` link, and on two-turn flows it confirmed date/location without calling `createPlan`, so replies lacked `/plan/`.
+**Decision:** (1) Post-process assistant text with `sanitizeAssistantReply` so UUID-shaped tokens are removed unless they appear only inside `{feBaseUrl}/plan/<uuid>`. (2) When message history matches “user started create-plan → assistant asked for date/location → user answered”, append a short completion directive to the system prompt and set `prepareStep` `toolChoice` to `{ type: 'tool', toolName: 'createPlan' }` on step 0. (3) Same forced tool + directive when the user corrects the date right after a reply that already included a `/plan/` link (`buildPlanDateCorrectionDirective`). (4) Prompt + tool copy: do not call `createPlan` on the first turn if the user only gave a title — ask for date/location first. (5) Quality tests: assert `createPlan` in relevant turns and exactly one UUID in replies that include `/plan/`.
+**Reason:** Prompt-only fixes are insufficient under real LLM variance; deterministic sanitization fixes UX and assertions; forced tool choice on a narrowly detected completion turn fixes the missing-tool flake without affecting other flows.
+**Reuse tip:** Track regressions in GitHub — e.g. [chillist-whatsapp-bot#33](https://github.com/Alexgub84/chillist-whatsapp-bot/issues/33).
+
 ### [Decision] Conversational create-plan: title, date, location only — no tag wizard in chat
 
 **Date:** 2026-04-21
