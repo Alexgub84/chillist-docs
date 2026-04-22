@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [API] `PATCH role: owner` — co-owner promotion, not transfer; permission is owner on plan
+
+**Date:** 2026-04-22
+**Problem:** The update-participant schema rejected `role: owner` until the enum was fixed; a first implementation then **transferred** sole ownership (demoted the previous owner and rewrote `plans.ownerParticipantId` / `createdByUserId`). Product intent is **multiple owners**: any current owner can promote another **linked** participant without changing plan metadata rows.
+**Solution:** `UpdateParticipantBody.role` includes `owner`. The handler requires the caller to have `participants.role === 'owner'` on the same plan (not only `plans.createdByUserId`). It updates only the target row to `owner`. `plans.createdByUserId` and `plans.ownerParticipantId` are untouched. Stable error `code` values: `participant_not_linked`, `not_plan_owner`, `owner_promotion_invalid_body` (see OpenAPI).
+**Lesson:** When the product says “make owner,” confirm whether it is **transfer** (one logical owner) or **add** (co-owners). Source of truth for “is this user an owner?” is `participants.role` on the plan, not a single column on `plans` when co-ownership is allowed.
+
 ### [Arch] Streaming (SSE/NDJSON) was the wrong tool for three short AI category calls
 
 **Date:** 2026-04-20

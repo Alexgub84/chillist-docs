@@ -1,7 +1,7 @@
 # Chillist — Current Status
 
 > **Purpose:** Living document describing all features currently implemented and working in production. Auto-updated by BE and FE deploy workflows.
-> **Last updated:** 2026-04-21
+> **Last updated:** 2026-04-22
 > **BE version:** 1.33.0 — **`POST /api/internal/plans`** (WhatsApp chatbot): service-key + `x-user-id`; body `title` and optional plan fields; server resolves owner name/phone (`users`, Supabase metadata, participant fallback); `201` `{ plan: { id, name, date } }`. Also: AI suggestions **per-category REST** — `POST /plans/:planId/ai-suggestions/:category` (`food` \| `group_equipment` \| `personal_equipment`). Frontend fires **three parallel requests** per “Generate” and renders each JSON response as it completes (no streaming). Optional body `{ "subcategories"?: string[] }` scopes hints to that category. **`X-Generation-Id: <uuid>`** on all three calls correlates `ai_usage_logs.metadata.generationId`; if omitted, the BE generates a UUID per call. **`plans.aiGenerationCount`** increments **once per category call** (not once per burst). Plain JSON response: `{ suggestions, aiUsageLogId, generationId }`. Prod quality check: `npm run test:ai-suggestions-e2e` (sets `RUN_AI_E2E=true`; real AI + Docker).
 > **FE version:** 1.37.1 — **Custom date/time pickers:** Replaced native `<input type="date|time">` with custom calendar (react-day-picker) and time-slot popover components, fixing broken iOS Safari/Chrome display in all locales including RTL. (Also: plan page shortcuts, home redesign — see `guides/frontend.md`.)
 
@@ -59,11 +59,11 @@ Inline editing lets you tap any item to change its quantity, unit, or status. **
 
 Every plan has participants with roles:
 
-- **Owner** — full control: edit the plan, manage participants, assign items, approve join requests, transfer ownership.
+- **Owner** — full control: edit the plan, manage participants, assign items, approve join requests, promote other linked participants to owner (co-owners).
 - **Participant** — can add items, edit their own assigned items, self-assign unassigned items, update their own preferences.
 - **Viewer** — read-only access.
 
-Plans can have multiple owners. The current owner can promote another participant via "Make owner."
+Plans can have multiple owners. Any participant with the **owner** role on the plan can promote another **linked** participant via `PATCH /participants/:participantId` with body `{ "role": "owner" }` only (no other fields in the same request). The backend does not change `plans.createdByUserId` or `plans.ownerParticipantId`. If the target has not accepted the invite yet, the API returns **400** with `code: participant_not_linked`; if the caller is not an owner on that plan, **403** with `code: not_plan_owner`. UI: "Make owner."
 
 Each participant has group details: number of adults and kids, food preferences, allergies, and free-text notes. The owner can edit anyone's preferences; participants can only edit their own. A linked non-owner participant can **leave the plan** from the plans list (confirmation dialog); the same `DELETE /participants/:participantId` endpoint is used when an owner removes someone. Item assignments for that participant are cleared. RSVP status (Pending / Confirmed / Not sure) is shown as a badge next to each participant, visible to the owner.
 
