@@ -681,7 +681,7 @@ Registered user opens a plan they're linked to
   - `lastName` (string, 1–255 chars)
   - `contactPhone` (string, 1–50 chars)
   - `displayName` (string | null, max 255 chars)
-  - `role` ("participant" | "viewer") — cannot change owner's role
+  - `role` ("owner" | "participant" | "viewer") — set to `"owner"` to **add a co-owner** (body must be only `{ "role": "owner" }`). Caller must have `participants.role === "owner"` on the same plan; target must be linked (`userId` set). Does **not** change `plans.createdByUserId` or sole ownership. Other `role` transitions: cannot change an existing **owner** row to participant/viewer via this field (separate rules).  
   - `avatarUrl` (string | null)
   - `contactEmail` (string | null, max 255 chars)
   - `adultsCount` (integer | null, minimum 0)
@@ -691,12 +691,13 @@ Registered user opens a plan they're linked to
   - `notes` (string | null)
   - `rsvpStatus` ("pending" | "confirmed" | "not_sure")
 - Authorization:
-  - **Admin** → can update any participant
-  - **Plan owner** (`plans.createdByUserId` matches JWT `sub`) → can update any participant in their plan
-  - **Linked participant** (`participants.userId` matches JWT `sub`) → can update only their own record
+  - **Plan creator** (`plans.createdByUserId` matches JWT `sub`) → can update any participant in their plan (name, rsvp, etc.)
+  - **Any participant with `role: "owner"` and linked `userId` = JWT** → may `PATCH` **only** `{ "role": "owner" }` on another participant to add a co-owner (target must be linked). Does not grant creator-only field edits to non-creators.
+  - **Linked participant (not creator, not self)** → 403 for edits to someone else’s row (except the co-owner promotion call above, which is its own path)
+  - **Linked self** (`participants.userId` matches JWT, editing own row) → can update own preferences
   - **Others** → 403
-- Response: full participant object. Non-owner/admin requesters receive `inviteToken: null`.
-- Errors: 400 (empty body, invalid role value, changing owner role, invalid rsvpStatus), 403 (not authorized to edit this participant), 404 (participant not found), 500/503 (server/db error)
+- Response: full participant object. Non-creator “owner” in the sense of list responses may receive `inviteToken: null` when the server keys visibility off `createdByUserId` (see plan/participants list routes); OpenAPI remains the source of truth.
+- Errors: 400 (empty body, invalid role value, `owner_promotion_invalid_body`, `participant_not_linked`, changing owner’s role in forbidden ways, invalid `rsvpStatus`), 403 (`not_plan_owner` or not authorized to edit this participant), 404 (participant not found), 500/503 (server/db error)
 
 **`PATCH /plans/:planId/invite/:inviteToken/preferences`** ✅ (v1.13.0)
 - Auth: Invite token in URL path (no header required)

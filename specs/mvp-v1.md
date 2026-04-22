@@ -23,17 +23,17 @@ Create a plan for any group activity — a camping trip, a dinner party, a beach
 
 The plans list shows all plans you own or are invited to. Filter by ownership (All / My plans / Invited) and by time (All / Upcoming / Past). **Ownership tab counts** reflect the **active time filter** (same subset as the list). With the All ownership filter, the list is grouped under **My plans** and **Invited** section headings; with My plans or Invited selected, the list is a single column without those headings. Each card shows the plan title, status badge, dates, location, and participant count.
 
-Only the plan owner can edit or delete a plan. Admins can also delete any plan.
+Only a user with **owner** access to the plan can edit or delete it in the app (in practice: the plan **creator** and any participant row with `role: owner` — see Participants). Platform admins can also delete a plan. Some API responses still treat the **creator** (`createdByUserId`) specially (e.g. showing invite tokens to that user); co-owners have the same management capabilities for the plan and group otherwise.
 
 ### 2.2 Participants & Roles
 
 Every plan has participants with roles:
 
-- **Owner** — full control: edit the plan, manage participants, assign items, approve join requests, transfer ownership.
+- **Owner** — full control: edit the plan, manage participants, assign items, approve join requests, and **add other linked participants as owners** (co-owners) via "Make owner" — the previous owner is **not** removed; there can be **multiple** `owner` rows on the same plan.
 - **Participant** — can add items, edit items assigned to them, self-assign unassigned items, and update their own preferences.
 - **Viewer** — read-only access.
 
-Plans can have multiple owners. The current owner can promote another participant via "Make owner" — both keep owner privileges.
+Plans can have **multiple** participants with the **owner** role. Any current owner (not only whoever created the plan) can use **"Make owner"** on a participant who has already **linked** their account; that adds another co-owner. This is **not** sole-ownership handoff: existing owners keep the owner role. Unlinked guests cannot be made owner until they accept the invite. The API returns machine-readable `code`s when promotion is not allowed (e.g. not linked, or caller is not an owner on this plan). See the backend `PATCH /participants/:participantId` description in OpenAPI.
 
 Each participant has group details: number of adults and kids, food preferences, allergies, and free-text notes. The owner can edit anyone's preferences; participants can edit only their own. Per-person structured dietary data is stored in `dietaryMembers` (JSONB) — each adult/kid in the group gets their own diet enum and allergies array.
 
@@ -112,7 +112,7 @@ A dedicated page for plan owners to manage their group:
 - View all participants with full details and preferences.
 - Edit any participant's preferences.
 - Add new participants manually.
-- Transfer ownership ("Make owner").
+- Add co-owners ("Make owner") for linked participants.
 - Regenerate invite tokens (if a link is compromised).
 - **Join requests section:** see pending requests with the requester's details, and approve or reject them.
 
