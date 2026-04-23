@@ -721,9 +721,13 @@ const t1 = await runTurn(deps, sessionId, USER_ALEX, "Alex", "camping", usageLog
 The bot can create plans in chat via the **`createPlan`** tool (`src/conversation/tools.ts`). The system prompt (`src/conversation/system-prompt.ts`) instructs the model to:
 
 - Collect **title** (required before calling the tool), **when** (optional `startDate` / `endDate` as `YYYY-MM-DD`), and **location** (optional `locationName`), extracting what the user already said and asking only for missing pieces.
-- **Not** call **`getPlanTags`** and **not** run the tag wizard in this flow (tags may be inferred from text later).
-- On success, share **`{feBaseUrl}/plan/<id>`** using the id returned by the tool (never invent a UUID).
+- **Not** call **`getPlanTags`** — that tool is not registered for the model; the tag wizard stays in the web app only.
+- On success, share **`{feBaseUrl}/plan/<id>`** using `plan.id` from the tool result (never invent a UUID).
 - On **empty `getMyPlans`**, point users to **`{feBaseUrl}/create-plan`** (same for `createPlan` failures / cannot finish in chat).
+
+Static **welcome** messages (`src/bot-replies/en.ts`, `he.ts`) also mention creating a plan and pass **`{feBaseUrl}/create-plan`** from the handler.
+
+For item questions, the prompt directs **`{feBaseUrl}/items/<planId>`** with **`?list=packing`** or **`?list=buying`** when the user asked specifically about packing vs shopping; expenses replies use **`{feBaseUrl}/expenses/<planId>`**. The FE **`/items/$planId`** route should accept the same `list` search param as **`/plan/$planId`** (see `plan-search` schema in chillist-fe).
 
 **Backend dependency:** the internal route **`POST /api/internal/plans`** must exist on the app BE for production; see [specs/whatsapp-chatbot-spec.md](../specs/whatsapp-chatbot-spec.md). Tracking: [chillist-be#199](https://github.com/Alexgub84/chillist-be/issues/199) — spec copy in [chatbot-internal-create-plan-issue.md](../specs/chatbot-internal-create-plan-issue.md).
 
@@ -740,9 +744,9 @@ The bot can create plans in chat via the **`createPlan`** tool (`src/conversatio
 - [x] AI service structure — `IAiClient`, `createVercelAiClient`, `createFakeAiClient`, `createNoopAiClient`, plugin + DI
 - [x] `chatbot_messages` table — conversation history for AI context window (`IMessageStore` + postgres + fake)
 - [x] `chatbot_ai_usage` table — per-message AI cost, token, and tool tracking (`IUsageLogger` + postgres + fake)
-- [x] AI conversation tools — `getMyPlans`, `getPlanDetails(planName)`, `updateItemStatus(itemName)`, `createPlan`, `getPlanTags` in `src/conversation/tools.ts`; all tools accept human-readable names (no UUIDs); `IPlanContextStore` resolves name→ID internally; system prompt in `src/conversation/system-prompt.ts`; `IInternalApiClient` implements app BE internal routes
+- [x] AI conversation tools — `getMyPlans`, `getPlanDetails(planName)`, `updateItemStatus(itemName)`, `createPlan`, `createExpense`, `updateExpense` in `src/conversation/tools.ts` (model-facing set); all tools accept human-readable names (no UUIDs in tool args); `IPlanContextStore` resolves name→ID internally; system prompt in `src/conversation/system-prompt.ts`; `IInternalApiClient` implements app BE internal routes
 - [x] Internal API data routes — `GET /api/internal/plans/:planId`, `PATCH /api/internal/items/:itemId/status`, `GET /api/internal/plan-tags` (app BE)
-- [x] `getPlanTags` tool — fetches full plan-creation taxonomy from `GET /api/internal/plan-tags` and resolves all bilingual `{ en, he }` labels to the user's language before returning to the model; no `x-user-id` required (global reference data)
+- [x] `GET /api/internal/plan-tags` — still implemented on the BE and `IInternalApiClient.getPlanTags()` for tests/future use; **not** exposed as an AI tool in chat (no tag wizard in WhatsApp)
 - [ ] Group sessions (linked plan, shared message history) — Phase 7
 
 ### Ops: chatbot Postgres migrations

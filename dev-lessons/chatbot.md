@@ -14,6 +14,14 @@ Architecture, config, and integration choices made during development — the "w
 
 <!-- Add new Decision entries at the top of this section -->
 
+### [Decision] Context-aware URL emission for WhatsApp (plan, items, expenses, create-plan)
+
+**Date:** 2026-04-23
+**Context:** Users needed tappable deep links, not just the site origin; packing vs buying lists and expenses have distinct FE routes.
+**Decision:** Centralize rules in `system-prompt.ts` under `## URL rules`: `{feBaseUrl}/create-plan` for empty plans and createPlan errors; `{feBaseUrl}/plan/<id>` after createPlan success; `{feBaseUrl}/items/<id>?list=packing|buying` (or bare `/items/<id>` when generic); `{feBaseUrl}/expenses/<planId>` after expense writes; `{feBaseUrl}/plans` when no plan id is known. Removed `getPlanTags` from the model tool set; `createPlan` no longer accepts `tags`. Welcome copy includes `/create-plan` via `feBaseUrl` from the handler. Quality tests strip approved URL-shaped UUIDs before asserting no bare UUID leaks.
+**Reason:** One prompt section keeps behavior consistent; matches FE routes (`/plan`, `/items`, `/expenses`, `/create-plan`).
+**Reuse tip:** When adding a new user-facing app surface, add a row to URL rules and a gated conversation-quality assertion.
+
 ### [Decision] Stabilize create-plan replies: sanitize bare UUIDs + force createPlan on completion turn
 
 **Date:** 2026-04-21

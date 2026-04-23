@@ -51,6 +51,7 @@ When implementing Phase 4 (AI SDK):
 
 - **System prompt lives in one file** — `src/conversation/system-prompt.ts`. Never inline it in the handler.
 - **`buildSystemPrompt` takes `(displayName, lang, feBaseUrl)`** — all three are required. `feBaseUrl` is used in error/empty-state messages so users always get a tappable link. If you add new user-facing references to the app, use `feBaseUrl`, never hardcode a URL.
+- **URL emission** — the system prompt includes an `## URL rules` block. The model must never send the bare origin alone; replies use deep links: `{feBaseUrl}/create-plan`, `{feBaseUrl}/plan/<id>`, `{feBaseUrl}/items/<id>` with optional `?list=packing|buying`, `{feBaseUrl}/expenses/<planId>`, and `{feBaseUrl}/plans` as a last-resort error fallback. UUIDs in user text are only allowed inside those full URLs. Welcome / ask-plans copy in `src/bot-replies/*.ts` also includes `{feBaseUrl}/create-plan`.
 - **Brand name is localised** — use `lang === "he" ? "צ'יליסט" : "Chillist"` for any user-visible app name in the prompt. Never write "Chillist" as a hardcoded string in the Hebrew path.
 - **Tool definitions are typed with Zod** — use the Vercel AI SDK `tool()` helper with a Zod schema for every parameter. Never pass untyped objects.
 - **Tool implementations call internal API only** — AI tools must not call Green API or touch sessions. They return data; the handler decides what to send.
