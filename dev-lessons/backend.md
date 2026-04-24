@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [Arch] AI per-category suggestions: `subcategories` cap vs item count vs over-produce
+
+**Date:** 2026-04-24
+**Problem:** `POST /plans/:planId/ai-suggestions/:category` used `maxItems: 20` on the optional `subcategories` hint array. The frontend sends the full canonical subcategory vocabulary (e.g. 31 food rows), so the route returned 400 before the handler ran — a contract mismatch, not bad input. Separately, item count was only described in the prompt; when the model ignored the cap, there was no server-side backstop.
+**Solution:** Raised the JSON Schema `maxItems` on `subcategories` to 200 (payload / DoS guard only; not a product gate). Single-category prompts now ask for up to 20 **essential** items per category, with explicit **one line = one product** rules. If the first model response has more than 40 items for the target category, the server runs **one** follow-up call with a **reduction** prompt (subset of the first list, at most 20 essentials). If the reduction still returns more than 40 items, the response returns that list and a warning is logged — no infinite retries. Each LLM call records a row in `ai_usage_logs`; the retry row includes `metadata.retryOfLogId`, `initialItemCount`, and `retryReason: 'over_produced_initial'`.
+**Prevention:** Align request `maxItems` / `maxLength` with real client payload shapes (check the FE catalog sizes). Put business limits on outputs and prompts, not on hint lists. When depending on LLM instruction-following, add a bounded retry or post-process for runaway outputs, and log per-call usage for cost visibility.
+
 ### [API] "Make owner" = co-owners (same permissions), not passing sole ownership — schema and narrative drift
 
 **Date:** 2026-04-22
