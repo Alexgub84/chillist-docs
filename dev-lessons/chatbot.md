@@ -14,6 +14,14 @@ Architecture, config, and integration choices made during development — the "w
 
 <!-- Add new Decision entries at the top of this section -->
 
+### [Decision] Create-plan flow: immediate creation + owner preferences + soft items wording
+
+**Date:** 2026-04-24
+**Context:** User testing showed the create-plan flow had three issues: (1) bot asked for dates/location before creating, which felt slow; (2) after creating, bot pushed users to "use the app" too aggressively; (3) owner's RSVP and preferences weren't collected despite the plan creator obviously attending.
+**Decision:** Changed the create-plan flow to: (1) create immediately when user provides a title — do not wait for dates/location; (2) before calling createPlan, briefly ask about group size (adults/kids) and dietary preferences (optional); (3) always set `ownerPreferences.rsvpStatus: "confirmed"` — the creator is coming; (4) after creation, share the plan link and offer to add dates/location; (5) when user asks about adding items (out of v1 scope), say "You can add items on the plan page" with the link — soft wording, no "use the app" phrasing. Extended `POST /api/internal/plans` to accept optional `ownerPreferences` object (BE issue #207).
+**Reason:** Faster flow for users (plan exists immediately), better data capture (owner prefs at creation), softer UX (no app-pushing).
+**Reuse tip:** When collecting user data via chat, prefer atomic operations (collect → create in one tool call) over multi-step flows that require the user to wait.
+
 ### [Decision] Context-aware URL emission for WhatsApp (plan, items, expenses, create-plan)
 
 **Date:** 2026-04-23

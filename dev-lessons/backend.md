@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [Data] `users.phone` must be globally unique — enforce at both app and DB level
+
+**Date:** 2026-04-24
+**Problem:** `users.phone` had no unique constraint. Six different code paths could write to it without checking if another user already owned the phone: `PATCH /auth/profile`, `POST /auth/sync-profile`, `POST /plans` (public), `POST /plans/:id/join-requests`, `POST /plans/:planId/claim/:token`, `POST /api/internal/plans`. This allowed duplicate rows with the same phone, causing the WhatsApp chatbot's `POST /api/internal/auth/identify` to non-deterministically resolve to either user. Root cause: the invariant "one phone per user" was never enforced anywhere.
+**Solution:** (1) Created `assertPhoneNotOwnedByOtherUser(db, userId, phone)` helper in `phone-guard.ts`. (2) Wired it into all 6 write paths with hard/soft semantics: `PATCH /auth/profile` returns 409 on conflict (hard), other paths skip the phone bootstrap and log warn (soft). (3) Added migration `0035_users_phone_unique.sql` with `CREATE UNIQUE INDEX users_phone_unique_idx ON users (phone) WHERE phone IS NOT NULL` — partial unique to allow multiple null phones. (4) Manually deduped existing prod data before deploying the migration.
+**Prevention:** Every identity column (phone, email, external ID) must have a unique constraint at the DB level from day one. App-level checks alone cannot prevent race conditions. When adding uniqueness retroactively, always run a dedup pass on prod data before deploying the migration — otherwise the migration fails with `duplicate key value violates unique constraint`. Document which code paths write to the column and ensure they all use the same guard.
+
 ### [Arch] AI per-category suggestions: `subcategories` cap vs item count vs over-produce
 
 **Date:** 2026-04-24
