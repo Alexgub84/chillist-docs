@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [Schema] Migrating JSONB sub-fields: `diet` (string) → `diets` (array) requires an idempotent SQL migration
+
+**Date:** 2026-04-23
+**Problem:** `DietaryMember.diet` was a single string. The product required multi-tag support (`diets: string[]`). Drizzle stores `dietaryMembers` as JSONB, so the shape change is invisible to Drizzle-kit and needs a manual SQL migration.
+**Solution:** (1) Changed TypeScript type and AJV schema from `diet: string` → `diets: string[]` with `minItems: 1, uniqueItems: true`. (2) Wrote an idempotent SQL migration (`0035_dietary_members_diet_to_diets.sql`) using `CASE WHEN m ? 'diets' THEN m ELSE (m - 'diet') || jsonb_build_object(...)` to transform both `participants` and `participant_join_requests`. (3) Added `no_fish` and `no_pork` enum values. (4) Added `assertDietaryMembersValid` utility to enforce `everything` exclusivity at the application layer (AJV can't cross-field validate).
+**Prevention:** When a JSONB sub-schema changes shape, always write an idempotent data migration. Gate it with `WHERE m ? 'old_field'` (or `NOT m ? 'new_field'`) so re-running is safe. Application-level cross-field invariants (like exclusivity rules) must live in a service utility, not just in AJV schema constraints.
+
 ### [Data] `users.phone` must be globally unique — enforce at both app and DB level
 
 **Date:** 2026-04-24
