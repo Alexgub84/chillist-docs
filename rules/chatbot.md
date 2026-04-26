@@ -118,6 +118,22 @@ When implementing Phase 4 (AI SDK):
 - **Quality test assertions use two tiers** — **Hard assertions** (`expect`) for user-visible correctness: non-empty reply, no error phrases, no UUID leaks, write-tool calls (`updateItemStatus`) with correct `itemId`/`status`. **Soft assertions** (`softAssert`) for model reasoning path: read-tool calls (`getMyPlans`, `getPlanDetails`), no-tool expectations, on-topic keyword checks, planId correctness. Soft failures are logged as warnings in the report but never fail the test. Import `softAssert` from `report-helpers.ts`.
 - **Every new external service needs an env-guard test** — verify that `PROVIDER=fake` is rejected when `NODE_ENV=production`.
 
+### Quality test scenario design rules (follow when adding new quality scenarios)
+
+These rules govern when and how to add `it()` blocks to `prompt-quality.test.ts` / `prompt-quality-he.test.ts`. A future AI adding quality tests MUST follow all of them.
+
+**One `it()` block per distinct product behavior.** Two tests are candidates for combination if they share the same seed data AND their assertions could logically be verified in the same user session. Combine packing/buying URL checks, greeting/off-topic checks, and any sequential actions a real user would do consecutively.
+
+**Language-agnostic behaviors → one language only.** If a behavior (e.g. bare-digit plan selection, bulk item update) works identically in EN and HE with no language-specific prompt differences, implement it in HE only (the primary user base). Only add an EN mirror if the behavior depends on English-specific parsing or phrasing.
+
+**Combine related flows into multi-turn journeys rather than adding separate `it()` blocks.** Example: instead of a standalone "createPlan success URL" test, add a turn to an existing createPlan flow that already creates a plan. The report becomes one coherent transcript instead of two isolated 1-turn snippets.
+
+**Do NOT add a new `it()` block if an existing block already covers the assertion.** Before adding any new test, scan the catalog and check whether a current scenario already exercises the same tool call and asserts the same output shape. If yes, add a turn to that scenario instead.
+
+**Regression tests are exempt from the above.** If a production bug caused a real user-visible failure, add a dedicated `it()` block with a `// Regression: [Bug title] — YYYY-MM-DD` comment, even if similar scenarios exist. These must never be merged away.
+
+**Catalog must be updated in the same commit as the test.** See §9 Quality Test Scenario Catalog. Add to "Planned" when deferring; add to "Implemented" when done; add to "Excluded" with a reason when explicitly deciding not to cover something.
+
 ---
 
 ## 8) Dev Lessons Protocol
@@ -193,11 +209,20 @@ Single source of truth for what `prompt-quality.test.ts` and `prompt-quality-he.
 
 ### Planned (not yet implemented)
 
-- Create plan two-turn (title first, then dates/location in T2) — EN+HE
-- Create plan terse (single message, "bbq party June 12 2026 Dana backyard") — EN
-- Create plan date range ("June 1 to June 3 2026") — EN
-- Create plan correction (user provides wrong date, corrects in T2) — EN
-- Create plan noisy (filler text + facts in one message) — EN
+| Scenario | Lang | User input | What to assert |
+|----------|------|------------|----------------|
+| Create plan two-turn | EN+HE | T1: title only / T2: date + location | `createPlan` called in T2 with ISO dates and location; reply includes `/plan/` link |
+| Create plan terse | EN | "bbq party June 12 2026 Dana backyard" | Single-turn `createPlan`; `startDate` is ISO format; no extra clarify loop |
+| Create plan date range | EN | "June 1 to June 3 2026" | `createPlan` called with both `startDate` and `endDate` |
+| Create plan correction | EN | T1: "create camping trip for July 1" / T2: "actually make it July 5" | Final `createPlan` uses corrected date, not original |
+| Create plan noisy | EN | "Hey so I was thinking we could maybe create like a plan, the name is Summer BBQ, date July 4 2026, location Dana's backyard" | One `createPlan` call; no unnecessary clarification turns |
+
+**Implementation guidance for planned scenarios:**
+- Add to EN file first; mirror in HE only if locale-specific behavior is being tested (it isn't for these — they test date parsing and single-turn resolution).
+- Use `seedAlex(internalApi)` + `internalApi.setCreatePlanResult(...)` with `PLAN_NEW_FROM_CHAT_ID`.
+- Session ID pattern: `"qt-create-<slug>"`.
+- Hard assertions: `createPlan` called, reply contains `/plan/` link, no bare UUID outside the link.
+- Soft assertions: correct `startDate`/`endDate` ISO format, no extra turns before `createPlan`.
 
 ### Excluded (with reason)
 

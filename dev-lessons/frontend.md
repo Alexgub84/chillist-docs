@@ -16,6 +16,8 @@ A log of bugs fixed and problems solved in `chillist-fe`.
 - Make the local mock (`api/mock.ts`) validate using the **same** Zod/enum lists as the FE reads from the generated types, so “mock accepts, prod rejects” drift is caught in unit tests.
 - Add a smoke test (or a PR checklist item) that asserts `src/core/openapi.json` matches `git fetch chillist-be:docs/openapi.json` on CI — a diff means the FE is running against a fork of the API.
 
+**Follow-up (2026-04-26):** BE shipped the contract change ([chillist-be#205](https://github.com/Alexgub84/chillist-be/issues/205)) as a clean break — `diet` removed, `diets: string[]` required, `no_fish`/`no_pork` added. FE ran `npm run api:sync`, regenerated `api.generated.ts`, then migrated all layers: `dietary-options.ts` (schema, serializer, parser with legacy-`diet`-blob fallback), `PersonPreferencesEditor` (replaced `FoodSelect` with `FoodMultiSelect`, enforced `everything`-exclusivity), display components (`flatMap diets`), i18n (three locales), `api.ts` inline types, `api/mock.ts` Zod schema. 1456/1458 tests green (2 prod-API skipped). `participant-schema.test.ts` had an old `{diet: 'vegan'}` fixture — missed in first grep pass; fixed same day. Lesson: when a field name changes, grep `tests/` for the old name before declaring done.
+
 ---
 
 ### [UX] Bulk-add wizard could not add items not in the common-items catalog
