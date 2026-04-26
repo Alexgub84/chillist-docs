@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [AI] Category bleed and combined-item names are systemic LLM output quality failures
+
+**Date:** 2026-04-26
+**Problem:** `POST /plans/:planId/ai-suggestions/:category` fires one AI call per category. Despite the prompt saying "Generate items ONLY for the following categories", measured bleed rates with Claude Haiku 4.5 were 27–57% wrong-category items per call (hotel group_equipment: 27% correct, camping personal_equipment: 47% correct). Separately, the model routinely emitted combined-product names like "Hat and Gloves", "Coffee and Tea", "Cheese and Bread", "Salt and Pepper", "Canned Beans and Vegetables" — any user who accepted these as a single checklist item would receive the wrong quantity and unit. The route already filtered by category post-hoc, so clients saw clean results, but we paid tokens for all the bleed and had no visibility into how bad it was on each call.
+**Solution:** (1) Added a `SINGLE-CATEGORY MODE — HARD RULE` block to `getCategoriesInstruction` in `prompt-templates.ts`, emitted only when exactly one category is requested. It names the exact target category, explains items with wrong category will be discarded, and explicitly tells the model not to include items it "would put in another category". (2) Added `ITEM_ATOMICITY_RULE` constant and injected it into every prompt (after `CATEGORY_RULES`) explaining one-row-one-product, giving bad examples by name, and clarifying that "A or B" and genuine packaged sets are acceptable. (3) Added `rawItemCount` and `filteredOutCount` to `ai_usage_logs.metadata` for every successful call, and to the `request.log.info` line, so bleed is now visible in Railway logs per request. (4) Added quality tests: `bleedRate >= 0.7` soft threshold per scenario, and `findCombinedNames` assertion on filtered items.
+**Prevention:** When an LLM is given a constraint it must obey (e.g. "only this category"), repeat the constraint with explicit consequences ("items you wrongly categorize will be DISCARDED"). Always log raw vs filtered item counts so you can see compliance rates in production without running quality tests. Add quality tests that measure compliance rates numerically rather than asserting zero bleed — LLMs are non-deterministic and occasional bleed is acceptable, but systematic failure needs a prompt fix.
+
 ### [Schema] Migrating JSONB sub-fields: `diet` (string) → `diets` (array) requires an idempotent SQL migration
 
 **Date:** 2026-04-23

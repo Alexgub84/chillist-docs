@@ -14,6 +14,17 @@ Architecture, config, and integration choices made during development — the "w
 
 <!-- Add new Decision entries at the top of this section -->
 
+### [Decision] Quality test trimming: combine related scenarios, drop language-agnostic mirrors
+
+**Date:** 2026-04-26
+**Context:** Quality test suite grew to 29 EN + 28 HE `it()` blocks. Several scenarios had zero unique signal — e.g. "createPlan success URL" was identical to the T3 assertion already inside #30, and #12c (chitchat gap) was a positional variant of the same architectural UUID-hallucination fix already covered by #11, #12a, #12b. EN mirrors of HE-only behaviors (#9 number-selection, #10 bulk items) doubled LLM calls without testing anything language-specific.
+**Decision:** Applied three rules when reviewing quality tests:
+1. **Combine related single-turn tests into multi-turn scenarios** when they share the same seed and form a natural user journey (greeting + off-topic → "casual messages"; packing URL + buying URL → "context URLs"; #30 ownerPreferences + #32 soft-items → single 4-turn journey). This improves the markdown report: one section shows the full conversation instead of two disconnected single-turn snippets.
+2. **Drop pure duplicates** where every assertion is already covered by a newer or richer scenario (createPlan-URL success, #12c chitchat-gap).
+3. **Keep only one language for language-agnostic behaviors** (digit selection, bulk item updates). The HE version is primary since that is the real user base; EN mirrors add no regression signal.
+**Reason:** Each `it()` block with `retry: 2` costs up to 3× its LLM turns on flaky days. Trimming 14 turns per clean run and removing retry surface reduces cost and improves report signal-to-noise.
+**Reuse tip:** When building the next bot, start the quality catalog with this rule already applied — one `it()` per distinct product behavior, language-agnostic flows tested in one language only, related flows combined into multi-turn journeys.
+
 ### [Decision] Create-plan flow: immediate creation + owner preferences + soft items wording
 
 **Date:** 2026-04-24

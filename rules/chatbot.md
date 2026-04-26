@@ -161,12 +161,12 @@ Single source of truth for what `prompt-quality.test.ts` and `prompt-quality-he.
 
 ### Implemented
 
-| # | Scenario | Lang | User input (T1 / T2) | What it tests |
-|---|----------|------|-----------------------|---------------|
+| # | Scenario | Lang | User input (T1 / T2 / …) | What it tests |
+|---|----------|------|--------------------------|---------------|
 | 1 | List my plans | EN+HE | "What plans do I have?" | getMyPlans called, plan names in reply, no UUIDs |
 | 2 | Plan details + follow-up | EN+HE | "What items on my Camping Trip?" / "Which food items are pending?" | getPlanDetails, T2 answers from context or re-fetches |
 | 3 | Mark item done (warm) | EN+HE | "Show items" / "I packed the Tent — mark it done" | T1 loads plan, T2 calls updateItemStatus with correct ID |
-| 4 | Empty plans | EN+HE | "What are my plans?" (user has none) | Encouraging message, no error, includes `/create-plan` link (see system prompt) |
+| 4 | Empty plans | EN+HE | "What are my plans?" (user has none) | Encouraging message, no error, includes `/create-plan` link |
 | 5 | Disambiguation | EN | "Tell me about the camping trip" (2 matches) / "The 2025 one" | Bot asks which one, T2 resolves selection |
 | 6 | Cold-start mark done | EN+HE | "Mark the Tent as done on my Camping Trip" | All 3 tools chained in one turn |
 | 7 | Context follow-up | EN+HE | "What items?" / "Which are still pending?" | T2 answers from prior turn text, no tool call |
@@ -176,30 +176,28 @@ Single source of truth for what `prompt-quality.test.ts` and `prompt-quality-he.
 | 11 | planName resolution | EN+HE | "What plans do I have?" / "Show me the items for Camping Trip" | T1 stores plan list, T2 resolves name→ID, no hallucinated UUID |
 | 12a | anti-hallucination: multi-plan switch | EN+HE | "What plans?" / "Camping Trip items" / "Beach Day items" | Switches between 2 plans across 3 turns — all getPlanDetails use real IDs |
 | 12b | anti-hallucination: cold plan details | EN+HE | "What items are on my Camping Trip?" (no prior getMyPlans) | getPlanDetails auto-fetches plan list, resolves name, no hallucinated UUID |
-| 12c | anti-hallucination: chitchat gap | EN+HE | "What plans?" / "Cool thanks!" / "Show Camping Trip items" | Intermediate non-tool turn pushes plan names further back in context |
-| 13 | Off-topic / chitchat | EN+HE | "what's the weather?" / "ספר לי בדיחה" | Bot responds naturally, does NOT call any tools |
-| 14 | Greeting only | EN+HE | "hey" / "היי" | Bot greets back without calling tools |
+| 13+14 | Casual messages (greeting + off-topic) | EN+HE | T1 "hey" / T2 "what's the weather?" | Both turns have zero tool calls, non-empty replies, no errors |
 | 15 | Undo action (mark pending) | EN+HE | "Show items" / "actually, mark Tent as pending" | updateItemStatus called with status="pending" |
 | 16 | Typo in item name | EN | "Show items" / "mark the Tnet done" | Bot suggests correct names or auto-corrects; no "something went wrong" |
 | 17 | Wrong plan name | EN | "show items for Birthday Party" (no such plan) | Bot mentions available plans or says not found, no crash |
 | 18 | Item already done | EN+HE | "Show items" / "mark Charcoal done" (already done) | Bot handles gracefully, no error in reply |
-| 19 | Number selection (EN) | EN | "Tell me about the camping trip" / "1" | Same as #9 but in English; getPlanDetails called |
-| 20 | Bulk items (EN) | EN | "I bought Tent and Sleeping Bag, mark them done" | Same as #10 but in English; updateItemStatus called twice |
 | 21 | Single-plan update items | EN+HE | "update items" / "עדכן פריטים" (user has only 1 plan) | Bot auto-selects the only plan, lists items, no "which plan?" disambiguation |
-| 22 | Create plan all-in-one | EN+HE | One message: title + date + location | `createPlan` once; no `getPlanTags`; reply includes `/plan/` |
-| 23 | Create plan two-turn | EN+HE | T1 title intent only / T2 date + location | Final `createPlan` has ISO dates + location; no `getPlanTags` |
-| 24 | Create plan skip optional | EN+HE | T1 title / T2 skip date and location | `createPlan` with title only (no dates/location) |
-| 25 | Create plan terse | EN | "bbq party June 12 2026 Dana backyard" | Single-turn or minimal turns; ISO date; no `getPlanTags` |
-| 26 | Create plan date range | EN | "June 1 to June 3 2026" | `startDate` + `endDate` set |
-| 27 | Create plan correction | EN | T1 date A / T2 "actually date B" | Final `createPlan` uses corrected date |
-| 28 | Create plan noisy | EN | Filler + full facts in one message | One `createPlan`; no extra clarify loop |
+| 22 | Create plan all-in-one | EN | One message: title + date + location | `createPlan` once; reply includes `/plan/` |
 | 29 | Create plan API error | EN+HE | Normal create message; fake API throws | Reply directs to `/create-plan`; no fake plan UUID in text |
+| 30 | Create plan with owner prefs + items wording | EN+HE | T1 title / T2 headcount / T3 dietary / T4 "how do I add items?" | `createPlan` called with `ownerPreferences` (`rsvpStatus` confirmed, adults/kids, dietary); T4 reply includes `/items/` and does not say "use the app" |
+| 31 | Create plan skip optional prefs | EN+HE | T1 title / T2 skip headcount and dietary | `createPlan` succeeds with `/plan/` link; user can decline optional questions |
+| URL | Context URLs — packing and buying | EN+HE | T1 "left to pack for Camping Trip?" / T2 "need to buy for Camping Trip?" | T1 reply includes `list=packing`; T2 reply includes `list=buying` |
+| URL | createExpense URL | EN+HE | "I spent $45 on snacks for Camping Trip" | Reply includes `/expenses/<planId>` |
 
-**Note:** Hebrew file implements **22–24** and **29** for create-plan; scenarios **25–28** are English-only until mirrored.
+**Note:** Scenarios #9, #10 (number selection, bulk items) are HE-only — these behaviors are language-agnostic and the HE version is the primary user base. Scenario #22 is EN-only; HE create-plan flow is covered by #29–31. Scenario #12c (chitchat gap) was dropped — the underlying UUID-hallucination fix is architectural and covered by #11, #12a, #12b.
 
 ### Planned (not yet implemented)
 
-- Mirror create-plan scenarios **25–28** in `prompt-quality-he.test.ts` (optional).
+- Create plan two-turn (title first, then dates/location in T2) — EN+HE
+- Create plan terse (single message, "bbq party June 12 2026 Dana backyard") — EN
+- Create plan date range ("June 1 to June 3 2026") — EN
+- Create plan correction (user provides wrong date, corrects in T2) — EN
+- Create plan noisy (filler text + facts in one message) — EN
 
 ### Excluded (with reason)
 
