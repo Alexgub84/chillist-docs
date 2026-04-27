@@ -8,6 +8,13 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [Data] Item `updatedAt` on PATCH can appear older than insert when using Node `new Date()` vs Postgres `defaultNow()`
+
+**Date:** 2026-04-27
+**Problem:** Integration test `PATCH /items/:itemId` → "updates item name and returns 200" failed intermittently: `updated.updatedAt` was a few milliseconds **less** than `item.updatedAt` from the seed insert, so `toBeGreaterThan` failed. Inserts use `timestamp … defaultNow()` (PostgreSQL clock). Updates used `updatedAt: new Date()` (Node clock). Under load or container timing, those clocks can diverge slightly.
+**Solution:** In `item.service.ts`, set `updatedAt` with Drizzle `sql`now()`` on all item row updates so the same database clock source as `defaultNow()` is used.
+**Prevention:** For any column that compares monotonicity against `defaultNow()` / other DB timestamps, prefer `sql`now()`` (or `clock_timestamp()` if you need statement-level time) over `new Date()` in `.set()` so round-trips stay ordered.
+
 ### [AI] Align AI item naming + subcategory vocabulary with the FE canonical library (without shipping the list)
 
 **Date:** 2026-04-26
