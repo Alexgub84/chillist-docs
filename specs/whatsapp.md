@@ -209,7 +209,7 @@ All under `/api/internal/*`, `x-service-key` = `CHATBOT_SERVICE_KEY`, plus `x-us
 | ------ | ---- | ------- | ------- |
 | `POST` | `/api/internal/auth/identify` | `x-service-key` only | Resolve E.164 phone → `userId` + display name (lookup on **`users.phone`** — see [phone-management.md](./phone-management.md)) |
 | `GET` | `/api/internal/plans` | `x-service-key` + `x-user-id` | List user’s plans with summary counts (undated or `startDate` ≥ now UTC; past-dated plans omitted) |
-| `POST` | `/api/internal/plans` | `x-service-key` + `x-user-id` | Create plan for that user; body `title` + optional metadata; owner name/phone resolved server-side (`InternalCreatePlanBody`) |
+| `POST` | `/api/internal/plans` | `x-service-key` + `x-user-id` | Create plan for that user; body `title` + optional metadata; owner name/phone resolved server-side (`InternalCreatePlanBody`). Optional `ownerPreferences` sets the owner participant’s RSVP (`pending` \| `confirmed` \| `not_sure`), `adultsCount` / `kidsCount` (integers ≥ 0), and `foodPreferences` / `allergies` (free text); omit or `null` for DB defaults. |
 | `GET` | `/api/internal/plans/:planId` | `x-service-key` + `x-user-id` | Full plan: participants and items (chatbot field names; membership required) |
 | `PATCH` | `/api/internal/items/:itemId/status` | `x-service-key` + `x-user-id` | Body `{ status: "done" \| "pending" }` — upserts caller’s assignment (`done` maps to `purchased` in DB) |
 | `POST` | `/api/internal/plans/:planId/expenses` | `x-service-key` + `x-user-id` | Body `{ amount, description?, itemIds? }` — creates expense for caller's participant. Linked items auto-advance from `pending` to `purchased`. |

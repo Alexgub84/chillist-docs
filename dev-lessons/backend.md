@@ -8,6 +8,21 @@ _(Note: All lessons prior to 2026-03-02 have been distilled into `rules/backend.
 
 <!-- Add new entries at the top -->
 
+### [AI] Align AI item naming + subcategory vocabulary with the FE canonical library (without shipping the list)
+
+**Date:** 2026-04-26
+**Problem:** Running `npm run test:ai-prompt-quality-per-category` produced many items whose names and subcategories drifted from the FE canonical `chillist-fe/src/data/common-items.json`:
+
+- **Parenthetical descriptors** in names: `Sleeping Bag (Summer/3-Season)`, `Sunscreen (High SPF)`, `Warm Socks (Wool or Synthetic Blend)`, `Personal Toiletries Bag (Toothbrush, Toothpaste, Soap)`, `Vegetables (Onions, Carrots, Potatoes)`, `Bread (crusty baguette or focaccia)`. The FE never does this.
+- **`A or B` alternatives** inside names: `Sleeping Pad or Foam Mat`, `Headlamp or Flashlight`, `Milk or Powdered Milk`, `Hat or Cap`, `Chicken Breasts or Ground Meat`. The old prompt explicitly allowed this — a lesson from before we had an FE canonical library.
+- **Lowercase words** in names: `Vegan protein pasta`, `Red wine`, `White wine`, `Fresh spinach`. FE is always Title Case.
+- **Trip-specific prefixes** on generic items: `Camping Tent`, `Compact Umbrella`.
+- **Subcategory near-duplicates**: `Sleep System`, `Shelter and Sleeping Setup`, `Clothing Layers`, `Hiking Gear`, `Hydration`, `Carrying and Storage`, `Storage and Organization`, `Cooking and Dining`, `Fresh Produce`, `Meat and Proteins`, `Condiments and Spices`, `Grains and Bread` — all synonyms of existing FE canonical labels. Root cause: the BE example list in `subcategories.ts` only had 10 equipment + 11 food labels, so the AI invented synonyms for everything else.
+
+**Solution:** (1) Expanded `EQUIPMENT_SUBCATEGORIES` to 22 labels and `FOOD_SUBCATEGORIES` to 15 labels, mirroring the FE canonical `common-items.json` subcategories verbatim (including `Sleeping Gear`, `Clothing and Layers`, `Footwear`, `Packs and Hydration`, `Transport and Carry`, `Serving and Tableware`, `Meat and Poultry`, `Fresh Fruit`, `Fresh Vegetables`, `Cheese`, `Sauces, Condiments, and Spreads`, etc.). (2) Tightened `ITEM_ATOMICITY_RULE` to also forbid `A or B` inside names (previously allowed) and updated bad examples with the concrete names we observed in the failing run. (3) Added a new `ITEM_NAMING_RULE` block covering Title Case, short canonical names (1–3 words), no parenthetical descriptors, no trip-specific prefixes, and no vague qualifier words. Each rule is anchored with concrete good/bad examples. (4) Rewrote `SUBCATEGORY_GUIDANCE` to say "reuse an example label verbatim" and list the exact non-canonical synonyms to avoid. (5) Added a `Naming reminder:` and `Subcategory reminder:` line to the closing instruction so the rules are restated near the end of the prompt (LLMs weigh recent context more heavily). All changes are prompt-side only — no FE item list is shipped to the model.
+
+**Prevention:** When an LLM is generating names/labels that must play nicely with a canonical client-side vocabulary, mirror that vocabulary as examples in the prompt *without shipping the raw list* (it would cost far more tokens than it saves). Keep the BE example arrays in sync with the FE canonical library whenever the FE adds new subcategory labels. For every rule you want the model to follow, include 3–5 concrete bad examples drawn from real failing runs — generic prohibitions (`no 'or' in names`) are systematically less effective than `Bad: "Sleeping Pad or Foam Mat" → pick one`. Restate the most important rules near the end of the prompt (closing reminder), since recency has a measurable effect on instruction following.
+
 ### [AI] Category bleed and combined-item names are systemic LLM output quality failures
 
 **Date:** 2026-04-26

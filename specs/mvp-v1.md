@@ -358,7 +358,7 @@ Base URL: `/` (versioning can be added later: `/v1`)
 
 - `GET /plan-tags` → `TaxonomyResponse` (JWT required — latest 3-tier tag taxonomy with version, tier labels, tier1 options, tier2 `options_by_parent` with `mutex_groups` + `cross_group_rules`, tier3 `options_by_parent`) — **FE: `usePlanTags` hook, `staleTime: Infinity`, Zod-validated via `planTagsSchema`**
 - `GET /api/internal/plan-tags` → same response shape (x-service-key required, no x-user-id — for WhatsApp chatbot)
-- `POST /api/internal/plans` → `{ plan: { id, name, date } }` (`201`; x-service-key + `x-user-id`; owner PII resolved server-side — for WhatsApp chatbot)
+- `POST /api/internal/plans` → `{ plan: { id, name, date } }` (`201`; x-service-key + `x-user-id`; owner PII resolved server-side; optional `ownerPreferences` for owner RSVP, headcount, dietary text — for WhatsApp chatbot)
 
 **Status codes:** `200` OK, `201` Created, `207` Multi-Status (bulk partial success), `400` Invalid, `401` Unauthorized, `403` Forbidden, `404` Not Found, `429` Rate Limited, `500` Internal Error, `503` Unavailable.
 

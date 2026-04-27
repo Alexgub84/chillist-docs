@@ -102,13 +102,28 @@ Subcategory is `varchar(255)` in the DB (not an enum). The lists below are **exa
 
 **Hebrew / non-English:** Extra instructions require natural text, no invented words, and no mixed scripts in Hebrew fields. For `AI_PROVIDER=anthropic`, **English** uses Claude Haiku 4.5; **Hebrew and Spanish** use Claude Sonnet 4 for higher quality. For OpenAI, English uses `gpt-4o-mini` and non-English uses `gpt-4o`.
 
-**Example equipment subcategories:**
-`Venue Setup and Layout`, `Comfort and Climate Control`, `Cooking and Heating Equipment`, `First Aid and Safety`, `Games and Activities`, `Food Storage and Cooling`, `Lighting and Visibility`, `Kids and Baby Gear`, `Drink and Beverage Equipment`, `Other`
+**Subcategory arrays** — exact mirror of `chillist-fe/src/data/subcategories.ts` (the list the FE sends to BE on every AI call):
 
-**Example food subcategories:**
-`Beverages (non-alcoholic)`, `Beverages (alcoholic)`, `Grains and Pasta`, `Snacks and Chips`, `Breakfast Staples`, `Meat and Proteins`, `Vegan`, `Fresh Produce`, `Other`
+`GROUP_EQUIPMENT_SUBCATEGORIES` (21):
+`Venue Setup and Layout`, `Food Preparation Tools`, `Cooking and Heating Equipment`, `Cookware and Bakeware`, `Serving and Tableware`, `Drink and Beverage Equipment`, `Food Storage and Cooling`, `Cleaning and Dishwashing`, `Waste and Recycling`, `Power and Charging`, `Lighting and Visibility`, `Comfort and Climate Control`, `Music and Media`, `Games and Activities`, `Kids and Baby Gear`, `Pet Gear`, `Hygiene and Bathroom Supplies`, `First Aid and Safety`, `Transport and Carry`, `Documentation and Access`, `Tools and Quick Repairs`
 
-These values live in `src/services/ai/subcategories.ts` as const arrays and are injected into the prompt template — never hardcoded as inline strings.
+`PERSONAL_EQUIPMENT_SUBCATEGORIES` (8):
+`Sleeping Gear`, `Clothing and Layers`, `Footwear`, `Headwear and Accessories`, `Hygiene and Toiletries`, `Packs and Hydration`, `Kids Gear`, `Personal Essentials`
+
+`FOOD_SUBCATEGORIES` (31):
+`Fresh Vegetables`, `Fresh Fruit`, `Fresh Herbs`, `Leafy Greens and Salads`, `Aromatics (onion, garlic, ginger)`, `Meat and Poultry`, `Fish and Seafood`, `Meat Alternatives and Plant Proteins`, `Vegan`, `Eggs`, `Dairy`, `Dairy Alternatives`, `Cheese`, `Bread and Bakery`, `Grains and Pasta`, `Breakfast Staples`, `Legumes (dry and canned)`, `Canned and Jarred Foods`, `Sauces, Condiments, and Spreads`, `Oils, Vinegars, and Dressings`, `Spices and Seasonings`, `Baking Ingredients`, `Snacks and Chips`, `Nuts, Seeds, and Dried Fruit`, `Sweets and Desserts`, `Frozen Foods`, `Ready-to-Eat and Prepared Foods`, `Beverages (non-alcoholic)`, `Alcohol and Mixers`, `Hot Drinks (coffee, tea, cocoa)`, `Water and Ice`
+
+These live in `src/services/ai/subcategories.ts` as const arrays and are injected into the prompt as `SUBCATEGORY_GUIDANCE`. The FE *also* sends the full list for the requested category on every AI call via the `subcategories` body field — so when FE calls, the AI sees the canonical list both as background guidance AND as the per-request directive ("keep labels close to these"). Keep `subcategories.ts` in sync with `chillist-fe/src/data/subcategories.ts` when the FE taxonomy changes.
+
+**Item naming rules** (injected as `ITEM_NAMING_RULE` + `ITEM_ATOMICITY_RULE`):
+
+- Title Case every significant word (every language).
+- Short canonical names — ideally 1–3 words, up to 4 for genuine compound products like `First Aid Kit`.
+- No parenthetical descriptors in the name (no seasons, SPF levels, ingredient lists, material blends) — that nuance belongs in `reason`.
+- No `A or B` alternatives in the name — pick one, or emit two rows.
+- No `A and B` combining of distinct products — emit separate rows. Genuine packaged sets (`First Aid Kit`, `Cookware Set`, `Tent Stakes and Mallet`) are allowed.
+- No trip-specific adjectives on canonical names (`Tent`, not `Camping Tent`; `Umbrella`, not `Compact Umbrella`).
+- No vague qualifier words (`Warm Jacket`, `Thin Base Layer Top`) — name the concrete product or drop the adjective.
 
 ---
 
