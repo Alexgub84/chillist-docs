@@ -1868,3 +1868,16 @@ Route file dropped from ~600 to ~460 lines, with each extracted module independe
 **Solution:** Added a `selectCalendarDate(page, testId, day, monthsForward)` helper to `tests/e2e/fixtures.ts` that: (1) clicks the trigger by `data-testid`, (2) waits for the panel to be visible, (3) clicks the "next month" nav button N times, (4) clicks the day button by its numeric text content (`td button` filtered by `^${day}$`). Using text content for the day number is locale-independent. Removed the two `plan-tags.spec.ts` date interactions entirely (those tests were scoped to only test the tag wizard, not plan creation).
 
 **Lesson:** When replacing native HTML inputs with custom picker components, E2E tests cannot use `.fill()` — they must interact with the picker UI. Calendar components open to the current month by default; E2E tests must navigate to the target month before clicking a day. Use locale-independent selectors (day number text content) rather than locale-specific aria-labels (e.g., "July 15") that break under i18n changes.
+
+
+### [Bug] Phone 409 error handler hardcodes emailChanged to false
+
+**Date:** 2026-04-27
+
+**Problem:** When a user updates both email and phone in the profile settings, if the email update succeeds but the phone update fails with a 409 (conflict) or 400 (validation) error, the error handler returned `emailChanged: false`. This caused the caller to skip the "confirmation link sent" toast, so the user never knew a confirmation email was dispatched to their new address.
+
+**Root Cause:** Copy-paste error combined with incomplete mental model of the data flow. The 409/400 error handlers were copied from the earlier `updateUser` error handler (line 77) which correctly returns `emailChanged: false` because if `updateUser` fails, no email change has happened yet. The same pattern was applied to the phone error handlers without considering that by this point in the code, the email update has already succeeded. The `emailChanged` variable was computed correctly on line 61 but was ignored in favor of hardcoded `false` in the phone error paths.
+
+**Solution:** Changed both error handlers in `src/core/profile-utils.ts` to use the computed `emailChanged` variable instead of hardcoding `false`. Added two new test cases to cover the combined email+phone failure scenarios.
+
+**Lesson:** When writing error handlers in multi-step operations, consider what state changes have already succeeded before the error point. Do not blindly copy error handling patterns from earlier steps — earlier steps may have different invariants about what has already happened. Write tests for partial success scenarios where some operations succeed and others fail.
